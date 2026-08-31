@@ -1,0 +1,305 @@
+/* ============================================================================
+   air — design tokens
+   ----------------------------------------------------------------------------
+   ONE measurement language, FOUR role skins.
+
+   Rules of engagement for every component author:
+     1. Never write a raw hex value in a component. Use a var() from this file.
+     2. Semantic vars (--bg, --ink, --accent...) are re-bound per role theme.
+        Component CSS should reference ONLY semantic vars, never --c-* primitives.
+     3. Measurement colour comes from a ramp, never from the role accent.
+        --ramp-aqi-*       public health language (community, any "risk" score)
+        --ramp-intensity-* analytical magnitude (regulator / industry / admin)
+     4. Numerals are always --font-mono with font-variant-numeric: tabular-nums.
+   ========================================================================= */
+
+:root {
+  /* ---------------------------------------------------------------- type */
+  --font-ui:      'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Instrument Sans Variable', 'Instrument Sans', var(--font-ui);
+  --font-mono:    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-3xs: 0.625rem;   /* 10px — RWR micro labels, axis ticks */
+  --text-2xs: 0.6875rem;  /* 11px */
+  --text-xs:  0.75rem;    /* 12px */
+  --text-sm:  0.8125rem;  /* 13px — dense console body */
+  --text-md:  0.9375rem;  /* 15px — default */
+  --text-lg:  1.0625rem;  /* 17px */
+  --text-xl:  1.375rem;   /* 22px */
+  --text-2xl: 1.875rem;   /* 30px */
+  --text-3xl: 2.5rem;     /* 40px */
+  --text-4xl: 3.25rem;    /* 52px — hero readouts */
+
+  --tracking-tight: -0.02em;
+  --tracking-wide:   0.02em;
+  --tracking-caps:   0.09em;   /* uppercase micro labels */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semi:    600;
+  --weight-bold:    700;
+
+  /* -------------------------------------------------------------- space */
+  --s-0: 0;      --s-1: 0.25rem; --s-2: 0.5rem;  --s-3: 0.75rem;
+  --s-4: 1rem;   --s-5: 1.5rem;  --s-6: 2rem;    --s-7: 3rem;
+  --s-8: 4rem;   --s-9: 6rem;
+
+  /* ------------------------------------------------------------- radius */
+  --r-xs: 3px;  --r-sm: 6px;  --r-md: 10px; --r-lg: 16px;
+  --r-xl: 24px; --r-pill: 999px;
+
+  /* ------------------------------------------------------------- motion */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-med:  240ms;
+  --dur-slow: 520ms;
+  --dur-sweep: 3200ms;   /* radar / tower sweep period */
+
+  /* -------------------------------------------------------------- layout */
+  --shell-rail: 68px;     /* role-switch rail */
+  --shell-header: 56px;
+  --panel-w: 380px;
+  --z-map: 1; --z-overlay: 10; --z-panel: 20; --z-header: 30;
+  --z-popover: 40; --z-modal: 50; --z-toast: 60;
+
+  /* =====================================================================
+     MEASUREMENT RAMPS — role-independent. Never re-bind these per theme.
+     ===================================================================== */
+
+  /* Public-health ramp. Deliberately echoes AQI so a resident already knows
+     what it means, but desaturated so it doesn't look like a 1999 gov site. */
+  --ramp-aqi-0: #3FBF8F;   /* good            */
+  --ramp-aqi-1: #9ED45C;   /* fair            */
+  --ramp-aqi-2: #F2C744;   /* moderate        */
+  --ramp-aqi-3: #F08A3C;   /* unhealthy (sg)  */
+  --ramp-aqi-4: #E2544F;   /* unhealthy       */
+  --ramp-aqi-5: #9B4FA8;   /* very unhealthy  */
+  --ramp-aqi-6: #7A2438;   /* hazardous       */
+
+  /* Analytical magnitude ramp. Monotonic luminance, CVD-safe, engineered so a
+     1px road segment at the low end recedes into a dark basemap and the high
+     end burns through it. This is THE colour of the flagship road grid. */
+  --ramp-intensity-0: #10182F;
+  --ramp-intensity-1: #24356F;
+  --ramp-intensity-2: #4B3D9B;
+  --ramp-intensity-3: #823C93;
+  --ramp-intensity-4: #C0417F;
+  --ramp-intensity-5: #E6614F;
+  --ramp-intensity-6: #F79B3D;
+  --ramp-intensity-7: #FFD84D;
+
+  /* Same ramp inverted in luminance, for the light community basemap. */
+  --ramp-intensity-light-0: #BFE6DE;
+  --ramp-intensity-light-1: #79C9C4;
+  --ramp-intensity-light-2: #4FA8C2;
+  --ramp-intensity-light-3: #6E82C4;
+  --ramp-intensity-light-4: #A264B4;
+  --ramp-intensity-light-5: #CE4F86;
+  --ramp-intensity-light-6: #E2543F;
+  --ramp-intensity-light-7: #A8211F;
+
+  /* Persistence (how OFTEN, not how much) — a single-hue opacity ladder that
+     can be multiplied over the intensity ramp without fighting it. */
+  --persist-0: 0.18; --persist-1: 0.34; --persist-2: 0.52;
+  --persist-3: 0.70; --persist-4: 0.86; --persist-5: 1;
+
+  /* Severity — shared across alert chips in every role. */
+  --sev-info:     #4FA8E0;
+  --sev-watch:    #F2C744;
+  --sev-warning:  #F0803C;
+  --sev-critical: #FF3B4E;
+  --sev-ok:       #3FBF8F;
+
+  /* Actor colours — who is speaking. Consistent in all four interfaces so a
+     viewer learns the code once. */
+  --actor-community: #F2A65A;   /* residents        */
+  --actor-regulator: #4FD1E0;   /* agency           */
+  --actor-industry:  #B58CFF;   /* operator         */
+  --actor-aclima:    #00D3A7;   /* us               */
+
+  /* Modality identity hues — for multi-series charts and legend chips only.
+     NOT for magnitude. Chosen for separation under deuteranopia. */
+  --mod-no2:  #4FD1E0;
+  --mod-pm25: #F2A65A;
+  --mod-bc:   #B58CFF;
+  --mod-o3:   #7ED957;
+  --mod-co:   #FF8FA3;
+  --mod-co2:  #8FA3B8;
+  --mod-ch4:  #FFD84D;
+}
+
+/* ===========================================================================
+   ROLE THEME — COMMUNITY  ·  "neighborhood paper"
+   Warm, light, generous, social. Nothing here should look like a dashboard.
+   ======================================================================== */
+[data-role='community'] {
+  color-scheme: light;
+  --bg:            #F6F3ED;
+  --bg-sunk:       #EDE8E0;
+  --surface:       #FFFFFF;
+  --surface-2:     #FAF8F4;
+  --surface-raised:#FFFFFF;
+  --line:          #E2DCD2;
+  --line-strong:   #CFC7B9;
+  --ink:           #191C1F;
+  --ink-2:         #4A5157;
+  --ink-3:         #7C858C;
+  --ink-inv:       #FFFFFF;
+
+  --accent:        #0E7C66;
+  --accent-ink:    #FFFFFF;
+  --accent-soft:   #DCF0E9;
+  --accent-2:      #C4442F;      /* "report a concern" call to action */
+
+  --map-style:     'light';
+  /* Residents read colour as public health, not as analytical magnitude, so the
+     community road grid paints on the AQI ramp: green means clean, red means
+     not. (7 stops; the 8th alias repeats the top so `--ramp-map-*` stays whole.) */
+  --ramp-map-0: var(--ramp-aqi-0); --ramp-map-1: var(--ramp-aqi-1);
+  --ramp-map-2: var(--ramp-aqi-2); --ramp-map-3: var(--ramp-aqi-3);
+  --ramp-map-4: var(--ramp-aqi-4); --ramp-map-5: var(--ramp-aqi-5);
+  --ramp-map-6: var(--ramp-aqi-6); --ramp-map-7: var(--ramp-aqi-6);
+
+  --radius-card:   var(--r-lg);
+  --shadow-card:   0 1px 2px rgba(24,22,18,.05), 0 8px 24px -12px rgba(24,22,18,.18);
+  --shadow-pop:    0 8px 40px -12px rgba(24,22,18,.32);
+  --font-body:     var(--font-ui);
+  --font-heading:  var(--font-display);
+  --grid-overlay:  none;
+}
+
+/* ===========================================================================
+   ROLE THEME — REGULATOR  ·  "watchtower"
+   Dark, dense, instrumented. Towers, coverage rings, sweep, invaders.
+   ======================================================================== */
+[data-role='regulator'] {
+  color-scheme: dark;
+  --bg:            #090E14;
+  --bg-sunk:       #06090D;
+  --surface:       #111A23;
+  --surface-2:     #16212C;
+  --surface-raised:#1B2733;
+  --line:          #1F2C39;
+  --line-strong:   #2C3E4F;
+  --ink:           #DEE9F1;
+  --ink-2:         #93A7B8;
+  --ink-3:         #64798A;
+  --ink-inv:       #06090D;
+
+  --accent:        #4FD1E0;      /* sensor cyan */
+  --accent-ink:    #04161A;
+  --accent-soft:   #0F2D34;
+  --accent-2:      #FF6B4A;      /* threat */
+
+  --tower:         #5EE6A8;      /* friendly asset  */
+  --tower-ring:    #5EE6A83D;
+  --invader:       #FF6B4A;      /* suspected emitter */
+  --fleet:         #FFD84D;      /* our mobile units */
+
+  --map-style:     'dark';
+  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
+  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
+  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
+  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+
+  --radius-card:   var(--r-sm);
+  --shadow-card:   0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px #000;
+  --shadow-pop:    0 24px 60px -20px #000C;
+  --font-body:     var(--font-ui);
+  --font-heading:  var(--font-ui);
+  --grid-overlay:  linear-gradient(#1F2C3933 1px, transparent 1px) 0 0/100% 28px,
+                   linear-gradient(90deg,#1F2C3933 1px, transparent 1px) 0 0/28px 100%;
+}
+
+/* ===========================================================================
+   ROLE THEME — INDUSTRY  ·  "radar warning receiver"
+   Near-black, phosphor, terse. Glanceable at 3 metres. No analysis.
+   ======================================================================== */
+[data-role='industry'] {
+  color-scheme: dark;
+  --bg:            #05070A;
+  --bg-sunk:       #000103;
+  --surface:       #0C1114;
+  --surface-2:     #10171A;
+  --surface-raised:#141D21;
+  --line:          #1A262A;
+  --line-strong:   #26383D;
+  --ink:           #D9E8E0;
+  --ink-2:         #8AA097;
+  --ink-3:         #5C716A;
+  --ink-inv:       #000103;
+
+  --accent:        #39FF9E;      /* phosphor green */
+  --accent-ink:    #00110A;
+  --accent-soft:   #06251A;
+  --accent-2:      #FFB020;      /* caution amber */
+
+  --scope:         #39FF9E;
+  --scope-dim:     #39FF9E28;
+  --scope-grid:    #39FF9E1A;
+  --threat:        #FF3B30;
+  --threat-glow:   #FF3B3055;
+  --bandit-community: var(--actor-community);
+  --bandit-regulator: var(--actor-regulator);
+
+  --map-style:     'night';
+  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
+  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
+  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
+  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+
+  --radius-card:   var(--r-xs);
+  --shadow-card:   0 0 0 1px #1A262A, 0 0 24px -12px #39FF9E33;
+  --shadow-pop:    0 0 60px -16px #39FF9E22, 0 24px 60px -24px #000;
+  --glow-accent:   0 0 12px #39FF9E66;
+  --glow-threat:   0 0 16px #FF3B3088;
+  --font-body:     var(--font-mono);
+  --font-heading:  var(--font-mono);
+  --grid-overlay:  repeating-linear-gradient(0deg, #39FF9E08 0 1px, transparent 1px 3px);
+}
+
+/* ===========================================================================
+   ROLE THEME — ADMIN  ·  "drafting table"
+   Technical, blueprint, tool-like. Everything visible, nothing decorative.
+   ======================================================================== */
+[data-role='admin'] {
+  color-scheme: dark;
+  --bg:            #0C1017;
+  --bg-sunk:       #080B10;
+  --surface:       #141A23;
+  --surface-2:     #1A222D;
+  --surface-raised:#1F2833;
+  --line:          #232E3C;
+  --line-strong:   #334154;
+  --ink:           #E6EDF3;
+  --ink-2:         #9BAAB9;
+  --ink-3:         #6B7B8C;
+  --ink-inv:       #080B10;
+
+  --accent:        #00D3A7;      /* aclima */
+  --accent-ink:    #00160F;
+  --accent-soft:   #06302A;
+  --accent-2:      #7CA9FF;      /* blueprint */
+
+  --map-style:     'blueprint';
+  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
+  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
+  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
+  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+
+  --radius-card:   var(--r-sm);
+  --shadow-card:   0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -22px #000;
+  --shadow-pop:    0 24px 60px -20px #000C;
+  --font-body:     var(--font-ui);
+  --font-heading:  var(--font-ui);
+  --grid-overlay:  linear-gradient(#7CA9FF14 1px, transparent 1px) 0 0/100% 32px,
+                   linear-gradient(90deg,#7CA9FF14 1px, transparent 1px) 0 0/32px 100%;
+}
+
+/* Landing / persona picker uses the admin skin as a neutral base. */
+[data-role='none'] { color-scheme: dark; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-med: 0ms; --dur-slow: 0ms; --dur-sweep: 0ms; }
+}

@@ -1,0 +1,428 @@
+/* ============================================================================
+   air — landing / persona picker.
+   The first thing anyone sees in a demo. Three sides, Aclima in the middle,
+   four doors in.
+   ========================================================================= */
+
+.page {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(var(--s-4), 2.2vh, var(--s-6));
+  padding: clamp(var(--s-4), 2.4vh, var(--s-6)) clamp(var(--s-5), 4vw, var(--s-8));
+  background: var(--bg);
+  color: var(--ink);
+  overflow: auto;
+}
+
+/* Ambient field: a faint road grid, plus the three actors bleeding in from
+   their corners and Aclima glowing in the middle. */
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 480px at 50% 34%, color-mix(in srgb, var(--actor-aclima) 11%, transparent), transparent 68%),
+    radial-gradient(620px 420px at 6% 4%, color-mix(in srgb, var(--actor-community) 9%, transparent), transparent 70%),
+    radial-gradient(620px 420px at 96% 10%, color-mix(in srgb, var(--actor-regulator) 8%, transparent), transparent 70%),
+    radial-gradient(700px 460px at 84% 96%, color-mix(in srgb, var(--actor-industry) 8%, transparent), transparent 70%);
+  z-index: 0;
+}
+
+.page::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background:
+    linear-gradient(color-mix(in srgb, var(--line) 70%, transparent) 1px, transparent 1px) 0 0 / 100% 46px,
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 70%, transparent) 1px, transparent 1px) 0 0 / 46px 100%;
+  mask-image: radial-gradient(1100px 700px at 50% 40%, #000 20%, transparent 78%);
+}
+
+.page > * { position: relative; z-index: 1; }
+
+/* ─────────────────────────────────────────────────────────────────── top */
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.wordmark {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+
+.mark {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.markDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-bottom: 6px;
+  box-shadow: 0 0 12px var(--accent);
+}
+
+.byline {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: var(--weight-semi);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--line);
+  margin-right: auto;
+}
+
+/* ────────────────────────────────────────────────────────────────── hero */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 46%);
+  gap: clamp(var(--s-5), 3vw, var(--s-8));
+  align-items: center;
+  min-height: 0;
+}
+
+@media (max-width: 1080px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .diagramWrap { display: none; }
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  max-width: 54ch;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: var(--weight-bold);
+}
+
+.eyebrowRule {
+  width: 28px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.h1 {
+  font-family: var(--font-heading);
+  font-size: clamp(var(--text-xl), 2.7vw, var(--text-3xl));
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.03em;
+  line-height: 1.03;
+}
+
+.h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.lede {
+  font-size: var(--text-lg);
+  color: var(--ink-2);
+  line-height: 1.5;
+  max-width: 46ch;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 3px var(--s-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+}
+
+.metaChip b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: var(--weight-semi);
+}
+
+.ctaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-top: var(--s-2);
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+
+/* ─────────────────────────────────────────────────────────────── diagram */
+
+.diagramWrap {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 100%;
+}
+
+.diagram {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  overflow: visible;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 7;
+  opacity: 0.45;
+}
+
+.spoke {
+  fill: none;
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+
+.flow {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 10 92;
+  animation: flow 3400ms linear infinite;
+}
+
+@keyframes flow {
+  from { stroke-dashoffset: 102; }
+  to { stroke-dashoffset: 0; }
+}
+
+.nodeRing {
+  fill: color-mix(in srgb, var(--surface) 82%, transparent);
+  stroke: currentColor;
+  stroke-width: 1.25;
+}
+
+.nodeGlow { fill: currentColor; opacity: 0.13; }
+
+.nodeLabel {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: currentColor;
+}
+
+.nodeSub {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  fill: var(--ink-3);
+  letter-spacing: 0.01em;
+}
+
+.hubRing {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 45%, transparent);
+  stroke-width: 1;
+}
+
+.hubCore {
+  fill: color-mix(in srgb, var(--bg) 88%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.hubSweep {
+  animation: sweep var(--dur-sweep) linear infinite;
+  transform-origin: 260px 252px;
+}
+
+@keyframes sweep {
+  to { transform: rotate(360deg); }
+}
+
+.hubLabel {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  fill: var(--accent);
+}
+
+.hubSub {
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  fill: var(--ink-3);
+}
+
+.pulseCircle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  animation: hubPulse 3600ms var(--ease-out) infinite;
+}
+
+@keyframes hubPulse {
+  0% { r: 46px; opacity: 0.55; }
+  100% { r: 118px; opacity: 0; }
+}
+
+/* ───────────────────────────────────────────────────────────────── doors */
+
+.doors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(var(--s-3), 1.2vw, var(--s-4));
+}
+
+@media (max-width: 1080px) {
+  .doors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.door {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  text-align: left;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink);
+  overflow: clip;
+  isolation: isolate;
+  transition:
+    transform var(--dur-med) var(--ease-out),
+    box-shadow var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out);
+}
+
+.door::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--role-accent);
+  z-index: 2;
+}
+
+.door::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--grid-overlay, none);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.door > * { position: relative; z-index: 1; }
+
+.door:hover,
+.door:focus-visible {
+  transform: translateY(-5px);
+  border-color: var(--role-accent);
+  box-shadow: 0 26px 60px -30px var(--role-accent), var(--shadow-pop);
+}
+
+.doorHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.doorHead > span:nth-child(2) { min-width: 0; }
+
+.doorIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--role-accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--role-accent) 38%, transparent);
+  color: var(--role-accent);
+  flex: none;
+}
+
+.doorTitle {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tight);
+}
+
+.doorOrg {
+  display: block;
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: var(--weight-semi);
+  margin-top: 2px;
+}
+
+.doorTagline {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.doorFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--weight-semi);
+  color: var(--role-accent);
+}
+
+.doorNarrative { color: var(--ink-3); }
+
+.enter { display: inline-flex; align-items: center; gap: var(--s-1); }

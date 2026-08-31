@@ -1,0 +1,219 @@
+/* One instrument family.
+   Every chart in this library shares this chrome so a regulator's time series and
+   an industry radar scope read as the same product. */
+
+.root {
+  position: relative;
+  inline-size: 100%;
+  font-family: var(--font-body);
+  color: var(--ink);
+  display: grid;
+  gap: var(--s-2);
+  min-inline-size: 0;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.headText { display: grid; gap: 1px; min-inline-size: 0; }
+
+.title {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+  margin: 0;
+}
+.subtitle {
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  margin: 0;
+  line-height: 1.4;
+}
+.capLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Hero figure: proportional figures, never tabular — tabular makes a big number
+   look loose. Same sans as everything else, never a display face. */
+.hero {
+  font-family: var(--font-heading);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semi);
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+  font-variant-numeric: normal;
+}
+.heroUnit {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  margin-inline-start: 5px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.heroWord {
+  font-family: var(--font-heading);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--ink-2);
+}
+
+.plot { display: block; inline-size: 100%; overflow: visible; }
+.plotWrap { position: relative; inline-size: 100%; min-inline-size: 0; }
+
+/* Axis + grid: solid hairlines one step off the surface. Never dashed. */
+.tick {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xs);
+  fill: var(--ink-3);
+}
+.tickStrong { fill: var(--ink-2); }
+.axisLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  fill: var(--ink-3);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  align-items: center;
+}
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 1px 0;
+  cursor: default;
+  font-family: var(--font-body);
+}
+.legendItemButton { cursor: pointer; }
+.legendItemButton:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.legendMuted { opacity: 0.42; }
+.legendLine { inline-size: 14px; block-size: 2px; border-radius: 2px; }
+.legendRect { inline-size: 10px; block-size: 10px; border-radius: 2px; }
+.legendDash {
+  inline-size: 14px;
+  block-size: 0;
+  border-block-start: 2px solid currentColor;
+}
+
+/* Tooltip: values lead, series names follow. Line keys, not boxes. */
+.tip {
+  position: absolute;
+  z-index: var(--z-popover);
+  pointer-events: none;
+  min-inline-size: 118px;
+  max-inline-size: 240px;
+  padding: var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-pop);
+  display: grid;
+  gap: 3px;
+}
+.tipHead {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.tipRow {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+}
+.tipKey { inline-size: 12px; block-size: 2px; border-radius: 2px; align-self: center; }
+.tipName { font-size: var(--text-2xs); color: var(--ink-3); }
+.tipVal {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
+
+.hit { cursor: crosshair; }
+.mark { transition: opacity var(--dur-fast) var(--ease-out); }
+.markFocus { outline: none; }
+.markFocus:focus-visible > .focusRing { opacity: 1; }
+.focusRing { opacity: 0; }
+
+.empty {
+  display: grid;
+  place-items: center;
+  min-block-size: 80px;
+  color: var(--ink-3);
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+}
+
+/* A11y twin for every chart: the table is never gated behind a hover. */
+.tableToggle {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  cursor: pointer;
+  justify-self: start;
+}
+.tableToggle:hover { color: var(--ink-2); }
+.tableToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-2xs);
+}
+.table th, .table td {
+  text-align: end;
+  padding: 3px var(--s-2);
+  border-block-end: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.table th { color: var(--ink-3); font-weight: var(--weight-medium); }
+.table th:first-child, .table td:first-child { text-align: start; }
+.tableScroll { max-block-size: 190px; overflow: auto; }
+
+/* Wide content scrolls inside its own box; the page never scrolls sideways. */
+.scrollX { overflow-x: auto; overflow-y: hidden; }
+
+.srOnly {
+  position: absolute;
+  inline-size: 1px; block-size: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}

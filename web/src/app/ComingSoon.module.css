@@ -1,0 +1,91 @@
+/* Placeholder panel used by the four app route modules until their owning
+   agent replaces them. It doubles as a skin proof: primitives, ramps and the
+   time cursor all rendered in the current role's theme. */
+
+.wrap {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(var(--s-4), 2.4vh, var(--s-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.head { display: flex; align-items: flex-start; gap: var(--s-4); flex-wrap: wrap; }
+
+.headText { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--weight-bold);
+  color: var(--role-accent, var(--accent));
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.05;
+}
+
+.sub { font-size: var(--text-md); color: var(--ink-2); max-width: 62ch; }
+
+.route {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  padding: 2px var(--s-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-xs);
+  align-self: flex-start;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s-4);
+}
+
+.list { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.listItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
+.bullet {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--role-accent, var(--accent));
+  flex: none;
+  translate: 0 -3px;
+}
+
+.rampRow { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.rampLabel {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: var(--weight-semi);
+}
+
+.ramp {
+  height: 14px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+}
+
+.sampler { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }

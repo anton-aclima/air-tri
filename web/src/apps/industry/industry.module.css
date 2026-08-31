@@ -1,0 +1,354 @@
+/* ============================================================================
+   industry — the instrument skin.
+   Near-black, monospace, terse — but flat. A modern compass, not a CRT: no
+   scanlines, no glare, no bevels, no idle glow. Every colour is a token.
+   Layout rule: <main> does not scroll for this role, so every pane owns its own
+   overflow and the top-level read never moves.
+   ========================================================================= */
+
+.page {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
+/* the scope screen: banner / body / ribbon */
+.scopePage { grid-template-rows: auto minmax(0, 1fr) auto; }
+.scopeBody {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(340px, 0.62fr);
+  gap: var(--s-2);
+}
+@media (max-width: 1180px) {
+  .scopeBody { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+}
+
+/* ─────────────────────────────────────────────── the panel: corner brackets */
+.panel {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+}
+.panelHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.panelBody { min-height: 0; flex: 1; overflow: auto; }
+.pad { padding: var(--s-3); }
+
+.caps {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.capsInk { color: var(--ink-2); }
+.spacer { flex: 1; }
+
+/* ───────────────────────────────────────────────────── the top-level verdict */
+.banner {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.bannerThreat { border-color: var(--threat, var(--sev-critical)); }
+.bannerClear { border-color: color-mix(in srgb, var(--scope, var(--accent)) 55%, transparent); }
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.verdictGlyph {
+  font-size: var(--text-2xl);
+  line-height: 1;
+  width: 1.4em;
+  text-align: center;
+}
+.verdictWord {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-caps);
+  line-height: 1;
+}
+.threatInk { color: var(--threat, var(--sev-critical)); }
+.clearInk  { color: var(--scope, var(--accent)); }
+
+.bannerLine { display: flex; flex-direction: column; gap: 2px; min-width: 0; justify-content: center; }
+.bannerHead {
+  font-size: var(--text-lg);
+  color: var(--ink);
+  letter-spacing: var(--tracking-wide);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bannerSub { font-size: var(--text-xs); color: var(--ink-2); }
+
+.bannerStats { display: flex; align-items: stretch; gap: var(--s-4); margin-left: auto; }
+.readout { display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: right; }
+.readoutValue { font-size: var(--text-xl); line-height: 1; color: var(--ink); }
+.readoutBig   { font-size: var(--text-2xl); }
+/* Unacknowledged contacts are marked, not animated: a hairline ring around the
+   glyph. Nothing on this interface moves while the world is standing still. */
+.new { outline: 1px solid currentColor; outline-offset: 2px; border-radius: 50%; }
+
+/* ─────────────────────────────────────────────────────── headroom / envelope */
+.envelope { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border-bottom: 1px solid var(--line); }
+.envRow { display: flex; align-items: baseline; gap: var(--s-2); }
+.envNum { font-size: var(--text-2xl); line-height: 1; color: var(--scope, var(--accent)); }
+.envNumTight { color: var(--sev-warning); }
+.envBar {
+  position: relative;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--bg-sunk);
+  overflow: hidden;
+}
+.envUsed { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.envTicks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 9px, var(--line) 9px 10px); opacity: .6; }
+.envEdge { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--scope, var(--accent)); }
+
+/* ────────────────────────────────────────────────────────── the contact list */
+.contacts { display: flex; flex-direction: column; }
+/* Column headers, because "430 m" and "30 m" in adjacent columns are two
+   different quantities and a glance must not have to work that out. */
+.contactHead {
+  display: grid;
+  grid-template-columns: 18px 44px minmax(0, 1fr) 58px 62px 54px;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.contactHead > span:nth-child(n + 4) { text-align: right; }
+.contact {
+  display: grid;
+  grid-template-columns: 18px 44px minmax(0, 1fr) 58px 62px 54px;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.contact:hover { background: var(--surface-2); color: var(--ink); }
+.contactActive { background: var(--surface-2); color: var(--ink); border-left-color: var(--scope, var(--accent)); }
+.contactGlyph { font-size: var(--text-sm); text-align: center; }
+.contactCode { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); color: var(--ink-3); }
+.contactName { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; }
+.contactNum { text-align: right; color: var(--ink); }
+.contactAge { text-align: right; color: var(--ink-3); }
+
+/* ─────────────────────────────────────────────────────────────── small parts */
+.kv { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: var(--s-1) var(--s-3); align-items: baseline; }
+.kvRow { display: contents; }
+/* Wraps rather than clips. `nowrap` + `overflow: hidden` made the consultant
+   line collide with its own trailing observation count on a narrow rail, which
+   read as two overlapping strings rather than as truncation. */
+.strip {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.stripLink { display: flex; align-items: center; gap: var(--s-2); color: var(--ink); text-decoration: none; min-width: 0; }
+.stripLink:hover { color: var(--scope, var(--accent)); }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 2px;
+  font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-2);
+}
+.tagThreat { border-color: var(--threat, var(--sev-critical)); color: var(--threat, var(--sev-critical)); }
+.tagAccent { border-color: color-mix(in srgb, var(--scope, var(--accent)) 60%, transparent); color: var(--scope, var(--accent)); }
+
+/* The MFD fills its panel edge to edge — it is the instrument, not a figure
+   sitting inside one, so no padding and no centring. */
+.scopeWrap { position: relative; min-height: 0; flex: 1; overflow: hidden; }
+
+.ribbon { flex: none; }
+
+/* ──────────────────────────────────────────────────────── contact detail page */
+.detailPage { grid-template-rows: auto minmax(0, 1fr); }
+.detailBody {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: var(--s-2);
+}
+@media (max-width: 1180px) { .detailBody { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; overflow-y: auto; }
+.scrollStack { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--s-2); padding-right: 2px; }
+/* Panels in a scrolling column keep their natural height — squeezing them makes
+   their content spill over the panel below. */
+.scrollStack > * { flex: none; }
+
+/* geometry: the compass at a fixed size, the sentences flowing beside it */
+.geo { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-3); }
+.geoText { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.geoLine { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5; }
+
+/* recommended action */
+.action { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
+.actionHead { display: flex; align-items: center; gap: var(--s-2); }
+.actionText { font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
+.actionList { display: flex; flex-direction: column; gap: var(--s-2); }
+.actionItem {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: var(--s-2);
+  padding: var(--s-2); border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--surface-2);
+}
+.actionIndex { color: var(--scope, var(--accent)); font-size: var(--text-xs); }
+.actionLabel { font-size: var(--text-xs); color: var(--ink); letter-spacing: var(--tracking-wide); }
+.actionDetail { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5; margin-top: 2px; }
+.actionImpact { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--scope, var(--accent)); margin-top: var(--s-1); }
+.reasoning { border-top: 1px solid var(--line); padding-top: var(--s-2); }
+.reasoning summary { cursor: pointer; font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
+.reasoning p { margin: var(--s-2) 0 0; font-size: var(--text-xs); line-height: 1.55; color: var(--ink-2); }
+.upgrading { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
+.upgradeDot { width: 6px; height: 6px; border-radius: 50%; background: var(--scope, var(--accent)); }
+.enriched { animation: enrich var(--dur-slow) var(--ease-out); }
+@keyframes enrich { from { background: color-mix(in srgb, var(--accent) 12%, transparent) } to { background: transparent } }
+
+/* triangulation */
+.tri { display: flex; flex-direction: column; }
+.triRow {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) 96px 92px;
+  align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line);
+}
+.triSrc { font-size: var(--text-xs); color: var(--ink); }
+.triNote { font-size: var(--text-3xs); color: var(--ink-3); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.triValue { text-align: right; font-size: var(--text-md); color: var(--ink); }
+.triState { text-align: right; }
+.triBadge { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.triVerdict { padding: var(--s-3); display: flex; gap: var(--s-3); align-items: flex-start; }
+.triVerdictWord { font-size: var(--text-lg); letter-spacing: var(--tracking-caps); line-height: 1.1; }
+.triVerdictBody { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.55; }
+
+/* ─────────────────────────────────────────────────────────── outreach portal */
+.outreachPage { grid-template-rows: minmax(0, 1fr); }
+.outreachBody { min-height: 0; display: grid; grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr); gap: var(--s-2); }
+@media (max-width: 1080px) { .outreachBody { grid-template-columns: minmax(0, 1fr); } }
+.brand { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3); border-bottom: 1px solid var(--line); }
+.brandMark {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 1px solid var(--line-strong); border-radius: var(--r-xs);
+  font-size: var(--text-xl); background: var(--surface-2);
+}
+.brandName { font-size: var(--text-md); color: var(--ink); }
+.post { padding: var(--s-3); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--s-1); }
+.postHead { display: flex; align-items: center; gap: var(--s-2); }
+.postTitle { font-size: var(--text-sm); color: var(--ink); }
+.postBody { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.55; white-space: pre-wrap; }
+.form { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
+.formRow { display: flex; gap: var(--s-2); align-items: flex-end; }
+.notice {
+  display: flex; gap: var(--s-2); padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--line-strong); border-radius: var(--r-xs);
+  font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5;
+}
+.noticeMark { color: var(--sev-warning); }
+
+/* ─────────────────────────────────────────────────────────────────── site */
+.sitePage { grid-template-rows: auto minmax(0, 1fr); }
+.siteBody { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.7fr); gap: var(--s-2); }
+@media (max-width: 1080px) { .siteBody { grid-template-columns: minmax(0, 1fr); } }
+.ep {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) 92px 74px 54px;
+  align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs); color: var(--ink-2);
+}
+.epOn { color: var(--scope, var(--accent)); }
+.epOff { color: var(--ink-3); }
+.epName { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.epNum { text-align: right; }
+
+.err { padding: var(--s-4); font-size: var(--text-xs); color: var(--ink-2); }
+
+/* The contact list is the rail's reason for existing, so it gets the slack —
+   but never less than this. With four panels in the rail it was being squeezed
+   to a single header row while the panels above kept their natural height. */
+.stackGrow { flex: 1 1 auto; min-height: 11rem; overflow: hidden; }
+
+/* ── MFD furniture ────────────────────────────────────────────────────────
+   Slew-to-designate chips. Deliberately quiet: they sit on top of the map and
+   the map is the thing being read. */
+.sourcePick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.sourcePickCaps {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sourceSelect {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  color: var(--scope, var(--accent));
+  background: transparent;
+  border: 0;
+  outline: 0;
+  cursor: pointer;
+  max-inline-size: 15rem;
+}
+.sourceSelect option { background: var(--surface); color: var(--ink); }
+
+.rwrWrap {
+  display: grid;
+  place-items: center;
+  padding: var(--s-2) 0 var(--s-1);
+}
+
+/* A regulator instrument sitting in your plume track is the one thing on this
+   page worth interrupting someone for. */
+.stripAlarm {
+  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--threat, var(--sev-critical));
+}

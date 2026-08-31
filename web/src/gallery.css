@@ -1,0 +1,13 @@
+/* Gallery-only reset. The app's own reset lives in the shell, which this page
+   deliberately does not load — the gallery has to prove the components work
+   without it. */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #0C1017;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+#root { min-height: 100vh; }
+h1, h2, h3, p, dl, dd { margin: 0; }
+button { font: inherit; }

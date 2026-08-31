@@ -1,0 +1,273 @@
+/* The persona switcher. Four doors, each rendered in its own real skin, so a
+   viewer sees the four worlds side by side before choosing one. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--s-5);
+  padding: clamp(var(--s-5), 4vh, var(--s-8)) clamp(var(--s-4), 4vw, var(--s-8));
+  background:
+    radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--actor-aclima) 10%, transparent), transparent 70%),
+    color-mix(in srgb, #05070A 88%, transparent);
+  backdrop-filter: blur(14px) saturate(120%);
+  animation: scrimIn var(--dur-med) var(--ease-out);
+}
+
+@keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  color: #EAF1F6;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: #EAF1F6;
+}
+
+.headText { font-size: var(--text-sm); color: #9DAEBC; margin-right: auto; }
+
+.doors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(var(--s-3), 1.4vw, var(--s-5));
+  align-content: center;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .doors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Each door carries its own data-role, so these rules read that role's tokens. */
+.door {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-4) var(--s-4);
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  color: var(--ink);
+  overflow: clip;
+  isolation: isolate;
+  cursor: pointer;
+  transition:
+    transform var(--dur-med) var(--ease-out),
+    box-shadow var(--dur-med) var(--ease-out),
+    border-color var(--dur-med) var(--ease-out);
+  animation: doorIn var(--dur-slow) var(--ease-out) backwards;
+}
+
+@keyframes doorIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.door::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--role-accent);
+  z-index: 2;
+}
+
+.door::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--grid-overlay, none);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.door > * { position: relative; z-index: 1; }
+
+.door:hover,
+.door:focus-visible {
+  transform: translateY(-6px);
+  border-color: var(--role-accent);
+  box-shadow: 0 30px 70px -30px var(--role-accent), var(--shadow-pop);
+}
+
+.doorCurrent {
+  border-color: var(--role-accent);
+  box-shadow: 0 0 0 1px var(--role-accent) inset;
+}
+
+.doorTop {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.doorTop > span:nth-child(2) { min-width: 0; }
+
+.doorIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--role-accent) 16%, transparent);
+  color: var(--role-accent);
+  border: 1px solid color-mix(in srgb, var(--role-accent) 40%, transparent);
+  flex: none;
+}
+
+.doorTitle {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1;
+}
+
+.doorOrg {
+  display: block;
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: var(--weight-semi);
+  margin-top: 3px;
+}
+
+.hotkey { margin-left: auto; align-self: flex-start; }
+
+.narrative {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px var(--s-2);
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in srgb, var(--role-accent) 35%, transparent);
+  color: var(--role-accent);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--weight-semi);
+}
+
+.tagline {
+  font-family: var(--font-heading);
+  font-size: var(--text-md);
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.blurb {
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.wants { display: flex; flex-direction: column; gap: 4px; }
+
+.want {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+}
+
+.wantDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--role-accent);
+  flex: none;
+}
+
+.personas {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  min-height: 40px;
+}
+
+.personaBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px var(--s-2) 2px 2px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: var(--text-2xs);
+  max-width: 100%;
+  min-width: 0;
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.personaBtn:hover { border-color: var(--role-accent); color: var(--ink); }
+
+.personaName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.personaHint {
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-4);
+  color: #667888;
+  font-size: var(--text-xs);
+}
+
+.footItem { display: inline-flex; align-items: center; gap: var(--s-2); }
+
+/* ── the cross-fade wipe ─────────────────────────────────────────────────── */
+
+.wipe {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-toast) + 5);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--role-accent) 22%, transparent),
+    transparent 62%
+  );
+  animation: wipe 460ms var(--ease-out) forwards;
+}
+
+.wipeLabel {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--role-accent);
+  text-shadow: 0 0 40px var(--role-accent);
+}
+
+@keyframes wipe {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}

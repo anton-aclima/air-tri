@@ -1,0 +1,63 @@
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.value {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.track {
+  position: relative;
+  inline-size: 100%;
+  border-radius: var(--r-pill);
+  overflow: visible;
+  border: 1px solid var(--line);
+}
+.fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  border-radius: var(--r-pill);
+  transition: inline-size var(--dur-med) var(--ease-out);
+}
+/* The limit is a hard tick with a surface gap on both sides, so it reads as a
+   boundary rather than part of the fill. */
+.limit {
+  position: absolute;
+  inset-block: -3px;
+  inline-size: 2px;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface);
+  translate: -1px 0;
+}
+.scaleRow {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+}
+.limitLabel {
+  position: absolute;
+  translate: -50% 0;
+  white-space: nowrap;
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.overFlag {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--sev-critical);
+  font-weight: 700;
+}

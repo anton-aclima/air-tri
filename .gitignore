@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+web/dist/
+web/.env.local
+.env
+__pycache__/
+*.pyc
+data/air.db
+data/air_smoketest.db
+data/air.db-wal
+data/air.db-shm
+data/cache/
+.DS_Store

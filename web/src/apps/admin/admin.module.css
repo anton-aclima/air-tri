@@ -1,0 +1,814 @@
+/* ============================================================================
+   admin — THE DRAFTING TABLE.
+   Blueprint paper, measured rules, title blocks, dimension lines. The mood is
+   construction: a campaign being laid out, not a dashboard being watched.
+   Layout rule: <main> does not scroll for this role, so every pane owns its
+   own overflow and the sheet header never moves.
+   Every colour is a semantic token. No hex anywhere in this file.
+   ========================================================================= */
+
+.page {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: var(--ink);
+  background: var(--bg);
+}
+/* the paper: the role's blueprint grid, laid faintly under everything */
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--grid-overlay);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+.page > * { position: relative; z-index: 1; }
+
+/* per-screen grids */
+.rows      { grid-template-rows: auto minmax(0, 1fr); }
+.rowsFoot  { grid-template-rows: auto minmax(0, 1fr) auto; }
+.rowsTall  { grid-template-rows: auto minmax(0, 1fr) minmax(150px, 0.34fr); }
+.rowsPlan  { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.rowsOversight { grid-template-rows: auto auto minmax(0, 1fr) minmax(120px, 0.26fr); }
+.rowsData  { grid-template-rows: auto minmax(0, 1fr) minmax(200px, 0.26fr); }
+.split     { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 0.62fr); gap: var(--s-2); min-height: 0; }
+.splitWide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 0.78fr); gap: var(--s-2); min-height: 0; }
+.splitEven { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-2); min-height: 0; }
+.splitBottom { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: var(--s-2); min-height: 0; }
+.stack     { display: grid; gap: var(--s-2); align-content: start; grid-auto-rows: max-content; min-height: 0; }
+.stackFill { display: grid; gap: var(--s-2); grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
+.stackTwo  { display: grid; gap: var(--s-2); grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.grow      { min-height: 0; }
+
+@media (max-width: 1240px) {
+  .split, .splitWide, .splitEven, .splitBottom { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ───────────────────────────────────────────────────── the title block ──── */
+/* An engineering drawing's title block: project, sheet, scale, revision. */
+.titleBlock {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  overflow: hidden;
+}
+.tbSheet {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: var(--s-2) var(--s-3);
+  min-width: 116px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--line-strong);
+}
+.tbSheetNo {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.tbMain {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  min-width: 0;
+  flex: 1;
+}
+.tbTitle {
+  font-size: var(--text-lg);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-wide);
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tbSub { font-size: var(--text-xs); color: var(--ink-2); }
+.tbCells { display: flex; align-items: stretch; margin-left: auto; }
+.tbCell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: var(--s-2) var(--s-3);
+  border-left: 1px solid var(--line);
+  min-width: 84px;
+  text-align: right;
+}
+.tbCellValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-md);
+  line-height: 1;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.tbCellAccent { color: var(--accent); }
+.tbCellWarn   { color: var(--sev-warning); }
+
+@media (max-width: 1100px) { .tbCells { display: none; } }
+
+/* ─────────────────────────────────────────────────────────── the sheet ──── */
+.sheet {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+.sheetHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  min-height: 30px;
+}
+.sheetCode {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  color: var(--accent-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 1px 5px;
+  flex: none;
+}
+.sheetTitle {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sheetAside { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex: none; }
+.sheetBody { min-height: 0; flex: 1; overflow: auto; }
+.sheetBodyFlat { overflow: hidden; position: relative; }
+.pad  { padding: var(--s-3); }
+.pad2 { padding: var(--s-2); }
+
+/* ────────────────────────────────────────────────── type + micro-labels ─── */
+.caps {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.capsInk    { color: var(--ink-2); }
+.capsAccent { color: var(--accent); }
+.spacer { flex: 1; }
+.note   { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.45; }
+.noteDim{ font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.45; }
+.err    { padding: var(--s-4); color: var(--ink-3); font-size: var(--text-xs); }
+.mono   { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ──────────────────────────────────────────────────────────── readouts ──── */
+.readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  border-top: 1px solid var(--line);
+}
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-2) var(--s-3);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.readout:last-child { border-right: 0; }
+.readoutValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.readoutBig  { font-size: var(--text-2xl); }
+.readoutSm   { font-size: var(--text-md); }
+.rAccent { color: var(--accent); }
+.rWarn   { color: var(--sev-warning); }
+.rCrit   { color: var(--sev-critical); }
+.rDim    { color: var(--ink-2); }
+.readoutFoot { font-size: var(--text-3xs); color: var(--ink-3); }
+
+/* ───────────────────────────────────────────────────── key / value list ─── */
+.kv { display: grid; grid-template-columns: minmax(88px, auto) minmax(0, 1fr); }
+.kvKey, .kvVal {
+  padding: 5px var(--s-3);
+  border-bottom: 1px dashed var(--line);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+.kvKey {
+  color: var(--ink-3);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-size: var(--text-3xs);
+  align-self: center;
+  white-space: nowrap;
+}
+.kvVal {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.kvWide { grid-template-columns: minmax(140px, auto) minmax(0, 1fr); }
+
+/* ───────────────────────────────────────────── the build sequence (1-4) ─── */
+.seq { display: grid; gap: 0; }
+.seqStep {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+  position: relative;
+  transition: background var(--dur-fast, 120ms) ease;
+}
+.seqStep:last-child { border-bottom: 0; }
+.seqStep:hover { background: var(--surface-2); }
+/* the rule that threads the four steps together */
+.seqStep::before {
+  content: '';
+  position: absolute;
+  left: 17px; top: 50%; bottom: -50%;
+  width: 1px;
+  background: var(--line-strong);
+}
+.seqStep:last-child::before { display: none; }
+.seqNo {
+  position: relative;
+  z-index: 1;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.seqNoDone { background: var(--accent); color: var(--accent-ink); }
+.seqBody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.seqLabel { font-size: var(--text-sm); color: var(--ink); }
+.seqHint  { font-size: var(--text-2xs); color: var(--ink-3); }
+.seqValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-md);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ────────────────────────────────────────────────────────────── the map ─── */
+.mapBox { position: absolute; inset: 0; }
+.mapCard { position: relative; min-height: 0; }
+.overlayCard {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  padding: var(--s-2) var(--s-3);
+  display: grid;
+  gap: 4px;
+  backdrop-filter: blur(6px);
+  max-width: 260px;
+}
+.overlayRow { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--text-xs); }
+.overlayNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  margin-left: auto;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+}
+
+/* ───────────────────────────────────────────────────────────── the rows ─── */
+.rowList { display: flex; flex-direction: column; }
+.row {
+  display: grid;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+  text-align: left;
+  background: none;
+  border-left: 0; border-right: 0; border-top: 0;
+  color: inherit;
+  width: 100%;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rowStatic { cursor: default; }
+.row:hover:not(.rowStatic) { background: var(--surface-2); }
+.rowActive { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
+.rowHead {
+  display: grid;
+  gap: var(--s-2);
+  padding: 4px var(--s-3);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  position: sticky; top: 0; z-index: 2;
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ─────────────────────────────────────────────────────────── the fleet ──── */
+.fleetList { display: grid; gap: var(--s-2); padding: var(--s-2); }
+.vehicle {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  transition: border-color 120ms ease;
+}
+.vehicle:hover { border-color: var(--line-strong); }
+.vehicleActive { border-color: var(--accent); background: var(--surface-2); }
+.vehicleBadge {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: var(--r-xs);
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.1;
+  text-align: center;
+}
+.vehicleMain { min-width: 0; display: grid; gap: 4px; }
+.vehicleTop { display: flex; align-items: baseline; gap: var(--s-2); }
+.vehicleName { font-size: var(--text-sm); color: var(--ink); }
+.vehicleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 2px var(--s-3);
+}
+.vehicleCell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vehicleVal {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.chip {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink-3);
+}
+.chipOn { color: var(--accent); border-color: var(--accent); }
+
+/* ─────────────────────────────────────────────── the ramp / data sheet ──── */
+.rampBar {
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  position: relative;
+}
+.rampTicks { position: relative; height: 16px; }
+.rampTick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.rampTickLine { width: 1px; height: 5px; background: var(--line-strong); }
+.rampTickLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.measureList { display: flex; flex-direction: column; }
+.measureRow {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 76px;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  background: none; border-left: 0; border-right: 0; border-top: 0;
+  color: inherit; text-align: left; width: 100%;
+  font-family: inherit;
+}
+.measureRow:hover { background: var(--surface-2); }
+.measureCode {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent-2);
+  text-transform: uppercase;
+}
+.measureSwatch { height: 8px; border-radius: 1px; border: 1px solid var(--line); }
+
+/* ─────────────────────────────────────────────── oversight: three lanes ─── */
+.lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 0;
+  height: 100%;
+}
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+.lane:last-child { border-right: 0; }
+.laneHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  border-top: 2px solid var(--laneColor, var(--accent));
+}
+.laneName {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--laneColor, var(--accent));
+}
+.laneCount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+}
+.laneBody { flex: 1; min-height: 0; overflow: auto; padding: var(--s-2); display: grid; gap: var(--s-2); align-content: start; }
+.entry {
+  display: grid;
+  gap: 4px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--laneColor, var(--accent));
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  position: relative;
+}
+.entryTop { display: flex; align-items: baseline; gap: var(--s-2); }
+.entryTime {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+  margin-left: auto;
+  white-space: nowrap;
+}
+.entryTitle { font-size: var(--text-xs); color: var(--ink); line-height: 1.35; }
+.entryBody  { font-size: var(--text-2xs); color: var(--ink-2); line-height: 1.45; }
+.entryFoot  { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.entryGhost { opacity: 0.55; border-style: dashed; }
+
+/* the asymmetry callout — the one line that states the tension */
+.asymmetry {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--sev-warning);
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--sev-warning) 8%, transparent);
+}
+.asymGlyph { color: var(--sev-warning); font-size: var(--text-lg); line-height: 1; flex: none; }
+.asymText  { font-size: var(--text-xs); color: var(--ink); line-height: 1.5; }
+.asymText strong { color: var(--sev-warning); font-weight: var(--weight-medium); }
+
+/* the shared time axis under the three lanes */
+.timeAxis {
+  position: relative;
+  height: 26px;
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+.timeTick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.timeLabel {
+  position: absolute;
+  top: 5px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.timeMark {
+  position: absolute;
+  bottom: 3px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+/* the ledger strip */
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  overflow: hidden;
+}
+.ledgerCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-2) var(--s-3);
+  border-right: 1px solid var(--line);
+  border-top: 2px solid var(--cellColor, var(--line));
+}
+.ledgerCell:last-child { border-right: 0; }
+.ledgerValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--cellColor, var(--ink));
+}
+
+/* the activity ticker */
+.ticker { display: flex; flex-direction: column; }
+.tickRow {
+  display: grid;
+  grid-template-columns: 62px 78px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 3px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-2xs);
+}
+.tickTime { font-family: var(--font-mono); font-size: var(--text-3xs); color: var(--ink-3); }
+.tickActor {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.tickVerb { font-family: var(--font-mono); font-size: var(--text-3xs); color: var(--ink-3); }
+.tickText { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ──────────────────────────────────────────────── director: the cue deck ── */
+.deckBody { display: flex; flex-direction: column; }
+.cues { display: grid; gap: var(--s-2); padding: var(--s-2); align-content: start; flex: 1; }
+.lever { flex: none; }
+.cue {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.cue:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.cueArmed { border-color: var(--accent); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--accent); }
+.cueDanger { border-color: color-mix(in srgb, var(--sev-critical) 55%, var(--line)); }
+.cueDanger.cueArmed { border-color: var(--sev-critical); box-shadow: inset 0 0 0 1px var(--sev-critical); }
+.cueNo {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--ink-2);
+}
+.cueArmed .cueNo { border-color: var(--accent); color: var(--accent); }
+.cueDanger.cueArmed .cueNo { border-color: var(--sev-critical); color: var(--sev-critical); }
+.cueMain { min-width: 0; display: grid; gap: 4px; }
+.cueTitle { font-size: var(--text-sm); color: var(--ink); display: flex; align-items: baseline; gap: var(--s-2); }
+.cueDesc  { font-size: var(--text-2xs); color: var(--ink-2); line-height: 1.5; }
+.cueFires { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.cueFire {
+  display: flex; align-items: center; gap: 4px;
+  font-size: var(--text-3xs);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.cueDot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+
+/* the lever: consequences stated, then a two-stage pull */
+.lever {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+.leverHead { display: flex; align-items: baseline; gap: var(--s-2); }
+.leverName {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  color: var(--accent);
+  letter-spacing: var(--tracking-wide);
+}
+.leverNameDanger { color: var(--sev-critical); }
+.consequences { display: grid; gap: var(--s-2); }
+.consequence {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 5px var(--s-2);
+  border-left: 2px solid var(--conColor, var(--line));
+  background: var(--surface);
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.consequenceWho {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--conColor, var(--ink-3));
+}
+.leverActions { display: flex; align-items: center; gap: var(--s-2); }
+
+.showLog { display: flex; flex-direction: column; }
+.showRow {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: 6px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-2xs);
+}
+.showNo { font-family: var(--font-mono); font-size: var(--text-3xs); color: var(--ink-3); }
+.showResult { color: var(--ink-2); }
+
+/* danger block */
+.danger {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px dashed color-mix(in srgb, var(--sev-critical) 55%, var(--line));
+  border-radius: var(--r-xs);
+  margin: var(--s-2);
+}
+
+/* ────────────────────────────────────────────────── the duality diagram ─── */
+.duality {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1.1fr) 26px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  padding: var(--s-3);
+}
+.dualNode {
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.dualNodeCore { border-color: var(--accent); background: var(--accent-soft); }
+.dualLabel {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.dualValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+.dualNodeCore .dualValue { color: var(--accent); }
+.dualArrow {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+.dualSplit { display: grid; gap: var(--s-2); }
+@media (max-width: 1000px) {
+  .duality { grid-template-columns: minmax(0, 1fr); gap: var(--s-2); }
+  .dualArrow { height: 18px; }
+}
+
+/* ───────────────────────────────────────────────── controls + estimates ─── */
+.controls { display: grid; gap: var(--s-3); padding: var(--s-3); }
+.controlRow { display: grid; gap: var(--s-1); }
+.controlTop { display: flex; align-items: baseline; gap: var(--s-2); }
+.controlValue {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg);
+  color: var(--accent);
+  line-height: 1;
+}
+.estimate {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  border-top: 1px dashed var(--line-strong);
+  border-bottom: 1px dashed var(--line-strong);
+}
+.estCell { display: grid; gap: 2px; padding: var(--s-2) var(--s-3); border-right: 1px dashed var(--line); }
+.estCell:last-child { border-right: 0; }
+.estValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+.estDelta { font-size: var(--text-3xs); color: var(--ink-3); }
+.estUp   { color: var(--sev-warning); }
+.estDown { color: var(--accent); }
+
+/* a measured dimension line — the drafting flourish that earns its keep */
+.dimension {
+  position: relative;
+  height: 20px;
+  margin: 0 var(--s-3) var(--s-2);
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+}
+.dimension::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  border-top: 1px dashed var(--line-strong);
+}
+.dimensionLabel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--surface);
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.dimensionFill {
+  position: absolute;
+  left: 0; top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  opacity: 0.5;
+}

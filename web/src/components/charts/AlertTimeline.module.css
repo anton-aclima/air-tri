@@ -1,0 +1,11 @@
+.rowLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.glyph {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+}

@@ -1,0 +1,67 @@
+/* The mandatory persistent SIMULATED DATA marker (CONTRACT §9.1).
+   Tasteful, not ugly: hairline hatch, micro-caps, never louder than the data. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 22px;
+  padding: 0 var(--s-2) 0 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--weight-semi);
+  white-space: nowrap;
+  user-select: none;
+  overflow: clip;
+}
+
+.hatch {
+  width: 16px;
+  align-self: stretch;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--line-strong) 0 1px,
+    transparent 1px 5px
+  );
+  border-right: 1px solid var(--line-strong);
+  flex: none;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sev-watch);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sev-watch) 18%, transparent);
+  flex: none;
+}
+
+.compact .label {
+  display: none;
+}
+
+:global([data-role='community']) .badge {
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+
+:global([data-role='industry']) .badge {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 40%, transparent);
+  background: transparent;
+}
+:global([data-role='industry']) .hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--accent-2) 55%, transparent) 0 1px,
+    transparent 1px 5px
+  );
+  border-right-color: color-mix(in srgb, var(--accent-2) 40%, transparent);
+}
+:global([data-role='industry']) .dot { background: var(--accent-2); box-shadow: none; }

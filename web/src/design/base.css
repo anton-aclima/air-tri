@@ -1,0 +1,256 @@
+/* ============================================================================
+   air — base layer.
+   Reset, font wiring, page sizing, focus rings, scrollbars, and the neutral
+   landing skin. Loaded once, after tokens.css, before any CSS module.
+
+   Nothing role-specific lives here except `[data-role='none']`, the landing
+   palette (tokens.css deliberately leaves it undefined).
+   ========================================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body, var(--font-ui));
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden; /* the shell owns scrolling, per pane */
+}
+
+#root {
+  isolation: isolate;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading, var(--font-ui));
+  font-weight: var(--weight-semi);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+p { text-wrap: pretty; }
+h1, h2, h3 { text-wrap: balance; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover { text-decoration: none; }
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  letter-spacing: inherit;
+}
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+ul, ol { list-style: none; }
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+fieldset { border: none; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ---------------------------------------------------------------- numerals
+   CONTRACT §6: every numeral is mono + tabular. `.num` is global on purpose so
+   the four app agents can reach for it without importing anything. */
+.num,
+[data-num] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: 0;
+}
+
+/* Uppercase micro-label. */
+.caps {
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--weight-semi);
+  color: var(--ink-3);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ------------------------------------------------------------- focus rings */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus {
+  outline: none;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink, var(--bg));
+}
+
+::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------- scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  border-radius: var(--r-pill);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================================
+   LANDING SKIN — `data-role='none'`
+   tokens.css sets only `color-scheme` for the persona picker, so the neutral
+   palette is defined here: Aclima's own colours, sitting between the three.
+   ========================================================================= */
+[data-role='none'] {
+  --bg:            #06080B;
+  --bg-sunk:       #030507;
+  --surface:       #0D1218;
+  --surface-2:     #121A21;
+  --surface-raised:#16202A;
+  --line:          #1B242E;
+  --line-strong:   #2A3743;
+  --ink:           #EAF1F6;
+  --ink-2:         #9DAEBC;
+  --ink-3:         #667888;
+  --ink-inv:       #030507;
+
+  --accent:        var(--actor-aclima);
+  --accent-ink:    #00160F;
+  --accent-soft:   #05241E;
+  --accent-2:      #7CA9FF;
+
+  --map-style:     'dark';
+  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
+  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
+  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
+  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+
+  --radius-card:   var(--r-lg);
+  --shadow-card:   0 1px 0 rgba(255, 255, 255, .03) inset, 0 24px 60px -30px #000;
+  --shadow-pop:    0 32px 80px -24px #000;
+  --font-body:     var(--font-ui);
+  --font-heading:  var(--font-display);
+  --grid-overlay:  none;
+}
+
+/* The document element mirrors `data-role` (see AppShell) so `getComputedStyle`
+   in core/measures.ts resolves the per-role ramp aliases. Give it the same
+   background so overscroll and the browser gutter never flash white. */
+html[data-role] {
+  background: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

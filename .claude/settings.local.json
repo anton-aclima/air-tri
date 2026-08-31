@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Read(//Users/antonvattay/.nvm/versions/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//opt/**)",
+      "Read(//usr/local/**)",
+      "Read(//Users/antonvattay/.volta/**)",
+      "Read(//Users/antonvattay/Library/**)",
+      "Read(//Users/antonvattay/**)"
+    ]
+  }
+}

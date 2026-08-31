@@ -1,0 +1,136 @@
+.panel { gap: var(--s-4); }
+
+.verdictRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+.verdictGlyph { font-size: var(--text-xl); line-height: 1; }
+.verdictText { display: grid; gap: 3px; min-inline-size: 0; }
+.verdictLabel {
+  font-family: var(--font-heading);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-tight);
+}
+.summary { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.45; }
+.disagreement { display: grid; gap: 1px; justify-items: end; text-align: end; }
+.disagreementUnit {
+  font: var(--text-3xs)/1.2 var(--font-mono);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.disagreementValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semi);
+  color: var(--ink);
+  line-height: 1;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.roseRow { display: grid; justify-items: center; }
+
+.biasList { display: grid; gap: 2px; }
+.biasRow {
+  display: grid;
+  grid-template-columns: 54px 1fr 42px;
+  align-items: center;
+  gap: var(--s-2);
+}
+.biasDir {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.flag { color: var(--sev-critical); font-size: 8px; }
+.biasTrack {
+  position: relative;
+  block-size: 9px;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+/* Neutral zero in the middle: this is a diverging scale, so the midpoint must
+   read as "nothing", never as a hue. */
+.biasZero {
+  position: absolute;
+  inset-block: -2px;
+  inset-inline-start: 50%;
+  inline-size: 1px;
+  background: var(--line-strong);
+}
+.biasBar {
+  position: absolute;
+  inset-block: 1px;
+  border-radius: 2px;
+}
+.biasVal {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xs);
+  text-align: end;
+}
+.biasLegend {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-block-start: var(--s-1);
+}
+
+.districts {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+.districtRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.districtName { font-size: var(--text-sm); color: var(--ink); font-weight: var(--weight-medium); }
+.districtNums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+}
+.districtNums strong { color: var(--ink-2); font-weight: var(--weight-semi); }
+
+.note { margin: 0; font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.5; }
+.note strong { color: var(--ink-2); font-family: var(--font-mono); }
+.cautionNote {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--sev-watch);
+  line-height: 1.5;
+}
+.cautionNote strong { font-family: var(--font-mono); }

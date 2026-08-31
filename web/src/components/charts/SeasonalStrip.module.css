@@ -1,0 +1,20 @@
+.scaleKey {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-block-start: var(--s-2);
+}
+.scaleBar {
+  flex: 1 1 auto;
+  block-size: 6px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  min-inline-size: 40px;
+}
+.scaleNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}

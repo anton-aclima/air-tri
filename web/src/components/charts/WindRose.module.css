@@ -1,0 +1,16 @@
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  letter-spacing: var(--tracking-caps);
+}
+/* Thin samples say so. Our whole premise is trustworthy measurement, so fake
+   confidence is worse than an ugly caveat. */
+.caution {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--sev-watch);
+}
