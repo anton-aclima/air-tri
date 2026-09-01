@@ -512,3 +512,48 @@
 .kv + .kv { border-top: 1px solid var(--line); }
 .kvVal { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-size: var(--text-xs); }
 .toolbar { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+
+/* ── resident reports ─────────────────────────────────────────────────────
+   The regulator's second evidence source. Styled like the tower roster above
+   it so the two read as a pair — instruments and witnesses — rather than as a
+   panel of data and a panel of anecdote. */
+.reportRow {
+  display: flex; align-items: center; gap: var(--s-2);
+  inline-size: 100%; text-align: left;
+  padding: 5px var(--s-2);
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-xs);
+  color: inherit; cursor: pointer;
+}
+.reportRow:hover { border-color: var(--line); background: var(--surface); }
+.reportRowOn {
+  border-color: color-mix(in srgb, var(--actor-community) 60%, transparent);
+  background: color-mix(in srgb, var(--actor-community) 10%, transparent);
+}
+.reportCount {
+  flex: none; inline-size: 1.9rem; text-align: center;
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  color: var(--actor-community);
+}
+.reportBody { display: grid; gap: 1px; min-inline-size: 0; flex: 1; }
+.reportTitle {
+  font-size: var(--text-xs); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reportSub {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.reportDetail {
+  margin-block-start: var(--s-2); padding-block-start: var(--s-2);
+  border-block-start: 1px solid var(--line);
+  display: grid; gap: var(--s-2);
+}
+.reportDetailHead { display: flex; align-items: center; gap: var(--s-2); justify-content: space-between; }
+/* A resident's own words, quoted rather than paraphrased. */
+.reportQuote {
+  margin: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--ink-2);
+  padding-inline-start: var(--s-2);
+  border-inline-start: 2px solid color-mix(in srgb, var(--actor-community) 55%, transparent);
+}
+.reportActions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }

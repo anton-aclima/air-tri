@@ -759,3 +759,393 @@ Riverport Road. The fear is real in the data, so the display now shows it:
 Also fixed: the contact list was being squeezed to a single header row once the rail carried
 four panels (`.stackGrow` now has a floor and the rail scrolls), and the scope came down to
 160 px to pay for it.
+
+### Civilian avionics, and a gauge column
+
+Feedback: too literal on the military metaphor — "threat" and "contact" do not mean anything
+to these users — and the envelope bar deserved to be a real instrument rather than a squeezed
+card. Industry's problem is an optimisation: how hard can they run without running foul of
+the reference network or the community.
+
+- **Civil annunciator levels replace the single THREAT word.** `WARNING` (act now) /
+  `CAUTION` (act soon) / `ADVISORY` (be aware) / `NORMAL`, mapped from our severities. Every
+  flight deck uses this ladder, so the header word now carries an expectation about *how fast
+  to respond* — which "THREAT" never did. The shell strip matches: `STATUS CAUTION`.
+- **"Contact" is gone from the interface.** Panels are `Proximity`, `Alerts`, `Alert history`,
+  `Alert list`; the nav reads `Flight deck` / `Alerts`; the role's narrative is `flight deck`,
+  its tagline *"How hard can I run without crossing a line?"*.
+- **A gauge column between the MFD and the rail**, taking width from the map. Two vertical
+  tapes read like N1/N2 — graduations, a redline band, a needle, a digital readout:
+  - **ENVELOPE USED** — 79% of safe, redline at 85%.
+  - **WORST VS LIMIT** — the worst measured reading as a ratio to the action level it is
+    measured against. `1.00×` *is* the line, so that is where the redline goes.
+
+  A horizontal bar in a card reads as a progress indicator, and progress is something you want
+  to complete. This is something you want to sit just below.
+
+- Removing the envelope card from the rail is also what un-clipped the Proximity scope.
+
+Two bugs the gauges exposed:
+
+1. **`WORST VS LIMIT` first read `3.56×` off a community cluster** — the value was a *count of
+   residents* and the threshold was 3. A category error that would have had the operator
+   chasing the wrong number. Now restricted to alerts carrying a measure and an action level.
+2. **The tape pegged at a fixed 1.6× ceiling**, throwing away the only thing it had left to
+   say. It now scales to the reading, and its sub-label names *whose* instrument is reading
+   it — `FENCELINE` at 3.56× is the early-warning system working as designed; the same number
+   on a `REFERENCE` instrument is a different afternoon entirely.
+
+### Demo clock drift — worth a decision
+
+`setting('datagen.now')` is the instant the database was built. The app's live windows use the
+**wall clock**, so once real time runs past the dataset the queries return nothing. It already
+bit: the wind series and wind field came back empty, which silently took out the plume track
+and the downwind readout. Patched locally by widening those two industry windows to 14 days.
+
+The general fix is to clamp `resolveNow()` to the dataset's end when the wall clock is past it,
+so a demo shown a week after the build still opens on a live-looking scene. That changes global
+time semantics, so it is flagged rather than done. Symptom to watch for: alert ages creeping up
+("up 2 d 21 h" for something that should be hours old) and empty wind readouts.
+
+### Simulation control, and the stacking bug behind it
+
+**The z-index bug was real and one line.** `.shell > * { position: relative; z-index: 1 }` put
+the header and `<main>` in the same layer, and `<main>` comes later in the DOM — so anything
+the header opened was painted *underneath* the page. On the industry deck the red alert banner
+sat right on top of it. Popovers escape their own stacking context only as far as their
+ancestor allows, so the fix belongs on the header (`z-index: var(--z-header)`), not on each
+popover.
+
+**`SIMULATED DATA` is now the door to the generator.** Clicking it opens a control panel:
+
+- **The demo's now** — big readout, `Following the clock` / `Pinned` state, ±1/6/24 h steps, a
+  datetime field, and *Follow the clock*. Scrubbing is capped at the end of the data.
+- **Playback** — run/pause and 1× / 15× / 60× / 360× simulated minutes per real second.
+- **Analysis window** — 1 hour to the whole 90-day campaign.
+- **This dataset** — campaign, coverage dates, when it was generated, fleet, the community
+  fleet delay, advisor mode. Saying "this is generated, and here is the generator" is a
+  stronger honesty claim than a badge alone.
+
+**It also solves the clock drift flagged earlier.** `flags.generated_at` is now on the wire
+(from `setting('datagen.now')`), and when the wall clock runs past it the panel says so in
+plain words and offers **Pin to end of data**.
+
+Building it exposed that pinning only moved half the app:
+
+- **Three apps each had their own `useNowTick` reading `new Date()`**, and the shared
+  `components/lib/anim.useNow` read `Date.now()`. So the clock moved every *query* and no
+  *duration*: the panel said one thing and the page said another. Both now derive from the
+  session cursor (`useDemoClock`), and neither sets an interval while pinned. Verified end to
+  end: pinning took the banner from `up 2 d 21 h` to `up 2 h 58 m`, alert ages from 3d to
+  3h/6h, restored the wind (`5.0K fleet obs`) and with it the plume track and the downwind
+  readout, and pulled the history ribbon's axis back from Aug 31 to the dataset's own end.
+
+### Unexplained: two action levels drifted off seed
+
+Found during the smoke pass — the regulator's `NO2 1-hour standard` read **54 ppb** against a
+`NO2 1-hour watch` of 60, which is incoherent (a standard cannot sit below its own watch), and
+`Black carbon 1-hour spike` was 5.5 rather than 5.0.
+
+The `activity` log records a real slider-drag burst — *"Black carbon → 1.4, 1.1, 1.0, 0.7"*
+over four seconds, then the two final values — attributed to `regulator`. Those rows postdate
+the reseed, so it is not stale data. What I could not establish is **who**: no `PUT` appears in
+the current server log (my restarts truncate it with `>`), `Thresholds.commit()` only fires on
+user interaction, no stray browser is running, and no agent is alive.
+
+Restored both through the API so alerts re-evaluated — that cleared **eight** alerts the
+lowered thresholds had raised. Worth watching: if these drift again with nobody touching the
+thresholds screen, there is a write path nobody has found yet. Logging the server to a file
+that is appended rather than truncated would settle it next time.
+
+### Appended logs, and the two dispersion pictures
+
+**Logs now append.** `dev/serve.sh` and `dev/web.sh` start the API and vite writing to
+`var/*.log` with `>>` and a timestamped start banner. The previous `>` truncation is what
+made the action-level drift unattributable — the request that would have named the caller had
+been overwritten three restarts earlier. `var/` is gitignored.
+
+That immediately paid for itself: the vite log turned out to be **flooding**, thousands of
+identical React warnings — *"Encountered two children with the same key, `advisory`"* — which
+is the most likely reason the dev server kept dying mid-session. The cause was real:
+`Oversight.tsx` built an advisory's tags as `['advisory', a.kind, …]`, and `a.kind` is very
+often `'advisory'` too, so the chip rendered twice and the tag doubled as a React key. Fixed
+at the source and deduped at the render.
+
+### Why the two plumes look nothing alike
+
+They are two different objects, and calling them both "MODEL" is what made that confusing:
+
+| | **PERMIT** | **PLUME** |
+|---|---|---|
+| source | `dispersion_model_contour`, generated in `mobilewind.py` | `GET /wind/dispersion` |
+| what it is | the consultant's deliverable, contoured from the rose they **assumed**, integrated over every sector | a cone per **active stack** at **this hour's** wind, in three concentration bands |
+| shape | one smooth lobe around the whole site | many small cones, one per emission point |
+| reach | the study's own design levels | `(700 + 240 × speed) × stability`, scaled by stack height — about 1–2 km at 3 m/s, which is what a near-field plume actually does |
+| moves with the weather | no | yes |
+
+So the oblong is an annual average and the triangles are right now. Neither was wrong; the
+labelling was. Changes:
+
+- **The MFD's single `MODEL` toggle became `PERMIT` and `PLUME`**, independently switchable,
+  with a key line under the map: *"permit — the study's long-run average, all wind directions ·
+  plume — this hour, one cone per running stack"*.
+- **`permitFootprintLayer()`** draws the consultant's contour on the MFD as an outline with
+  almost no fill — an assumption should not look like a measurement. `PERMIT` is on by default;
+  `PLUME` is opt-in.
+- The scope's dashed outline is now labelled **`Permit footprint · annual`** rather than the
+  generic "Consultant model".
+
+Drawing them together is the point: today's cone runs due north at Harbor Avenue while the
+permit lobe sits evenly around the site. That is the `MODEL UNDERSTATES` verdict as a picture
+rather than a percentage.
+
+### Terrain: what is the plume actually over
+
+Feedback: the spatial focus on the campaign is right, but rivers, lakes, green space and
+built-up areas need to extend past the campaign boundary — otherwise a plume heading NNW is
+heading over nothing you can name. Two separate causes, both fixed:
+
+**1. Terrain had no palette of its own.** Every skin derived water and parks by mixing the
+ground a few percent toward `--accent`: water at **4%** under the industry skin, parks at 4%,
+and `land` set to exactly the background. All three were invisible by construction. The
+obvious repair — "use the other hue, `--accent-2`" — would have painted an **amber
+Mississippi**, because `--accent-2` is caution amber in that skin.
+
+Terrain is not a severity and not an actor, so it now has its own tokens per skin:
+`--map-water`, `--map-green`, `--map-urban`. Chosen for contrast against each ground and
+checked numerically rather than by eye (see below):
+
+| skin | water | vs ground | green | urban |
+|---|---|---|---|---|
+| community (light) | `#BBD3DF` | 1.40:1 | `#DCE7CE` | `#EDE7DD` |
+| regulator (dark) | `#123047` | 1.42:1 | `#0F2016` | `#0E141C` |
+| industry (night) | `#0B3247` | 1.50:1 | `#0D2116` | `#0A0F13` |
+| admin (blueprint) | `#193864` | 1.63:1 | `#172C21` | `#111825` |
+
+Water is deliberately the strongest of the three — the Mississippi and McKellar Lake are the
+landmarks that orient everything else. Place and water **labels** are now full-ink with a
+solid halo in every skin; POI and (on industry) road labels stay hidden, because the waypoint
+you want is "Westwood", not "Third Street".
+
+**2. The exterior mask was erasing the context.** `BoundaryLayer` dimmed everything outside
+the campaign toward the background at **0.62**, with five call sites at 0.5–0.6. That is what
+removed the river beyond the boundary. Default is now **0.28** and every call site matches:
+the exterior is recessed, not deleted. The campaign keeps its focus from the *data* being
+inside it, not from the world outside being wiped.
+
+**Not visually verified — and it cannot be here.** MapLibre renders no basemap tiles in this
+headless Chrome: verified against the bare probe on both the dark *and* light skins, where the
+background colour paints and not a single vector feature does. Outbound access to
+`basemaps.cartocdn.com` returns 200, so it is a headless rendering limitation, not the network
+or the style. Everything above is reasoned in token space with contrast computed numerically.
+**Check it in a real browser** — `/gallery.html?role=<role>&backend=maplibre` is the fastest
+look, basemap plus road grid and nothing else. If water reads too strong or too weak, the four
+values are the only thing to change and they are all in `tokens.css`.
+
+### The basemap was never rendering — and it was not headless
+
+**Correction to earlier entries in this file.** Two of them state that MapLibre tiles do not
+paint in headless Chrome and advise not chasing it. That was wrong, and it sent the terrain
+work down a blind alley: the basemap was rendering nothing **in real browsers too**, for the
+entire build.
+
+Vite's dependency optimizer rewrites `maplibre-gl` without emitting
+`maplibre-gl-worker.mjs`, so MapLibre's tile-parsing worker never starts. The failure is
+close to invisible:
+
+- style, sprite and tile index all fetch on the main thread and return **200**
+- **zero** failed requests, **zero** console errors from MapLibre
+- the map canvas is correctly sized and WebGL is available
+- deck.gl keeps drawing — on its **own** overlay canvas, which is why the data looked healthy
+
+The only visible trace was in vite's own log, repeating
+*"The file does not exist at .../deps/maplibre-gl-worker.mjs … Try adding it to
+optimizeDeps.exclude"*. **That log was only readable because logs now append** — the
+truncating `>` had been discarding it on every restart.
+
+Fix: `optimizeDeps: { exclude: ['maplibre-gl'] }` in `web/vite.config.ts`, plus clearing the
+stale `web/node_modules/.vite` cache. Verified: Mississippi River, McKellar Lake, Nonconnah
+Creek, green space and place labels (Westwood, White Chapel, Pisgah Heights, Darwin, Goodman,
+Whitehaven) all render, on both the light and the night skins.
+
+Also fixed on the way: **the API had stopped serving** — the process was alive but no longer
+accepting connections behind accumulated SSE streams — and vite kept dying because the dev
+servers were being started as children of a tool shell and killed with it. Both now run via
+`dev/serve.sh` / `dev/web.sh` under the harness's own background task.
+
+`reuseMaps` on the MapLibre backend was tested as a suspect and ruled out; it was left as it was.
+
+**Open judgement call:** with tiles finally visible, `--map-water` reads quite strong on the
+dark skins. It is the landmark and the brief asked for it to be legible, but if it dominates,
+that is one token per skin in `tokens.css`.
+
+### Regulator: rotating sweeps removed
+
+The rotating radar sweep on the monitor coverage rings is gone — removed at the source rather
+than switched off at the call site, so it cannot drift back:
+
+- `MonitorLayer` lost its `sweepPhase` prop and the two layers that drew it (the six trailing
+  wedge slices and the leading edge), plus the now-dead `PolygonLayer`/`wedge` imports.
+- `regulator/MapScreen.tsx` no longer runs `usePhase(3200)`.
+- The orphaned `components/Gallery.tsx` and `components/README.md` were updated to match.
+
+Coverage rings are now static circles. The exceedance **pulse** was left alone — it marks an
+instrument that is actually over a line, so it carries information; the sweep only ever said
+"this is a radar". The one-shot `flashIn`/`flashOut` on threshold edits also stays: it is
+feedback for something the user just did, not idle motion. `--dur-sweep` survives because the
+landing page still uses it.
+
+**Worth a look while you are in there:** with 200 resident reports in the seeded data, the
+concern pins now dominate the regulator map — they visually outweigh the road grid, which is
+supposed to be the hero visual. Candidates: cluster them at low zoom, cap them, or drop them
+to a much lighter mark. Not touched, since you only asked for the sweeps.
+
+### Regulator: resident reports are now first-class
+
+Feedback: the regulator will care about community reports, so they must be interactable on
+their map — without destabilising the current balance.
+
+Two hundred report pins were already drawn on `/regulator/map` and could not be touched.
+`ConcernLayer` had supported `selectedId` / `onClick` / `onClusterClick` all along; nothing
+was wired to them.
+
+- **Pins and cluster halos are now selectable.** Clicking empty ground clears the selection;
+  the existing tower click still wins when a tower is under the cursor.
+- **A `Resident reports` panel sits directly under `Towers`** — deliberately, so the two
+  evidence sources read as a pair: four instruments and two hundred witnesses.
+- **Clusters lead, individual reports are one click in.** A cluster is the unit that matters
+  to a regulator — three reports inside 600 m in a day is what turns a complaint into a case.
+  Each row shows the count, label, kinds, recency, and whether it has already raised an alert.
+- **The detail block quotes the resident's own words** rather than paraphrasing, with kind,
+  severity, district, recency and corroboration count.
+- **One regulator-only action: `Mark under review`** (`useUpdateConcernStatus` with
+  `actorRole: 'regulator'`), beside a line stating that only DRAQA or Aclima can close a
+  report and that an operator's reply stops at "mitigation proposed". The asymmetry, stated
+  from the side that actually holds the power.
+
+Deliberately *not* added: a resolve button. Closing a report without recording a finding is
+exactly the opacity this product argues against, so that transition belongs with a written
+finding rather than a one-click control on a map.
+
+Layout is unchanged otherwise — one panel inserted into the existing rail stack, styled to
+match the tower roster above it.
+
+**Verified only structurally.** The panel renders in the right place with the rail intact, but
+the API had dropped again at capture time, so every count read zero and I have not seen it
+populated. Worth a click-through.
+
+### Recurring: the API stops accepting connections
+
+Twice now the `air-server` process has stayed alive while refusing new connections, with the
+log ending in a run of `GET /api/v1/events/stream`. Restarting clears it. The likely cause is
+accumulated SSE streams from repeated page loads never being released. If it recurs during a
+demo, restart the API; if it recurs often, the stream endpoint needs a connection cap or an
+idle timeout. Both dev servers now run under the harness's background tasks rather than as
+children of a tool shell, which was a separate cause of them dying.
+
+### Industry: community reports on the MFD, and what a click does
+
+Reports are now drawn on the scope behind a `REPORTS` toggle, in the community actor colour
+with **two weights**: filled and larger when the wind is carrying toward them, hollow and
+quiet when they are off the axis. Cluster halos carry their count. The map key says so:
+*"reports — filled is downwind of you, hollow is off your axis · 22 downwind now"*.
+
+**Click behaviour — the decision.** Three options were on the table: a map popover, a rail
+section, or a jump to the Community page. Chose **rail section, with the page as the escape
+hatch**, and rejected the popover:
+
+- a popover covers the plume it is about, and this interface has been trimmed for busyness
+  three times already;
+- jumping away is too heavy for an instrument whose promise is *not* having to dig;
+- the rail-detail pattern is the one already built on the regulator map — click a pin, read
+  it in the rail, act. The same gesture in two roles is worth more than either variant alone.
+
+The crowding objection is answered by making the panel **conditional**: it costs nothing until
+a dot is selected and gives its space back on `clear`. It carries the title, kind, severity,
+range and bearing, recency, corroboration count, the resident's own words as a quote, and two
+actions — `All reports` (the Community page) and `Answer` (Outreach) — above the standing line
+that answering reaches "mitigation proposed" and no further.
+
+Two things fixed while building it:
+
+- **Reports had been sharing `selected` with alert contacts**, so a concern id could land in
+  the RWR's `selectedId`. Harmless by luck rather than design; they now have their own state.
+- **The rail squeezed its panels instead of scrolling** once a fourth appeared — the Proximity
+  scope was clipped through the middle and the report's closing line was cut off, which reads
+  as broken rather than as "scroll for more". `.stack > * { flex: none }`, matching the
+  `.scrollStack` rule that already existed for exactly this reason.
+
+**`placeReports()` is shared, not duplicated.** The Community screen was doing its own bearing
+maths; both now call one helper, so a row's `downwind` tag and a dot's fill can never disagree.
+This codebase has already been bitten twice by that pattern — three copies of `useNowTick`,
+two of `useStableWindow`.
+
+## 2026-09-01 — industry quad stack, and one selection model
+
+**Layout is now four columns:** `MFD | Selected | gauges | scope + alerts`. The rail had
+grown to four panels and lost the bottom two below a scrollbar; each column now has one job
+and nothing scrolls to be read. It folds to three columns under 1680 px and one under 1180.
+
+**The leaky abstraction is gone.** Reports set `pickedReport`, alert contacts set `selected`,
+and nothing else on the map could be picked at all — two states for one gesture. There is now
+a single `MapPick` discriminated union and a single `Selected` panel that branches on `kind`.
+Adding a pickable layer means adding a branch there, not another `useState` in `Scope`.
+
+Everything on the map is selectable, and each reads in the same column:
+
+| pick | what it says |
+|---|---|
+| resident report | the resident's words, downwind or off-axis, range/bearing, corroborations, links to Community and Outreach with the "cannot close" line |
+| alert contact | severity, reading vs limit, range/bearing, how long up, the recommendation |
+| **road segment** | median / p90 / worst pass / persistence / passes — *"No fixed instrument stands on this street; this number exists because something drove it."* |
+| **reference monitor** | code, grade, what it speaks for, live per-channel readings with over-limit in red, and why their fenceline exists |
+| **fenceline sensor** | the same, tagged as theirs — readable when it is *not* alerting, which was the ask |
+| **emission point** | kind, stack height, what it emits, range/bearing from the campus |
+| **the campus** | sources running, capacity, IT load today |
+
+Verified by clicking each one and reading the panel back out of the DOM — cheaper than a
+screenshot per case, and it checks the text rather than my impression of it.
+
+**Two bugs found while wiring it:**
+
+1. **`SiteLayer` was drawn after the monitor layers**, and its footprint is a polygon covering
+   every fenceline sensor on the campus. deck picks the topmost layer, so every attempt to
+   inspect a sensor selected the site instead. The campus now draws *beneath* its own
+   instruments — which is also the right visual order.
+2. Reports and contacts shared one `selected` id, so a concern id could reach the scope's
+   `selectedId`. Resolved by the union above rather than patched.
+
+Also: the map now has a single `onClick` that classifies by layer id, so layers with their own
+handler (reports, contacts) resolve first and everything else falls through to one place.
+
+### Industry: three columns, and the tape turned on its side
+
+The four-column version pushed the wind panel off the bottom. The problem was the gauge
+column: a vertical tape needs a narrow strip, that strip could not share with anything, so
+the wind was exiled to the alerts column and fell below the fold.
+
+**Now three columns, each a vertical stack:**
+
+| | |
+|---|---|
+| **1** | MFD, with the picked item directly beneath it |
+| **2** | performance bars, with observed wind / who-is-downwind under them |
+| **3** | the scope, with the alert list under it |
+
+`Tape` became **`Gauge`** — the same instrument rotated. What mattered about the tape
+survives: graduations, a redline band you are not meant to enter, and a marker at the current
+value. What it gains is room for a real number and a caption, and a column it can share. A
+plain progress bar has none of those, and *progress* is the wrong verb for something you want
+to sit just below rather than complete.
+
+The detail pane under the map is capped at 38% of the column so a long report can never
+squeeze the map.
+
+Two fixes the first render exposed:
+
+- **The redline band is now painted over the fill, not under it.** With a red over-limit fill
+  on top, the band was invisible and the bar read as uniformly red — losing the one thing it
+  exists to show, which is where the line actually is. `1.71×` now reads as a bright fill with
+  the darker exceedance band clearly starting at `1.00`.
+- **`.stack > * { flex: none }` had also frozen the alert list**, which is the one panel in
+  that column meant to absorb slack. It grows again.

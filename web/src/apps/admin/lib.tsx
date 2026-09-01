@@ -7,7 +7,7 @@
  * seven dashboards that happen to share a skin.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
@@ -16,7 +16,7 @@ import { create } from 'zustand'
 import { API_BASE } from '@/core/api'
 import { fmtNum } from '@/core/format'
 import { useDrivePlan as useDrivePlanRaw } from '@/core/queries'
-import { DEFAULT_VIEW } from '@/core/session'
+import { DEFAULT_VIEW, useDemoClock } from '@/core/session'
 import type { Campaign, DrivePlan, Position, Role, SegmentCollection } from '@/core/types'
 
 import s from './admin.module.css'
@@ -380,13 +380,9 @@ export function useStableWindow(hours: number, bucketMin = 5): { from: string; t
 }
 
 /** A ticking clock, for "up for 4 m" labels that stay honest. */
+/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
 export function useNowTick(ms = 30_000): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return now
+  return useDemoClock(ms)
 }
 
 /** Keeps the previous non-undefined value so a refetch never blanks a panel. */

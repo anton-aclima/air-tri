@@ -9,6 +9,7 @@ import { createRoute, Outlet } from '@tanstack/react-router'
 
 import { rootRoute } from '@/app/route-root'
 
+import { Community } from './Community'
 import { Contacts } from './Contacts'
 import { ContactDetail } from './ContactDetail'
 import { Outreach } from './Outreach'
@@ -34,9 +35,10 @@ const contactDetail = createRoute({
   },
 })
 
+const community = createRoute({ getParentRoute: () => layout, path: 'community', component: Community })
 const outreach = createRoute({ getParentRoute: () => layout, path: 'outreach', component: Outreach })
 const siteConfig = createRoute({ getParentRoute: () => layout, path: 'site', component: SiteConfig })
 
 export const industryRoutes = layout.addChildren([
-  scope, scopeAlias, contacts, contactDetail, outreach, siteConfig,
+  scope, scopeAlias, contacts, contactDetail, community, outreach, siteConfig,
 ])

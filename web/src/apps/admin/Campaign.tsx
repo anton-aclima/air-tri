@@ -155,7 +155,7 @@ export function Campaign() {
                   data: boundary.data,
                   theme,
                   mask: !hasDraft,
-                  maskStrength: 0.5,
+                  maskStrength: 0.28,
                   glow: !hasDraft,
                   colorToken: hasDraft ? 'line-strong' : 'accent',
                   edgeWidthPx: hasDraft ? 1 : 2,

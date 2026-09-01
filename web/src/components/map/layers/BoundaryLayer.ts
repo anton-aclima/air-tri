@@ -53,7 +53,12 @@ function normalise(
 
 export function BoundaryLayer(props: BoundaryLayerProps): LayersList {
   const {
-    id = 'boundary', data, theme, mask = true, maskStrength = 0.62,
+    // Recessed, not erased. At 0.62 the exterior washed almost entirely to the
+    // background, which took the river, the parks and the neighbourhood names
+    // with it — and those are exactly what tells an operator what a plume is
+    // drifting over. The campaign keeps its focus from the data being inside
+    // it, not from the world outside being deleted.
+    id = 'boundary', data, theme, mask = true, maskStrength = 0.28,
     glow = true, colorToken = 'accent', edgeWidthPx = 2, visible = true,
   } = props;
 

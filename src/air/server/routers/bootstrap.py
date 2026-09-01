@@ -13,6 +13,11 @@ from air.server.db import get_db, jload, one, resolve_campaign, rows
 router = APIRouter(tags=["core"])
 
 
+def _generated_at(conn: sqlite3.Connection) -> str | None:
+    row = one(conn, "SELECT value FROM setting WHERE key = 'datagen.now'", ())
+    return row["value"] if row else None
+
+
 @router.get("/bootstrap")
 def bootstrap(
     campaign_id: str | None = None, conn: sqlite3.Connection = Depends(get_db)
@@ -44,6 +49,12 @@ def bootstrap(
             "community_fleet_delay_min": config.COMMUNITY_FLEET_DELAY_MIN,
             "simulated": True,
             "now": timeutil.now_iso(),
+            # The instant the dataset was generated. Everything in the database
+            # stops here, so a client whose wall clock has run past it is asking
+            # for a window with nothing in it -- which looks like broken queries
+            # rather than the end of the data. The simulation panel uses this to
+            # say so out loud and to offer to pin "now" back to it.
+            "generated_at": _generated_at(conn),
         },
     }
     cache.put(key, payload)

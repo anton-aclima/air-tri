@@ -173,12 +173,14 @@ function IndustryStrip() {
   const site = useActiveSite()
   const alerts = useAlerts({ status: 'active', site_id: site?.id })
   const contacts = alerts.data?.length
-  const threat = alerts.data?.some((a) => a.severity === 'critical' || a.severity === 'warning')
+  const critical = alerts.data?.some((a) => a.severity === 'critical')
+  const caution = alerts.data?.some((a) => a.severity === 'warning')
+  const threat = critical || caution
   return (
     <div className={s.strip}>
       <span className={s.campaignName}>{site?.name ?? ROLES.industry.org}</span>
       <StripItem
-        label="Contacts"
+        label="Alerts"
         value={contacts != null ? fmtNum(contacts, 0) : DASH}
         tone={threat ? 'threat' : contacts ? 'warn' : 'ok'}
       />
@@ -188,7 +190,13 @@ function IndustryStrip() {
         value={site?.headroom_pct != null ? fmtPct(100 - site.headroom_pct, 0, false) : DASH}
         tone={site?.headroom_pct != null && 100 - site.headroom_pct < 25 ? 'threat' : undefined}
       />
-      <StripItem label="Scope" value={threat ? 'THREAT' : 'CLEAR'} tone={threat ? 'threat' : 'ok'} />
+      {/* Civil annunciator levels, matching the page below: act now / act soon /
+          be aware. "THREAT" was the radar metaphor leaking into the chrome. */}
+      <StripItem
+        label="Status"
+        value={critical ? 'WARNING' : caution ? 'CAUTION' : contacts ? 'ADVISORY' : 'NORMAL'}
+        tone={threat ? 'threat' : 'ok'}
+      />
     </div>
   )
 }
@@ -413,7 +421,7 @@ export function AppShell({ role, children }: AppShellProps) {
             <span className={s.offline}>API offline</span>
           </Tooltip>
         ) : null}
-        <SimulatedBadge />
+        <SimulatedBadge control />
         <LivePulse />
         <PersonaChip meta={meta} />
       </header>

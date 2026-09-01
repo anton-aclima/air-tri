@@ -15,7 +15,7 @@ import { SEVERITY_GLYPH, haversine } from '@/components'
 import { fmtNum } from '@/core/format'
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
 import { useBootstrap, useMonitors, useSegments } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useDemoClock, useSession } from '@/core/session'
 import type {
   ActionLevel, Alert, MeasureCode, MeasureDef, Monitor, Position,
   SegmentCollection, Severity,
@@ -48,13 +48,9 @@ export function useStableWindow(hours = 24, bucketMin = 5): { from: string; to: 
   }, [cursor, tick, bucketMs, hours])
 }
 
+/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
 export function useNowTick(ms = 30_000): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return now
+  return useDemoClock(ms)
 }
 
 // ───────────────────────────────────────────────────────── the towers

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSession } from '@/core/session';
 import type { FleetPosition, Position } from '@/core/types';
 import { alongPath, lerpPosition } from './geo';
 
@@ -61,13 +62,26 @@ export function usePulse(periodMs = 1400, opts?: { running?: boolean }): number 
 }
 
 /** `Date.now()` on a coarse interval — for "still up for 4h 12m" readouts. */
+/**
+ * "Now" as a ticking epoch — the DEMO's now, not the viewer's.
+ *
+ * Charts use this for a right-hand edge and for "still running" durations, so
+ * it has to agree with the simulation clock. Reading `Date.now()` directly
+ * meant pinning the clock moved every query and every age while a timeline's
+ * axis stayed anchored to real time — the same event drawn in two different
+ * places on one screen.
+ *
+ * A pinned cursor needs no interval; only a live clock ticks.
+ */
 export function useNow(intervalMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now());
+  const cursor = useSession((s) => s.time.cursor);
+  const [wall, setWall] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    if (cursor) return undefined;
+    const id = setInterval(() => setWall(Date.now()), intervalMs);
     return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
+  }, [intervalMs, cursor]);
+  return cursor ? Date.parse(cursor) : wall;
 }
 
 function easeInOut(t: number) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }

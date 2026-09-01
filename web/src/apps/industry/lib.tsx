@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
+import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import type { LayersList } from 'deck.gl'
 
 import { ALERT_KIND_CODE, ALERT_KIND_LABEL, SEVERITY_GLYPH } from '@/components'
@@ -19,8 +19,11 @@ import { fmtBearing, fmtDistance, fmtDuration, fmtNum } from '@/core/format'
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
 import { useActiveSite, useAskAdvisor, useBootstrapSites, useOrgs } from '@/core/queries'
 import { roleMeta } from '@/core/roles'
-import { useSession } from '@/core/session'
-import type { Alert, AdvisorReply, BBox, IndustrySite, Monitor, Position, Severity } from '@/core/types'
+import { useDemoClock, useSession } from '@/core/session'
+import type {
+  Alert, AdvisorReply, BBox, Concern, ConcernCluster, DispersionModel, IndustrySite, Monitor,
+  Position, Severity,
+} from '@/core/types'
 
 import s from './industry.module.css'
 
@@ -369,13 +372,9 @@ export function Sev({ severity }: { severity: Severity }) {
   )
 }
 
+/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
 export function useNowTick(ms = 1000): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return now
+  return useDemoClock(ms)
 }
 
 /** Percent of a value against a limit, guarded — used for the fenceline read. */
@@ -640,4 +639,252 @@ export function downwindOf(
     if (offAxis <= halfAngle) hits.push({ monitor: m, distanceM, bearing: b, offAxis })
   }
   return hits.sort((a, b) => a.distanceM - b.distanceM)
+}
+
+// ─────────────────────────────────────────────── performance bars
+
+/**
+ * A horizontal performance bar.
+ *
+ * This started as a vertical tape read like an N1 gauge, and the metaphor was
+ * right: the operator lives near the top of the green and watches the redline.
+ * But a tape needs a narrow column of its own, and that column pushed the wind
+ * panel off the screen. Turned on its side, the same instrument shares a column
+ * with the wind and gains room for a real number and a caption.
+ *
+ * What survives from the tape is what mattered: graduations, a redline band you
+ * are not meant to enter, and a marker at the current value. A progress bar has
+ * none of those — and progress is the wrong verb, because this is something you
+ * want to sit just below rather than complete.
+ */
+export function Gauge(props: {
+  label: string
+  value: number | null | undefined
+  max: number
+  redline?: number
+  readout: string
+  sub?: string
+  over?: boolean
+}): ReactNode {
+  const { label, value, max, redline, readout, sub, over = false } = props
+  const frac = value == null || !Number.isFinite(value)
+    ? null
+    : Math.max(0, Math.min(1, value / max))
+  const redFrac = redline == null ? null : Math.max(0, Math.min(1, redline / max))
+
+  return (
+    <div className={s.gauge}>
+      <div className={s.gaugeHead}>
+        <span className={s.gaugeLabel}>{label}</span>
+        <span className={`${s.gaugeValue} num${over ? ` ${s.gaugeValueOver}` : ''}`}>{readout}</span>
+      </div>
+      <div className={s.gaugeTrack} role="img" aria-label={`${label} ${readout}`}>
+        {frac != null && (
+          <div
+            className={`${s.gaugeFill}${over ? ` ${s.gaugeFillOver}` : ''}`}
+            style={{ inlineSize: `${frac * 100}%` }}
+          />
+        )}
+        {/* Over the fill, not under it. Beneath, a red fill hid the band
+            completely and the bar read as uniformly red — losing the one thing
+            it exists to show, which is where the line actually is. */}
+        {redFrac != null && (
+          <div className={s.gaugeRed} style={{ insetInlineStart: `${redFrac * 100}%` }} />
+        )}
+        <div className={s.gaugeTicks} aria-hidden />
+        {frac != null && (
+          <div
+            className={`${s.gaugeNeedle}${over ? ` ${s.gaugeNeedleOver}` : ''}`}
+            style={{ insetInlineStart: `${frac * 100}%` }}
+          />
+        )}
+      </div>
+      {sub ? <span className={s.gaugeSub}>{sub}</span> : null}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────── the two different "models"
+
+/**
+ * The consultant's permit study, drawn as an outline on the map.
+ *
+ * There are two dispersion pictures in this product and they are not the same
+ * object, which is confusing until it is labelled:
+ *
+ *   PERMIT — this one. The consultant's deliverable, contoured from the wind
+ *            rose they *assumed*, integrated over every sector. It is a
+ *            long-run average footprint, so it comes out as one smooth lobe
+ *            around the whole site and it does not move with today's weather.
+ *
+ *   PLUME  — `GET /wind/dispersion`. A cone per active stack at *this hour's*
+ *            wind, banded by concentration. Many small shapes, one per emission
+ *            point, reaching a kilometre or two — which is what a near-field
+ *            plume actually does at 3 m/s.
+ *
+ * Drawing them together is the point: when today's cones fall outside the
+ * permit lobe, the study under-predicts that direction, and the operator can
+ * see the thing the `MODEL UNDERSTATES` verdict is asserting.
+ *
+ * Outline only, no fill — an assumption should not look like a measurement.
+ */
+export function permitFootprintLayer(opts: {
+  theme: Theme
+  contours: DispersionModel['contours'] | null | undefined
+  id?: string
+}): LayersList {
+  const { theme, contours, id = 'permit' } = opts
+  if (!contours?.length) return []
+
+  type Ring = { ring: Position[]; band: number }
+  const rings: Ring[] = []
+  for (const c of contours) {
+    const g = c.geometry
+    if (g.type === 'Polygon') {
+      for (const r of g.coordinates) rings.push({ ring: r as Position[], band: c.band })
+    } else if (g.type === 'MultiPolygon') {
+      for (const poly of g.coordinates) {
+        for (const r of poly) rings.push({ ring: r as Position[], band: c.band })
+      }
+    }
+  }
+  if (!rings.length) return []
+
+  return [
+    new PolygonLayer<Ring>({
+      id: `${id}-fill`,
+      data: rings,
+      pickable: false,
+      stroked: true,
+      filled: true,
+      lineWidthUnits: 'pixels',
+      getPolygon: (d) => d.ring,
+      // Barely there. The outline carries it; the wash only keeps the shape
+      // readable where it crosses the road grid.
+      getFillColor: theme.color('accent-2', 0.05),
+      getLineColor: (d) => theme.color('accent-2', d.band === 0 ? 0.85 : 0.45),
+      getLineWidth: (d) => (d.band === 0 ? 1.6 : 1),
+    }),
+  ]
+}
+
+// ─────────────────────────────────────────────── community reports, placed
+
+export interface PlacedReport {
+  concern: Concern
+  distanceM: number
+  bearing: number
+  /** Within `halfAngle` of where the wind is actually carrying. */
+  downwind: boolean
+}
+
+/** Bearing and range from a point, in metres and compass degrees. */
+export function bearingFrom(
+  origin: Position, lon: number, lat: number,
+): { distanceM: number; bearing: number } {
+  const mLon = 111320 * Math.cos((origin[1] * Math.PI) / 180)
+  const dx = (lon - origin[0]) * mLon
+  const dy = (lat - origin[1]) * 110540
+  return {
+    distanceM: Math.hypot(dx, dy),
+    bearing: ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360,
+  }
+}
+
+/**
+ * Place every report relative to this campus and say whether it is downwind.
+ *
+ * The operator's fenceline and their consultant's model already describe their
+ * emissions. Reports are the signal they do *not* have — but only some of them
+ * are plausibly theirs, and a screen that implies every neighbour is their fault
+ * is one they will stop trusting. Wind at the time decides, and the ones that
+ * fail the test are still drawn, just quietly.
+ */
+export function placeReports(
+  origin: Position,
+  concerns: Concern[],
+  transportDeg: number | null | undefined,
+  opts: { radiusM?: number; halfAngle?: number } = {},
+): PlacedReport[] {
+  const { radiusM = 6000, halfAngle = 40 } = opts
+  const out: PlacedReport[] = []
+  for (const c of concerns) {
+    const { distanceM, bearing } = bearingFrom(origin, c.lon, c.lat)
+    if (distanceM > radiusM) continue
+    const downwind = transportDeg == null || !Number.isFinite(transportDeg)
+      ? false
+      : Math.abs((((bearing - transportDeg + 180) % 360) + 360) % 360 - 180) <= halfAngle
+    out.push({ concern: c, distanceM, bearing, downwind })
+  }
+  return out.sort((a, b) => a.distanceM - b.distanceM)
+}
+
+/**
+ * Resident reports on the moving map, split by whether the wind points at them.
+ *
+ * Downwind reports are filled and labelled; the rest are hollow. Same data, two
+ * weights — which is the honest way to draw a claim the operator can neither
+ * dismiss nor fully own.
+ */
+export function reportsOverlay(opts: {
+  theme: Theme
+  reports: PlacedReport[]
+  clusters: ConcernCluster[]
+  selectedId?: string | null
+  onSelect?: (id: string | null) => void
+}): LayersList {
+  const { theme, reports, clusters, selectedId, onSelect } = opts
+  if (!reports.length && !clusters.length) return []
+  const layers: LayersList = []
+
+  if (clusters.length) {
+    layers.push(new PathLayer<ConcernCluster>({
+      id: 'mfd-report-clusters',
+      data: clusters,
+      pickable: false,
+      widthUnits: 'pixels',
+      getPath: (cl) => ringPath(cl.centroid[0], cl.centroid[1], Math.max(cl.radius_m, 150)),
+      getWidth: 1.2,
+      getColor: theme.color('actor-community', 0.7),
+    }))
+    layers.push(new TextLayer<ConcernCluster>({
+      id: 'mfd-report-cluster-labels',
+      data: clusters,
+      pickable: false,
+      getPosition: (cl) => cl.centroid,
+      getText: (cl) => `${cl.count} REPORTS`,
+      getSize: 9,
+      getColor: theme.color('actor-community', 0.95),
+      getPixelOffset: [0, -10],
+      fontFamily: theme.css('font-mono') || 'monospace',
+      characterSet: 'auto',
+      background: true,
+      getBackgroundColor: theme.color('bg', 0.72),
+      backgroundPadding: [4, 2],
+    }))
+  }
+
+  layers.push(new ScatterplotLayer<PlacedReport>({
+    id: 'mfd-reports',
+    data: reports,
+    pickable: true,
+    stroked: true,
+    filled: true,
+    radiusUnits: 'pixels',
+    lineWidthUnits: 'pixels',
+    getPosition: (r) => [r.concern.lon, r.concern.lat] as Position,
+    getRadius: (r) => (r.concern.id === selectedId ? 7 : r.downwind ? 5 : 3.5),
+    getFillColor: (r) => theme.color(
+      'actor-community',
+      r.concern.id === selectedId ? 0.95 : r.downwind ? 0.55 : 0.06,
+    ),
+    getLineColor: (r) => theme.color('actor-community', r.downwind ? 0.95 : 0.4),
+    getLineWidth: (r) => (r.downwind ? 1.5 : 1),
+    onClick: (info) => onSelect?.((info.object as PlacedReport | undefined)?.concern.id ?? null),
+    updateTriggers: {
+      getRadius: selectedId, getFillColor: selectedId, getLineColor: selectedId,
+    },
+  }))
+
+  return layers
 }

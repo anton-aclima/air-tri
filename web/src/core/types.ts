@@ -680,6 +680,8 @@ export interface Bootstrap {
     community_fleet_delay_min: number;
     simulated: true;
     now: string;
+    /** When the dataset was generated — the instant all of its data stops. */
+    generated_at: string | null;
   };
 }
 

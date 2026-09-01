@@ -8,6 +8,7 @@
  * Server state never lives here. That is TanStack Query's job (`core/queries`).
  */
 
+import { useEffect, useMemo, useState } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
@@ -272,6 +273,30 @@ export function timeRange(time: TimeState): { from: string; to: string } {
     : new Date(Math.floor(raw.getTime() / LIVE_QUANTUM_MS) * LIVE_QUANTUM_MS)
   const from = new Date(to.getTime() - time.windowHours * 3_600_000)
   return { from: from.toISOString(), to: to.toISOString() }
+}
+
+/**
+ * The demo's clock, as a value that ticks.
+ *
+ * Anything that renders an age — "up 2 d 21 h", a timeline's right edge, a
+ * "3 min ago" — has to measure from the *demo's* now, not the viewer's. Three
+ * apps each had their own `useNowTick` reading `new Date()`, so pinning the
+ * simulation clock moved every query and none of the durations: the panel said
+ * one thing and the page said another.
+ *
+ * A pinned cursor is the answer and nothing needs to tick. Only a live clock
+ * sets an interval, which also means a scrubbed demo stops re-rendering on a
+ * timer for no reason.
+ */
+export function useDemoClock(ms = 1000): Date {
+  const cursor = useSession((s) => s.time.cursor)
+  const [wall, setWall] = useState(() => new Date())
+  useEffect(() => {
+    if (cursor) return undefined
+    const t = setInterval(() => setWall(new Date()), ms)
+    return () => clearInterval(t)
+  }, [ms, cursor])
+  return useMemo(() => (cursor ? new Date(cursor) : wall), [cursor, wall])
 }
 
 /** Hook form of the above, for series queries. */

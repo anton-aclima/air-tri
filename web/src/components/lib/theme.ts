@@ -35,6 +35,8 @@ export const TOKENS = [
   'tower', 'tower-ring', 'invader', 'fleet',
   'scope', 'scope-dim', 'scope-grid', 'threat', 'threat-glow',
   'bandit-community', 'bandit-regulator',
+  // terrain — the basemap's own palette, never borrowed from a semantic hue
+  'map-water', 'map-green', 'map-urban',
   // shape / motion
   'radius-card', 'font-mono', 'font-body', 'font-heading', 'grid-overlay',
 ] as const;

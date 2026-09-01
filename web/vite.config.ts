@@ -32,6 +32,25 @@ const apiProxy: Record<string, ProxyOptions> = {
 export default defineConfig({
   plugins: [react()],
 
+  /**
+   * MapLibre must not go through the dependency optimizer.
+   *
+   * It ships its tile parser as a separate worker entry, and the optimizer
+   * rewrites the bundle without emitting `maplibre-gl-worker.mjs`. The worker
+   * then fails to start — silently, as far as the page is concerned. The style,
+   * the sprite and the tile index all load over HTTP on the main thread and
+   * return 200, so the network looks perfectly healthy; but nothing ever parses
+   * a vector tile, so the basemap paints nothing at all. deck.gl keeps drawing
+   * on its own overlay canvas, which makes it look like "the data works and the
+   * map is just dark" rather than a broken dependency.
+   *
+   * Symptom to recognise: vite's log repeating
+   *   "The file does not exist at .../deps/maplibre-gl-worker.mjs"
+   */
+  optimizeDeps: {
+    exclude: ['maplibre-gl'],
+  },
+
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -37,6 +37,16 @@
 
 .shell > * { position: relative; z-index: 1; }
 
+/* The header has to outrank the page, not merely tie with it.
+   Every direct child of `.shell` got `z-index: 1`, which put the header and
+   `<main>` in the same layer — and `<main>` comes later in the DOM, so it won.
+   Anything the header opened (a tooltip, the persona menu, the simulation
+   panel) was painted *underneath* the page content: on the industry deck the
+   red alert banner sat right on top of it. Popovers escape their own stacking
+   context only as far as their ancestor's z-index allows, so the fix belongs
+   here rather than on each popover. */
+.shell > .head { z-index: var(--z-header); }
+
 /* ── community: no rail, tall header, page scrolls ─────────────────────── */
 .shell[data-role='community'] {
   --head-h: 64px;

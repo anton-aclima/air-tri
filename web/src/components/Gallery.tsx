@@ -48,7 +48,7 @@ import { WindRose } from './charts/WindRose';
 import { CompassBearing } from './charts/CompassBearing';
 import { RadarScope, contactsFromAlerts } from './charts/RadarScope';
 
-import { usePhase, usePulse, useFleetAnimation } from './lib/anim';
+import { usePulse, useFleetAnimation } from './lib/anim';
 import { makeColorScale } from './lib/scales';
 import * as fx from './fixtures';
 import g from './Gallery.module.css';
@@ -140,7 +140,6 @@ function RolePanel(props: {
   });
 
   const def = fx.MEASURES.find((m) => m.code === measure) ?? fx.NO2;
-  const sweep = usePhase(3400);
   const pulse = usePulse(1400);
   const fleet = useFleetAnimation(fx.FLEET, { durationMs: 5000 });
 
@@ -208,7 +207,7 @@ function RolePanel(props: {
                 ...(layers.plume ? DispersionLayer({ data: fx.DISPERSION_PLUME, theme, maxOpacity: 0.18 }) : []),
                 ...(layers.sites ? SiteLayer({ data: fx.SITES, theme, pulse, labels: true }) : []),
                 ...(layers.monitors
-                  ? MonitorLayer({ data: fx.MONITORS, theme, sweepPhase: sweep, pulse, measure, sizePx: 26 })
+                  ? MonitorLayer({ data: fx.MONITORS, theme, pulse, measure, sizePx: 26 })
                   : []),
                 ...(layers.concerns
                   ? ConcernLayer({ data: fx.CONCERNS, clusters: fx.CLUSTERS, theme, pulse })

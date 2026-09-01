@@ -110,7 +110,7 @@ export function Overview() {
               label="Campaign road grid"
               initialView={campaignView(campaign, -0.15)}
               layers={(theme) => [
-                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.5 }),
+                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.28 }),
                 ...SegmentLayer({
                   data: segments.data,
                   theme,

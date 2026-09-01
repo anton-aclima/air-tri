@@ -18,19 +18,23 @@ import { useMemo, useState } from 'react'
 import {
   BaseMap, BoundaryLayer, ConcernLayer, FleetLayer, LayerToggles, MapLegend, MapOverlay,
   MapScale, MapWindField, MeasurePicker, MetricPicker, MonitorLayer, NorthCompass,
-  SegmentLayer, SiteLayer, makeColorScale, robustDomain, useFleetAnimation, usePhase, usePulse,
+  SegmentLayer, SiteLayer, makeColorScale, robustDomain, useFleetAnimation, usePulse,
 } from '@/components'
-import { fmtCompact, fmtNum, fmtWind } from '@/core/format'
+import { Button } from '@/app/ui'
+import { fmtCompact, fmtNum, fmtWind, relativeShort } from '@/core/format'
 import {
   useActiveMeasure, useAlerts, useCampaignBoundary, useCampaignInfo, useConcernClusters,
-  useConcerns, useFleet, useMeasures, useMonitors, useSegments, useSites, useWind, useWindField,
+  useConcerns, useFleet, useMeasures, useMonitors, useSegments, useSites,
+  useUpdateConcernStatus, useWind, useWindField,
 } from '@/core/queries'
 import { useSession } from '@/core/session'
-import type { MeasureCode, Monitor, SegmentMetric } from '@/core/types'
+import type {
+  Concern, ConcernCluster, MeasureCode, Monitor, SegmentMetric,
+} from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Tag, liveAlerts, styles as s, towerMeasures, useReach, useStableWindow,
-  useTowers,
+  Caps, Panel, Readout, Tag, liveAlerts, styles as s, towerMeasures, useNowTick, useReach,
+  useStableWindow, useTowers,
 } from './lib'
 
 export function MapScreen() {
@@ -73,7 +77,6 @@ export function MapScreen() {
   const windSeries = useWind(windWin).data
   const wind = windSeries?.[windSeries.length - 1]
 
-  const sweep = usePhase(3200)
   const pulse = usePulse(2200)
 
   const [show, setShow] = useState({
@@ -81,6 +84,23 @@ export function MapScreen() {
     wind: true, concerns: true,
   })
   const [selectedTower, setSelectedTower] = useState<string | null>(null)
+  /**
+   * Resident reports are evidence, not decoration.
+   *
+   * They were drawn on this map and could not be touched — 200 pins the
+   * regulator could see and not read. A cluster is the unit that actually
+   * matters to them (three reports inside 600 m in a day is what turns a
+   * complaint into a case), so the cluster leads and the individual report is
+   * one click further in.
+   */
+  const [pickedCluster, setPickedCluster] = useState<string | null>(null)
+  const [pickedConcern, setPickedConcern] = useState<string | null>(null)
+  const now = useNowTick(30_000)
+  const setStatus = useUpdateConcernStatus()
+  const picked = pickedConcern ? concerns.find((c) => c.id === pickedConcern) ?? null : null
+  const clusterConcerns = pickedCluster
+    ? concerns.filter((c) => c.cluster_id === pickedCluster)
+    : []
 
   const { reach } = useReach(measureCode)
   const canSee = useMemo(() => towerMeasures(towers), [towers])
@@ -169,10 +189,15 @@ export function MapScreen() {
             }
             onClick={(info) => {
               const obj = info.object as { id?: string; owner_type?: string } | null
-              if (obj?.id && obj.owner_type === 'regulator') setSelectedTower(obj.id)
+              if (obj?.id && obj.owner_type === 'regulator') {
+                setSelectedTower(obj.id)
+                return
+              }
+              // Empty ground clears the report selection, the way a map should.
+              if (!info.object) { setPickedConcern(null); setPickedCluster(null) }
             }}
             layers={(t) => [
-              ...(boundary ? BoundaryLayer({ data: boundary, theme: t, mask: true, maskStrength: 0.5 }) : []),
+              ...(boundary ? BoundaryLayer({ data: boundary, theme: t, mask: true, maskStrength: 0.28 }) : []),
               ...(show.grid
                 ? SegmentLayer({
                     data: segments,
@@ -188,7 +213,26 @@ export function MapScreen() {
                   })
                 : []),
               ...(show.concerns
-                ? ConcernLayer({ data: concerns, clusters, theme: t, pulse, labels: false })
+                ? ConcernLayer({
+                    data: concerns,
+                    clusters,
+                    theme: t,
+                    pulse,
+                    labels: false,
+                    selectedId: pickedConcern,
+                    onClick: (info) => {
+                      const c = info.object as Concern | undefined
+                      if (!c?.id) return
+                      setPickedConcern(c.id)
+                      setPickedCluster(c.cluster_id ?? null)
+                    },
+                    onClusterClick: (info) => {
+                      const cl = info.object as ConcernCluster | undefined
+                      if (!cl?.id) return
+                      setPickedCluster(cl.id)
+                      setPickedConcern(null)
+                    },
+                  })
                 : []),
               ...(show.sites ? SiteLayer({ data: sites, theme: t, pulse, labels: true }) : []),
               ...(show.other
@@ -211,7 +255,6 @@ export function MapScreen() {
                     rings: show.rings,
                     labels: true,
                     measure: measureCode,
-                    sweepPhase: sweep,
                     pulse,
                     selectedId: selectedTower,
                     sizePx: 38,
@@ -292,6 +335,90 @@ export function MapScreen() {
                 />
               ))}
             </div>
+          </Panel>
+
+          {/* ── the other evidence source ──────────────────────────────────
+              DRAQA has four instruments and two hundred witnesses. The second
+              set is not a decoration on this map; it is the input that starts
+              loop 1 of the whole product, so it gets a first-class panel next
+              to the towers rather than a legend entry. */}
+          <Panel
+            title="Resident reports"
+            aside={<Caps>{clusters.length} clusters · {concerns.length} reports</Caps>}
+          >
+            <div className={s.rows}>
+              {clusters.length === 0 ? (
+                <span className={s.muted}>No clusters have formed in this campaign.</span>
+              ) : clusters.map((cl) => {
+                const on = pickedCluster === cl.id
+                const alert = liveAlerts(alerts).find((a) => a.source_id === cl.id)
+                return (
+                  <button
+                    key={cl.id}
+                    type="button"
+                    className={`${s.reportRow}${on ? ` ${s.reportRowOn}` : ''}`}
+                    onClick={() => {
+                      setPickedCluster(cl.id)
+                      setPickedConcern(null)
+                      flyTo(cl.centroid, 14.2)
+                    }}
+                  >
+                    <span className={s.reportCount}>{cl.count}</span>
+                    <span className={s.reportBody}>
+                      <span className={s.reportTitle}>{cl.label ?? 'Cluster'}</span>
+                      <span className={s.reportSub}>
+                        {cl.kinds.slice(0, 3).join(' · ')} · last {relativeShort(cl.last_at, now)}
+                      </span>
+                    </span>
+                    {alert ? <Tag tone="invader">alerted</Tag> : <Tag>{cl.status}</Tag>}
+                  </button>
+                )
+              })}
+            </div>
+
+            {picked ? (
+              <div className={s.reportDetail}>
+                <div className={s.reportDetailHead}>
+                  <span className={s.reportTitle}>{picked.title}</span>
+                  <Tag tone={picked.status === 'resolved' ? undefined : 'community'}>{picked.status.replace(/_/g, ' ')}</Tag>
+                </div>
+                <span className={s.reportSub}>
+                  {picked.kind} · severity {picked.severity}/5 · {picked.district ?? 'unknown district'}
+                  {' · '}{relativeShort(picked.occurred_at, now)}
+                  {picked.corroborations ? ` · ${picked.corroborations} corroborated` : ''}
+                </span>
+                {picked.body ? <p className={s.reportQuote}>“{picked.body}”</p> : null}
+                <div className={s.reportActions}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={picked.status === 'under_review' || setStatus.isPending}
+                    onClick={() => setStatus.mutate({
+                      id: picked.id, status: 'under_review', actorRole: 'regulator',
+                    })}
+                  >
+                    Mark under review
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => flyTo([picked.lon, picked.lat], 15)}>
+                    Centre
+                  </Button>
+                </div>
+                {/* The asymmetry, from the side that actually holds the power. */}
+                <span className={s.reportNote}>
+                  Only DRAQA or Aclima can close a resident's report. An operator's reply moves
+                  it to “mitigation proposed” and no further.
+                </span>
+              </div>
+            ) : pickedCluster ? (
+              <span className={s.reportNote}>
+                {clusterConcerns.length} report{clusterConcerns.length === 1 ? '' : 's'} in this
+                cluster. Click a pin on the map to read one.
+              </span>
+            ) : (
+              <span className={s.reportNote}>
+                Click a report or a cluster halo on the map to read it.
+              </span>
+            )}
           </Panel>
 
           <Panel title="Observed wind field" aside={<Caps>fleet anemometry · 72 h</Caps>}>

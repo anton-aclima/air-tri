@@ -61,7 +61,23 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
   const ink2 = theme.color('ink-2');
   const accent = theme.color('accent');
   const accent2 = theme.color('accent-2');
-  const accentSoft = theme.color('accent-soft');
+
+  /**
+   * Terrain, from its own tokens.
+   *
+   * Every skin used to derive water and parks by mixing the ground a few
+   * percent toward `--accent`, which made them invisible — and under the
+   * industry skin `--accent-2` is amber, so the honest fix of "use the other
+   * hue" would have painted an amber Mississippi. Terrain is not a severity and
+   * not an actor; it gets `--map-water` / `--map-green` / `--map-urban`.
+   *
+   * These are the one part of the basemap allowed to be *legible*, because they
+   * are what answers "what is my plume actually over" — and that question does
+   * not stop at the campaign boundary, so they are not clipped to it.
+   */
+  const water = theme.css('map-water');
+  const green = theme.css('map-green');
+  const urban = theme.css('map-urban');
 
   switch (skin) {
     // Community. Warm paper. Roads are white lanes on ivory; water is a soft
@@ -69,10 +85,10 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
     case 'light':
       return {
         background: rgbaCss(bg),
-        water: rgbaCss(accentSoft),
-        waterLabel: rgbaCss(withAlpha(mix(ink3, accent, 0.35), 0.9)),
-        land: rgbaCss(bg),
-        park: rgbaCss(mix(bg, accent, 0.1)),
+        water,
+        waterLabel: rgbaCss(withAlpha(mix(ink2, accent, 0.25), 0.95)),
+        land: urban,
+        park: green,
         building: rgbaCss(withAlpha(mix(bg, lineStrong, 0.38), 0.55)),
         buildingOutline: rgbaCss(withAlpha(lineStrong, 0.35)),
         roadCasing: rgbaCss(withAlpha(line, 0.9)),
@@ -81,7 +97,7 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
         roadMotorway: rgbaCss(mix(surface, lineStrong, 0.18)),
         boundary: rgbaCss(withAlpha(lineStrong, 0.7)),
         label: rgbaCss(withAlpha(ink2, 0.85)),
-        labelStrong: rgbaCss(theme.color('ink')),
+        labelStrong: rgbaCss(withAlpha(theme.color('ink'), 0.92)),
         labelHalo: rgbaCss(withAlpha(bg, 0.95)),
         hidePoi: true,
         hideRoadLabels: false,
@@ -92,10 +108,10 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
     case 'dark':
       return {
         background: rgbaCss(sunk),
-        water: rgbaCss(mix(sunk, accent, 0.07)),
-        waterLabel: rgbaCss(withAlpha(mix(ink3, accent, 0.4), 0.8)),
-        land: rgbaCss(bg),
-        park: rgbaCss(mix(bg, accent, 0.05)),
+        water,
+        waterLabel: rgbaCss(withAlpha(ink2, 0.88)),
+        land: urban,
+        park: green,
         building: rgbaCss(withAlpha(surface, 0.75)),
         buildingOutline: rgbaCss(withAlpha(line, 0.6)),
         roadCasing: rgbaCss(withAlpha(sunk, 0.9)),
@@ -104,7 +120,7 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
         roadMotorway: rgbaCss(mix(lineStrong, ink3, 0.3)),
         boundary: rgbaCss(withAlpha(lineStrong, 0.8)),
         label: rgbaCss(withAlpha(ink3, 0.9)),
-        labelStrong: rgbaCss(withAlpha(ink2, 0.95)),
+        labelStrong: rgbaCss(withAlpha(theme.color('ink'), 0.92)),
         labelHalo: rgbaCss(withAlpha(sunk, 0.85)),
         hidePoi: true,
         hideRoadLabels: false,
@@ -115,10 +131,10 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
     case 'night':
       return {
         background: rgbaCss(sunk),
-        water: rgbaCss(mix(sunk, accent, 0.04)),
-        waterLabel: rgbaCss(withAlpha(mix(ink3, accent, 0.5), 0.55)),
-        land: rgbaCss(bg),
-        park: rgbaCss(mix(bg, accent, 0.04)),
+        water,
+        waterLabel: rgbaCss(withAlpha(ink2, 0.85)),
+        land: urban,
+        park: green,
         building: rgbaCss(withAlpha(surface, 0.55)),
         buildingOutline: rgbaCss(withAlpha(mix(line, accent, 0.15), 0.5)),
         roadCasing: rgbaCss(withAlpha(sunk, 0.95)),
@@ -127,7 +143,7 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
         roadMotorway: rgbaCss(withAlpha(mix(lineStrong, accent, 0.22), 0.95)),
         boundary: rgbaCss(withAlpha(mix(lineStrong, accent, 0.3), 0.7)),
         label: rgbaCss(withAlpha(mix(ink3, accent, 0.3), 0.72)),
-        labelStrong: rgbaCss(withAlpha(mix(ink2, accent, 0.25), 0.85)),
+        labelStrong: rgbaCss(withAlpha(theme.color('ink'), 0.92)),
         labelHalo: rgbaCss(withAlpha(sunk, 0.9)),
         hidePoi: true,
         hideRoadLabels: true,
@@ -139,10 +155,10 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
     default:
       return {
         background: rgbaCss(sunk),
-        water: rgbaCss(withAlpha(mix(sunk, accent2, 0.12), 1)),
-        waterLabel: rgbaCss(withAlpha(accent2, 0.7)),
-        land: rgbaCss(bg),
-        park: rgbaCss(mix(bg, accent, 0.06)),
+        water,
+        waterLabel: rgbaCss(withAlpha(ink2, 0.9)),
+        land: urban,
+        park: green,
         building: rgbaCss(withAlpha(mix(bg, accent2, 0.1), 0.6)),
         buildingOutline: rgbaCss(withAlpha(accent2, 0.28)),
         roadCasing: rgbaCss(withAlpha(sunk, 0.85)),
@@ -151,7 +167,7 @@ export function skinPalette(theme: Theme, skin: MapSkin): SkinPalette {
         roadMotorway: rgbaCss(withAlpha(accent2, 0.6)),
         boundary: rgbaCss(withAlpha(accent2, 0.5)),
         label: rgbaCss(withAlpha(ink3, 0.85)),
-        labelStrong: rgbaCss(withAlpha(ink2, 0.95)),
+        labelStrong: rgbaCss(withAlpha(theme.color('ink'), 0.92)),
         labelHalo: rgbaCss(withAlpha(sunk, 0.9)),
         hidePoi: true,
         hideRoadLabels: false,

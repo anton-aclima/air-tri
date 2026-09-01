@@ -125,6 +125,14 @@ Do NOT touch `core/`, `components/`, `app/`, `design/`, `package.json`, other `a
 - **deck.gl DOES capture in headless screenshots.** Verified: 1,307 road segments render
   cleanly. An earlier report claiming otherwise was wrong. A blank map means your data or
   camera is wrong, not the renderer — debug those, don't work around deck.gl.
+- **Basemap tiles DO paint — if the dep optimizer is kept off MapLibre.** For most of this
+  build the basemap rendered nothing and it was written off as a headless limitation. It was
+  not: Vite's dep optimizer dropped `maplibre-gl-worker.mjs`, so the tile-parsing worker never
+  started. Style, sprite and tile index all returned 200 and no request failed, while not one
+  vector tile was ever parsed — and deck.gl kept drawing on its own overlay canvas, which made
+  it look like "the data works, the map is just dark". `optimizeDeps.exclude: ['maplibre-gl']`
+  in `web/vite.config.ts` fixes it. If a basemap is ever blank under a working deck.gl overlay,
+  grep vite's log for `maplibre-gl-worker.mjs` before blaming the renderer or headless mode.
 - **`/gallery.html?role=<role>&backend=maplibre|google`** is a bare map probe — basemap +
   road grid, no router, no SSE. Use it to isolate map problems from your own screens.
 - `CVDisplayLinkCreateWithCGDisplay failed` on stderr is harmless noise.

@@ -154,7 +154,7 @@ export function Oversight() {
         at: a.created_at,
         title: a.title,
         body: a.body,
-        tags: ['advisory', a.kind, `to ${a.audience.join(' + ')}`],
+        tags: ['advisory', ...(a.kind === 'advisory' ? [] : [a.kind]), `to ${a.audience.join(' + ')}`],
         severityVar: severityVar(a.severity),
       })
     }
@@ -250,7 +250,7 @@ export function Oversight() {
               label="All actors"
               initialView={campaignView(campaign, -0.3)}
               layers={(theme) => [
-                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.6 }),
+                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.3 }),
                 ...(show.grid
                   ? SegmentLayer({
                       data: segments.data,
@@ -443,7 +443,11 @@ function Lane({
               </p>
             ) : null}
             <div className={s.entryFoot}>
-              {e.tags.map((t) => (
+              {/* Deduped: an advisory whose kind is also "advisory" produced the
+                  tag twice, which rendered a doubled chip and — because the tag
+                  is the key — spammed React's duplicate-key warning on every
+                  render of every entry. */}
+              {Array.from(new Set(e.tags)).map((t) => (
                 <span className={s.chip} key={t}>{t}</span>
               ))}
             </div>

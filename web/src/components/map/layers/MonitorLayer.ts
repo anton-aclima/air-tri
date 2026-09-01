@@ -12,19 +12,17 @@
  *   pulse  = an exceedance is live on this instrument
  */
 
-import { IconLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { LayersList, PickingInfo } from 'deck.gl';
 import type { MeasureCode, Monitor, Position } from '@/core/types';
 import type { Theme } from '../../lib/theme';
-import { circleRing, wedge } from '../../lib/geo';
+import { circleRing } from '../../lib/geo';
 import { icon, monitorGlyph } from '../../lib/glyphs';
 
 export interface MonitorLayerProps {
   id?: string;
   data: Monitor[] | null | undefined;
   theme: Theme;
-  /** 0–1 sweep phase — feed from `usePhase(3200)`. Omit for a static ring. */
-  sweepPhase?: number;
   /** 0–1 triangle wave — feed from `usePulse()`. Drives the exceedance pulse. */
   pulse?: number;
   /** Draw `radius_m` coverage rings. Default true. */
@@ -60,7 +58,7 @@ export function monitorExceeds(m: Monitor, measure?: MeasureCode): boolean {
 
 export function MonitorLayer(props: MonitorLayerProps): LayersList {
   const {
-    id = 'monitors', data, theme, sweepPhase, pulse = 0, rings = true,
+    id = 'monitors', data, theme, pulse = 0, rings = true,
     measure, labels = true, sizePx = 34, hoveredId, selectedId,
     onHover, onClick, visible = true, pickable = true,
   } = props;
@@ -70,7 +68,6 @@ export function MonitorLayer(props: MonitorLayerProps): LayersList {
 
   const layers: LayersList = [];
   const withRings = monitors.filter((m) => rings && (m.radius_m ?? 0) > 0);
-  const online = withRings.filter((m) => m.status === 'online');
   const dimFor = (m: Monitor) => (m.status === 'online' ? 1 : m.status === 'degraded' ? 0.62 : 0.34);
 
   // ── coverage discs ────────────────────────────────────────────────────────
@@ -105,55 +102,6 @@ export function MonitorLayer(props: MonitorLayerProps): LayersList {
       getWidth: (d) => (d.major ? 1.4 : 1),
       getColor: (d) => theme.color(ownerToken(d.m.owner_type), (d.major ? 0.42 : 0.2) * dimFor(d.m)),
       updateTriggers: { getColor: theme.css('tower') },
-    }));
-  }
-
-  // ── the sweep ─────────────────────────────────────────────────────────────
-  // Six trailing slices with a rising alpha make a gradient tail out of flat
-  // polygons, so it reads as a rotating beam rather than a spinning pie slice.
-  if (sweepPhase !== undefined && online.length) {
-    const TAIL = 66;
-    const SLICES = 6;
-    const sweepData = online.flatMap((m) => {
-      const head = sweepPhase * 360;
-      const r = m.radius_m ?? 0;
-      return Array.from({ length: SLICES }, (_, i) => {
-        const a1 = head - (TAIL * i) / SLICES;
-        const a0 = head - (TAIL * (i + 1)) / SLICES;
-        return {
-          m,
-          polygon: wedge([m.lon, m.lat], r, a0, a1, 6),
-          alpha: 0.30 * Math.pow(1 - i / SLICES, 1.7),
-        };
-      });
-    });
-    layers.push(new PolygonLayer<{ m: Monitor; polygon: Position[]; alpha: number }>({
-      id: `${id}-sweep`,
-      data: sweepData,
-      visible,
-      pickable: false,
-      stroked: false,
-      filled: true,
-      getPolygon: (d) => d.polygon as unknown as Position[],
-      getFillColor: (d) => theme.color(ownerToken(d.m.owner_type), d.alpha),
-      updateTriggers: { getPolygon: sweepPhase, getFillColor: sweepPhase },
-    }));
-    // the leading edge
-    layers.push(new PathLayer<{ m: Monitor; path: Position[] }>({
-      id: `${id}-sweep-edge`,
-      data: online.map((m) => ({
-        m,
-        path: [[m.lon, m.lat], circleRing([m.lon, m.lat], m.radius_m ?? 0, 360)[
-          Math.round(((sweepPhase * 360) % 360 + 360) % 360)
-        ]] as Position[],
-      })),
-      visible,
-      pickable: false,
-      widthUnits: 'pixels',
-      getPath: (d) => d.path as unknown as Position[],
-      getWidth: 1.4,
-      getColor: theme.color('tower', 0.55),
-      updateTriggers: { getPath: sweepPhase },
     }));
   }
 

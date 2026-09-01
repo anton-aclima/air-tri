@@ -1,7 +1,7 @@
 /**
  * /industry/alerts — every contact, on a timeline.
  *
- * The scope answers "where"; this answers "how long". A contact that has been
+ * The scope answers "where"; this answers "how long". An alert that has been
  * up for nine hours and one that appeared four minutes ago demand different
  * things, and that difference should be a shape, not arithmetic.
  */
@@ -64,13 +64,13 @@ export function Contacts() {
     <div className={`${s.page} ${s.detailPage}`}>
       <div className={`${s.banner} ${counts.critical + counts.warning > 0 ? s.bannerThreat : s.bannerClear}`}>
         <div className={s.bannerLine}>
-          <span className={s.bannerHead}>{site?.name ?? 'Contacts'}</span>
+          <span className={s.bannerHead}>{site?.name ?? 'Alerts'}</span>
           <span className={s.bannerSub}>
             {contacts.length ? severityCountLine(counts) : 'No contacts in this window'}
           </span>
         </div>
         <div className={s.bannerStats}>
-          <Readout label="Contacts" value={fmtNum(contacts.length, 0)} big tone={counts.warning + counts.critical ? 'threat' : 'accent'} />
+          <Readout label="Alerts" value={fmtNum(contacts.length, 0)} big tone={counts.warning + counts.critical ? 'threat' : 'accent'} />
           <Readout
             label="Longest up"
             value={oldest ? upFor(oldest, now) : '—'}
@@ -102,7 +102,7 @@ export function Contacts() {
           )}
         </Panel>
 
-        <Panel title="Contact list" className={s.stackGrow} aside={<Caps>threat-first</Caps>}>
+        <Panel title="Alert list" className={s.stackGrow} aside={<Caps>worst first</Caps>}>
           <div className={s.contacts}>
             <div className={s.contactHead} aria-hidden>
               <span /><span>src</span><span>contact</span><span>brg</span><span>range</span><span>up for</span>

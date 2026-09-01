@@ -111,7 +111,7 @@ export function Fleet() {
               label="Fleet positions"
               initialView={campaignView(campaign, -0.2)}
               layers={(theme) => [
-                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.55 }),
+                ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.28 }),
                 ...SegmentLayer({
                   data: segments.data,
                   theme,

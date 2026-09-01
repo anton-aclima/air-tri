@@ -117,7 +117,7 @@ layers={(t) => [...SegmentLayer({ data: segs, theme: t, metric: 'p90', dualEncod
 ### `MonitorLayer`
 
 DRAQA reference towers. `data: Monitor[]`, `rings` (draw `radius_m` coverage, default true),
-`measure` (which `latest.exceeds` drives the alarm), `sweepPhase` (feed `usePhase(3200)`),
+`measure` (which `latest.exceeds` drives the alarm),
 `pulse` (feed `usePulse()`), `labels`, `sizePx`. Helper: `monitorExceeds(monitor, measure)`.
 
 ### `SiteLayer`

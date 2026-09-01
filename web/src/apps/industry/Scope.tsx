@@ -28,20 +28,23 @@ import {
   AlertTimeline, BaseMap, DispersionLayer, MapOverlay, MapWindField,
   MonitorLayer, RadarScope, SegmentLayer, SiteLayer,
 } from '@/components'
-import type { MapView, RadarContact, Theme } from '@/components'
+import type { MapView, RadarContact, SegmentFeature, Theme } from '@/components'
 import { Button } from '@/app/ui'
 import { compassPoint, fmtBearing, fmtCompact, fmtDistance, fmtNum, fmtPct, relativeShort } from '@/core/format'
 import { SEVERITY_LABEL, severityVar } from '@/core/measures'
 import {
-  useAlerts, useDispersion, useDispersionModels, useModelVerification, useMonitors,
-  useSegments, useWind, useWindField,
+  useActiveMeasure, useAlerts, useConcernClusters, useConcerns, useDispersion,
+  useDispersionModels, useModelVerification, useMonitors, useSegments, useWind, useWindField,
 } from '@/core/queries'
 import type { Alert, Position } from '@/core/types'
 
+import { Selected } from './Selected'
+import type { MapPick } from './Selected'
 import {
-  Caps, Panel, Readout, Tag, bboxAround, contactLine, countBySeverity, downwindOf,
+  Caps, Gauge, Panel, Readout, Tag, bboxAround, contactLine, countBySeverity, downwindOf,
   envelopeOf, foldContacts, radarOverlay, severityCountLine, shortTitle, styles as s,
-  toContacts, useNowTick, useSiteLock, useStableWindow,
+  bearingFrom, permitFootprintLayer, placeReports, reportsOverlay, toContacts, useNowTick, useSiteLock,
+  useStableWindow,
 } from './lib'
 
 const LIVE_STATUSES = new Set(['active', 'acknowledged'])
@@ -51,23 +54,29 @@ export function Scope() {
   const navigate = useNavigate()
   const now = useNowTick(1000)
 
-  // Quantised window — see `useStableWindow`: the shared default re-derives
-  // `to` every render, which turns any wind query into a refetch loop.
-  const win = useStableWindow(24)
   // The field is binned from wherever the fleet drove, so a longer window fills
   // more streets. The strip states the window and the sample size out loud.
-  const fieldWin = useStableWindow(72)
+  const fieldWin = useStableWindow(24 * 14)
   const alertsQ = useAlerts({ site_id: site?.id }, { enabled: !!site })
   const windQ = useWindField({ cell_m: 400, ...fieldWin })
   const modelsQ = useDispersionModels(site?.id)
   const verifyQ = useModelVerification(site?.id)
-  const windSeries = useWind(win)
+  // Two weeks, not 24 h. `win` is anchored to the wall clock, and the moment it
+  // runs past the end of the generated data the query comes back empty — which
+  // silently took out the plume track and the downwind readout with it. The
+  // strip labels this as the latest observation, so a wider search is honest.
+  const windSeries = useWind(useStableWindow(24 * 14))
   const wind = windSeries.data?.[windSeries.data.length - 1]
 
   const [showWind, setShowWind] = useState(true)
-  const [showModel, setShowModel] = useState(false)
+  // Two separate things, and calling them both "MODEL" is what made them
+  // confusing: PLUME is this hour's cone per stack, PERMIT is the consultant's
+  // long-run average footprint for the whole site. See `permitFootprintLayer`.
+  const [showPlume, setShowPlume] = useState(false)
+  const [showPermit, setShowPermit] = useState(true)
   const [showGrid, setShowGrid] = useState(true)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [showReports, setShowReports] = useState(true)
+  const [pick, setPick] = useState<MapPick | null>(null)
   /** Which emission point the MFD is centred on. `null` = the site centroid. */
   const [focusEp, setFocusEp] = useState<string | null>(null)
   const [locked, setLocked] = useState(true)
@@ -78,7 +87,10 @@ export function Scope() {
   const bbox = useMemo(() => (site ? bboxAround(site.centroid, 9000) : null), [site])
   const segsQ = useSegments({ bbox, limit: 9000 }, { enabled: !!bbox && showGrid })
   const monitorsQ = useMonitors()
+  const measureDef = useActiveMeasure()
   const plumeQ = useDispersion({ site_id: site?.id })
+  const concernsQ = useConcerns({ limit: 400 })
+  const clustersQ = useConcernClusters()
 
   const live = useMemo(
     () => (alertsQ.data ?? []).filter((a: Alert) => LIVE_STATUSES.has(a.status)),
@@ -90,7 +102,19 @@ export function Scope() {
   const { contacts, folded } = useMemo(() => foldContacts(all), [all])
   const counts = useMemo(() => countBySeverity(contacts), [contacts])
   const worst = contacts[0]
-  const threat = counts.critical > 0 || counts.warning > 0
+  /**
+   * Civil flight decks do not have "threats"; they have three annunciator
+   * levels, and everyone in the industry already knows what they mean.
+   * WARNING is act now, CAUTION is act soon, ADVISORY is be aware. Mapping our
+   * severities onto that ladder means the header word carries an expectation
+   * about *how fast to respond*, which "THREAT" never did.
+   */
+  const level = counts.critical > 0
+    ? 'WARNING'
+    : counts.warning > 0
+      ? 'CAUTION'
+      : contacts.length ? 'ADVISORY' : 'NORMAL'
+  const alarm = level === 'WARNING' || level === 'CAUTION'
   const envelope = envelopeOf(site)
 
   const radarContacts: RadarContact[] = useMemo(
@@ -131,6 +155,56 @@ export function Scope() {
   )
   const exposed = downwind[0]
 
+  /**
+   * The other half of the optimisation: not how much load is left, but how
+   * close the worst thing being measured already is to the line it is measured
+   * against. 1.00x IS the line, so that is where the redline goes.
+   */
+  const nearest = useMemo(() => {
+    let worstRatio: number | null = null
+    let which: Alert | null = null
+    for (const a of live) {
+      if (a.value == null || !a.threshold) continue
+      // Concentration limits only. A concern cluster's `value` is a count of
+      // residents and its `threshold` is 3, so including it reported "3.56x of
+      // limit" for eleven neighbours filing reports — a category error, and a
+      // gauge that would have had the operator chasing the wrong number.
+      if (!a.measure || !a.action_level_id) continue
+      const r = a.value / a.threshold
+      if (worstRatio == null || r > worstRatio) { worstRatio = r; which = a }
+    }
+    return { ratio: worstRatio, alert: which }
+  }, [live])
+
+  // Whose instrument is reading that. A fenceline sensor running hot is the
+  // early warning working as designed; the same ratio on a DRAQA reference
+  // instrument is a different afternoon entirely, so the gauge has to say which.
+  const nearestWhere = useMemo(() => {
+    const src = nearest.alert?.source_id
+    if (!src) return nearest.alert?.source_type === 'mobile' ? 'fleet' : 'of limit'
+    if (reference.some((m) => m.id === src)) return 'reference'
+    if (fenceline.some((m) => m.id === src)) return 'fenceline'
+    return 'of limit'
+  }, [nearest.alert, reference, fenceline])
+
+  // The scale follows the reading. A fixed 1.6x ceiling pegged the needle and
+  // threw away the only thing the gauge had left to say — how far over.
+  const ratioMax = Math.max(1.5, (nearest.ratio ?? 0) * 1.2)
+
+  // Reports near this campus, split by whether the wind actually points at them.
+  const reports = useMemo(
+    () => (site ? placeReports(site.centroid, concernsQ.data ?? [], transportDeg) : []),
+    [site, concernsQ.data, transportDeg],
+  )
+  const nearClusters = useMemo(() => {
+    if (!site) return []
+    return (clustersQ.data ?? []).filter(
+      (cl) => bearingFrom(site.centroid, cl.centroid[0], cl.centroid[1]).distanceM <= 6000,
+    )
+  }, [clustersQ.data, site])
+  const downwindReports = reports.filter((r) => r.downwind).length
+  const pickedId = pick?.id ?? null
+
   /** Where the MFD is looking: a chosen stack, or the site as a whole. */
   const focus: Position | null = useMemo(() => {
     if (!site) return null
@@ -164,22 +238,41 @@ export function Scope() {
 
   const mfdLayers = useCallback((theme: Theme) => [
     ...(showGrid ? SegmentLayer({ data: segsQ.data, theme, dualEncode: 'width', minPasses: 3 }) : []),
-    ...(showModel ? DispersionLayer({ data: plumeQ.data, theme, maxOpacity: 0.1 }) : []),
-    ...MonitorLayer({ data: fenceline, theme, rings: false, labels: false, sizePx: 11 }),
+    ...(showPermit ? permitFootprintLayer({ theme, contours: model?.contours }) : []),
+    ...(showPlume ? DispersionLayer({ data: plumeQ.data, theme, maxOpacity: 0.16 }) : []),
+    /* The campus goes UNDER its own instruments. deck picks the topmost
+       layer, and the footprint is a polygon covering every fenceline sensor
+       on it — drawn last, it swallowed their clicks and every attempt to
+       inspect a sensor selected the site instead. */
+    ...SiteLayer({ data: site ? [site] : [], theme, emissionPoints: true, labels: true }),
+    ...MonitorLayer({
+      id: 'fenceline', data: fenceline, theme, rings: false, labels: false, sizePx: 11,
+      selectedId: pick?.kind === 'monitor' ? pick.id : null,
+    }),
     // Rings ON for these: a 2.5 km representativeness radius is exactly the
     // question — is my plume crossing the ground this instrument speaks for?
     ...MonitorLayer({
       id: 'reference', data: reference, theme, rings: true, labels: true, sizePx: 16,
-      selectedId: exposed?.monitor.id ?? null,
+      selectedId: pick?.kind === 'monitor' ? pick.id : (exposed?.monitor.id ?? null),
     }),
-    ...SiteLayer({ data: site ? [site] : [], theme, emissionPoints: true, labels: true }),
+    ...(showReports ? reportsOverlay({
+      theme,
+      reports,
+      clusters: nearClusters,
+      selectedId: pick?.kind === 'report' ? pick.id : null,
+      onSelect: (id) => setPick(id ? { kind: 'report', id } : null),
+    }) : []),
     ...(focus ? radarOverlay({
-      theme, origin: focus, contacts, selectedId: selected, onSelect: setSelected,
+      theme,
+      origin: focus,
+      contacts,
+      selectedId: pick?.kind === 'alert' ? pick.id : null,
+      onSelect: (id) => setPick(id ? { kind: 'alert', id } : null),
       transportDeg,
     }) : []),
   ], [
-    showGrid, showModel, segsQ.data, plumeQ.data, fenceline, reference,
-    site, focus, contacts, selected, transportDeg, exposed,
+    showGrid, showPlume, showPermit, showReports, segsQ.data, plumeQ.data, model, fenceline,
+    reference, site, focus, contacts, pick, transportDeg, exposed, reports, nearClusters,
   ])
 
   if (!site) {
@@ -192,13 +285,13 @@ export function Scope() {
   return (
     <div className={`${s.page} ${s.scopePage}`}>
       {/* ── the one-second read ─────────────────────────────────────────── */}
-      <div className={`${s.banner} ${threat ? s.bannerThreat : s.bannerClear}`}>
+      <div className={`${s.banner} ${alarm ? s.bannerThreat : s.bannerClear}`}>
         <div className={s.verdict}>
-          <span className={`${s.verdictGlyph} ${threat ? s.threatInk : s.clearInk}`}>
-            {threat ? '▲' : '◇'}
+          <span className={`${s.verdictGlyph} ${alarm ? s.threatInk : s.clearInk}`}>
+            {alarm ? '▲' : '◇'}
           </span>
-          <span className={`${s.verdictWord} ${threat ? s.threatInk : s.clearInk}`}>
-            {threat ? 'THREAT' : contacts.length ? 'WATCH' : 'CLEAR'}
+          <span className={`${s.verdictWord} ${alarm ? s.threatInk : s.clearInk}`}>
+            {level}
           </span>
         </div>
 
@@ -218,7 +311,7 @@ export function Scope() {
             </>
           ) : (
             <>
-              <span className={s.bannerHead}>No contacts on the scope</span>
+              <span className={s.bannerHead}>Nothing above an action level</span>
               <span className={s.bannerSub}>
                 Nothing from the regulator, the community or your fenceline in the current window.
               </span>
@@ -228,15 +321,15 @@ export function Scope() {
 
         <div className={s.bannerStats}>
           <Readout
-            label="Contacts"
+            label="Alerts"
             value={fmtNum(contacts.length, 0)}
-            tone={threat ? 'threat' : 'accent'}
+            tone={alarm ? 'threat' : 'accent'}
             big
           />
           <Readout
             label="Bearing"
             value={worst ? fmtBearing(worst.bearing) : '—'}
-            tone={threat ? 'threat' : undefined}
+            tone={alarm ? 'threat' : undefined}
           />
           <Readout
             label="Range"
@@ -253,6 +346,8 @@ export function Scope() {
 
       {/* ── the MFD, and the RWR beside it ─────────────────────────────── */}
       <div className={s.scopeBody}>
+        {/* the map, and whatever is picked on it, in one column */}
+        <div className={s.mapCol}>
         <Panel
           title={`MFD · ${focusName}`}
           aside={
@@ -260,11 +355,32 @@ export function Scope() {
               <Button size="sm" variant={showGrid ? 'secondary' : 'ghost'} onClick={() => setShowGrid((v) => !v)}>
                 GRID
               </Button>
+              <Button
+                size="sm"
+                variant={showReports ? 'secondary' : 'ghost'}
+                onClick={() => setShowReports((v) => !v)}
+                title="Resident reports — filled if the wind is carrying toward them"
+              >
+                REPORTS
+              </Button>
               <Button size="sm" variant={showWind ? 'secondary' : 'ghost'} onClick={() => setShowWind((v) => !v)}>
                 WIND
               </Button>
-              <Button size="sm" variant={showModel ? 'secondary' : 'ghost'} onClick={() => setShowModel((v) => !v)}>
-                MODEL
+              <Button
+                size="sm"
+                variant={showPermit ? 'secondary' : 'ghost'}
+                onClick={() => setShowPermit((v) => !v)}
+                title="The consultant's permit study — a long-run average footprint for the whole site"
+              >
+                PERMIT
+              </Button>
+              <Button
+                size="sm"
+                variant={showPlume ? 'secondary' : 'ghost'}
+                onClick={() => setShowPlume((v) => !v)}
+                title="This hour's modelled cone from each running stack"
+              >
+                PLUME
               </Button>
               <Button
                 size="sm"
@@ -282,6 +398,26 @@ export function Scope() {
             view={view}
             onViewChange={handleView}
             layers={mfdLayers}
+            /* One surface, one meaning: a click says "tell me about that".
+               Layers that carry their own onClick (reports, contacts) resolve
+               first; everything else is classified by the layer it came from. */
+            onClick={(info) => {
+              const obj = info.object as Record<string, unknown> | null
+              if (!obj) { setPick(null); return }
+              const lid = String(info.layer?.id ?? '')
+              if (lid.startsWith('mfd-reports') || lid.startsWith('mfd-contacts')) return
+              if (lid.startsWith('segments')) {
+                const id = (obj as unknown as SegmentFeature).properties?.id
+                if (id) setPick({ kind: 'segment', id })
+              } else if (lid.startsWith('reference') || lid.startsWith('fenceline')) {
+                if (typeof obj.id === 'string') setPick({ kind: 'monitor', id: obj.id })
+              } else if (lid.startsWith('sites')) {
+                // SiteLayer picks either a footprint or one of its stacks.
+                const point = (obj as { point?: { id?: string } }).point
+                if (point?.id) setPick({ kind: 'emission', id: point.id })
+                else if (typeof obj.id === 'string') setPick({ kind: 'site', id: obj.id })
+              }
+            }}
             minZoom={10}
             maxZoom={18}
             label={`Moving map centred on ${focusName}`}
@@ -309,104 +445,73 @@ export function Scope() {
             </MapOverlay>
 
             <MapOverlay place="bottom-left">
-              <Caps>
-                rings 1 · 2 · 4 · 6 km from {focusName}
-                {contacts.length ? ` · ${contacts.length} contact${contacts.length === 1 ? '' : 's'} within reach` : ' · scope clear'}
-              </Caps>
+              <div className={s.mapKey}>
+                <Caps>
+                  rings 1 · 2 · 4 · 6 km from {focusName}
+                  {contacts.length ? ` · ${contacts.length} alert${contacts.length === 1 ? '' : 's'} nearby` : ' · nothing nearby'}
+                </Caps>
+                {showReports && (
+                  <Caps>
+                    reports — filled is downwind of you, hollow is off your axis
+                    {downwindReports ? ` · ${downwindReports} downwind now` : ''}
+                  </Caps>
+                )}
+                {(showPermit || showPlume) && (
+                  <Caps>
+                    {showPermit ? 'permit — the study\u2019s long-run average, all wind directions' : ''}
+                    {showPermit && showPlume ? ' · ' : ''}
+                    {showPlume ? 'plume — this hour, one cone per running stack' : ''}
+                  </Caps>
+                )}
+              </div>
             </MapOverlay>
           </BaseMap>
         </Panel>
 
-        <div className={s.stack} style={{ minHeight: 0 }}>
-          {/* the one-second instrument: bearing, range, nothing else */}
-          <Panel
-            title="Threat scope"
-            aside={<Caps>{contacts.length ? `worst ${fmtBearing(worst?.bearing ?? null)}` : 'clear'}</Caps>}
-          >
-            <div className={s.rwrWrap}>
-              <RadarScope
-                contacts={radarContacts}
-                size={160}
-                site={site.centroid}
-                modelContours={model?.contours ?? null}
-                ownLabel={site.name}
-                selectedId={selected}
-                onSelect={setSelected}
-                rangeCurve="sqrt"
-                labels="none"
+        <div className={s.selected}>
+          <Selected
+            pick={pick}
+            onClear={() => setPick(null)}
+            now={now}
+            site={site}
+            measure={measureDef}
+            reports={reports}
+            contacts={contacts}
+            monitors={monitorsQ.data ?? []}
+            segments={segsQ.data?.features ?? []}
+            geo={(lon: number, lat: number) => bearingFrom(site.centroid, lon, lat)}
+          />
+        </div>
+        </div>
+
+        {/* how hard can this campus still run, and where is the air going */}
+        <div className={s.instruments}>
+          <Panel title="Margin">
+            <div className={s.gauges}>
+              <Gauge
+                label="Envelope used"
+                value={envelope?.usedPct ?? null}
+                max={100}
+                redline={85}
+                over={Boolean(envelope?.tight)}
+                readout={envelope ? fmtPct(envelope.usedPct, 0, false) : '—'}
+                sub="of safe"
+              />
+              <Gauge
+                label="Worst vs limit"
+                value={nearest.ratio}
+                max={ratioMax}
+                redline={1}
+                over={(nearest.ratio ?? 0) >= 1}
+                readout={nearest.ratio == null ? '—' : `${fmtNum(nearest.ratio, 2)}×`}
+                sub={nearestWhere}
               />
             </div>
-          </Panel>
-
-          {/* the promise: what is still available to run */}
-          <Panel title="Safe operating envelope">
-            <div className={s.envelope}>
-              <div className={s.envRow}>
-                <span className={`${s.envNum} num${envelope?.tight ? ` ${s.envNumTight}` : ''}`}>
-                  {envelope ? fmtPct(envelope.freePct, 0, false) : '—'}
-                </span>
-                <Caps ink>of the safe envelope left</Caps>
-                <span className={s.spacer} />
-                <span className="num" style={{ color: 'var(--ink-2)', fontSize: 'var(--text-xs)' }}>
-                  {envelope ? `${fmtPct(envelope.usedPct, 0, false)} used` : ''}
-                </span>
-              </div>
-              <div className={s.envBar}>
-                <div className={s.envUsed} style={{ width: `${envelope?.usedPct ?? 0}%` }} />
-                <div className={s.envTicks} />
-                <div className={s.envEdge} style={{ left: `${envelope?.usedPct ?? 0}%` }} />
-              </div>
-              <span className={s.bannerSub}>
-                {envelope?.freeMw != null
-                  ? `≈ ${fmtNum(envelope.freeMw, 0)} MW of additional load still inside the community-and-regulator-safe envelope at today's ${fmtNum(site.it_load_mw, 0)} MW IT load.`
-                  : 'Envelope not yet characterised for this site.'}
-              </span>
+            <div className={s.gaugeFoot}>
+              {envelope?.freeMw != null
+                ? `≈ ${fmtNum(envelope.freeMw, 0)} MW of additional load still inside the community-and-regulator-safe envelope at today's ${fmtNum(site.it_load_mw, 0)} MW IT load.`
+                : 'Envelope not yet characterised for this site.'}
             </div>
-          </Panel>
-
-          {/* threat-first, one click to the answer */}
-          <Panel
-            title="Contacts"
-            aside={<Caps>{contacts.length ? severityCountLine(counts) : 'none'}{folded ? ` · +${folded} folded` : ''}</Caps>}
-            className={s.stackGrow}
-          >
-            {alertsQ.isError ? (
-              <div className={s.err}>Scope offline — no contact feed.</div>
-            ) : contacts.length === 0 ? (
-              <div className={s.err}>No contacts. Nothing is pointing at you right now.</div>
-            ) : (
-              <div className={s.contacts}>
-                <div className={s.contactHead} aria-hidden>
-                  <span /><span>src</span><span>contact</span><span>brg</span><span>range</span><span>up for</span>
-                </div>
-                {contacts.map((c) => (
-                  <button
-                    key={c.alert.id}
-                    type="button"
-                    className={`${s.contact}${selected === c.alert.id ? ` ${s.contactActive}` : ''}`}
-                    onMouseEnter={() => setSelected(c.alert.id)}
-                    onFocus={() => setSelected(c.alert.id)}
-                    onClick={() => navigate({ to: `/industry/alerts/${c.alert.id}` })}
-                    title={c.alert.title}
-                  >
-                    <span
-                      className={s.contactGlyph}
-                      style={{ color: severityVar(c.alert.severity) }}
-                      aria-label={SEVERITY_LABEL[c.alert.severity]}
-                    >
-                      {c.glyph}
-                    </span>
-                    <span className={s.contactCode}>{c.alert.measure ? c.alert.measure.toUpperCase() : c.code}</span>
-                    <span className={s.contactName}>{shortTitle(c.alert)}</span>
-                    <span className={`${s.contactNum} num`}>{fmtBearing(c.bearing).split(' ')[1]}</span>
-                    <span className={`${s.contactNum} num`}>{fmtDistance(c.distance, 1)}</span>
-                    <span className={`${s.contactAge} num`}>
-                      {relativeShort(c.alert.started_at, now)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
           </Panel>
 
           {/* the operator's real question: who is downwind of me right now */}
@@ -479,14 +584,85 @@ export function Scope() {
             ) : null}
           </Panel>
         </div>
+
+        <div className={s.stack} style={{ minHeight: 0 }}>
+          {/* the one-second instrument: bearing, range, nothing else */}
+          <Panel
+            title="Proximity"
+            aside={<Caps>{contacts.length ? `worst ${fmtBearing(worst?.bearing ?? null)}` : 'clear'}</Caps>}
+          >
+            <div className={s.rwrWrap}>
+              <RadarScope
+                contacts={radarContacts}
+                size={160}
+                site={site.centroid}
+                modelContours={model?.contours ?? null}
+                /* Name which of the two dispersion pictures this outline is —
+                   the scope carries the permit study, the MFD carries today. */
+                modelLabel="Permit footprint · annual"
+                ownLabel={site.name}
+                selectedId={pick?.kind === 'alert' ? pick.id : null}
+                onSelect={(id) => setPick(id ? { kind: 'alert', id } : null)}
+                rangeCurve="sqrt"
+                labels="none"
+              />
+            </div>
+          </Panel>
+
+          {/* worst first, one click to the answer */}
+          <Panel
+            title="Alerts"
+            aside={<Caps>{contacts.length ? severityCountLine(counts) : 'none'}{folded ? ` · +${folded} folded` : ''}</Caps>}
+            className={s.stackGrow}
+          >
+            {alertsQ.isError ? (
+              <div className={s.err}>Alert feed unavailable.</div>
+            ) : contacts.length === 0 ? (
+              <div className={s.err}>Nothing above an action level near this site right now.</div>
+            ) : (
+              <div className={s.contacts}>
+                <div className={s.contactHead} aria-hidden>
+                  <span /><span>src</span><span>source</span><span>brg</span><span>range</span><span>up for</span>
+                </div>
+                {contacts.map((c) => (
+                  <button
+                    key={c.alert.id}
+                    type="button"
+                    className={`${s.contact}${pickedId === c.alert.id ? ` ${s.contactActive}` : ''}`}
+                    onMouseEnter={() => setPick({ kind: 'alert', id: c.alert.id })}
+                    onFocus={() => setPick({ kind: 'alert', id: c.alert.id })}
+                    onClick={() => navigate({ to: `/industry/alerts/${c.alert.id}` })}
+                    title={c.alert.title}
+                  >
+                    <span
+                      className={s.contactGlyph}
+                      style={{ color: severityVar(c.alert.severity) }}
+                      aria-label={SEVERITY_LABEL[c.alert.severity]}
+                    >
+                      {c.glyph}
+                    </span>
+                    <span className={s.contactCode}>{c.alert.measure ? c.alert.measure.toUpperCase() : c.code}</span>
+                    <span className={s.contactName}>{shortTitle(c.alert)}</span>
+                    <span className={`${s.contactNum} num`}>{fmtBearing(c.bearing).split(' ')[1]}</span>
+                    <span className={`${s.contactNum} num`}>{fmtDistance(c.distance, 1)}</span>
+                    <span className={`${s.contactAge} num`}>
+                      {relativeShort(c.alert.started_at, now)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+        </div>
       </div>
 
       {/* ── how long has each contact been up ───────────────────────────── */}
       <div className={s.ribbon}>
         <ContactRibbon
           alerts={contacts.map((c) => c.alert)}
-          selected={selected}
-          onSelect={setSelected}
+          selected={pick?.kind === 'alert' ? pick.id : null}
+          onSelect={(id) => setPick(id ? { kind: 'alert', id } : null)}
         />
       </div>
     </div>
@@ -515,7 +691,7 @@ function ContactRibbon({
   )
   if (!rows.length) return null
   return (
-    <Panel title="Contact history · how long each has been up">
+    <Panel title="Alert history · how long each has been up">
       <AlertTimeline
         alerts={rows}
         rowHeight={14}

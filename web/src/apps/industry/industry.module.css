@@ -22,11 +22,23 @@
 .scopeBody {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(340px, 0.62fr);
+  /* Quad stack: the map, whatever is picked on it, the gauges, the scope.
+     Each column has one job, so nothing has to scroll to be read — the rail
+     used to hold four panels and lost the bottom two below the fold. */
+  /* Three columns, each a vertical stack:
+       1. the map, with whatever is picked on it directly beneath
+       2. the performance bars, with the wind under them
+       3. the scope, with the alert list under it
+     The four-column version put the gauges in a strip too narrow to share, so
+     the wind ended up in the alerts column and fell off the bottom. */
+  grid-template-columns:
+    minmax(0, 1.6fr)        /* MFD + selected */
+    minmax(280px, 0.74fr)   /* margin + wind */
+    minmax(285px, 0.68fr);  /* scope + alerts */
   gap: var(--s-2);
 }
 @media (max-width: 1180px) {
-  .scopeBody { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .scopeBody { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; }
 }
 
 /* ─────────────────────────────────────────────── the panel: corner brackets */
@@ -215,6 +227,14 @@
 }
 @media (max-width: 1180px) { .detailBody { grid-template-columns: minmax(0, 1fr); } }
 .stack { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; overflow-y: auto; }
+/* Panels in a scrolling rail keep their natural height. Without this they are
+   squeezed instead — the scope gets clipped through the middle and a report's
+   closing line is cut off — which reads as broken rather than as "scroll for
+   more". The alert list is the one thing allowed to give, via .stackGrow. */
+.stack > * { flex: none; }
+/* ...except the alert list, which is the rail's reason for existing and should
+   absorb whatever height the scope above it does not use. */
+.stack > .stackGrow { flex: 1 1 auto; }
 .scrollStack { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--s-2); padding-right: 2px; }
 /* Panels in a scrolling column keep their natural height — squeezing them makes
    their content spill over the panel below. */
@@ -352,3 +372,207 @@
   background: color-mix(in srgb, var(--threat, var(--sev-critical)) 9%, transparent);
   box-shadow: inset 2px 0 0 var(--threat, var(--sev-critical));
 }
+
+/* ── the gauge stack ──────────────────────────────────────────────────────
+   Two vertical tapes, read like N1/N2. The operator lives near the top of the
+   green and watches the redline; that is the whole job, so it gets a column of
+   its own rather than a bar squeezed into a card. */
+.instruments { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; }
+.instruments > * { flex: none; }
+.gauges { display: grid; gap: var(--s-2); padding-block-start: var(--s-1); }
+
+.tape { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-height: 0; }
+.tapeLabel {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--ink-3); text-align: center; line-height: 1.15;
+}
+.tapeBody {
+  position: relative; flex: 1; min-height: 3rem; inline-size: 1.7rem;
+  background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 2px;
+  overflow: hidden;
+}
+/* The band you are not supposed to enter. */
+.tapeRed {
+  position: absolute; inset-inline: 0; top: 0;
+  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 22%, transparent);
+  border-bottom: 1px solid var(--threat, var(--sev-critical));
+}
+.tapeFill {
+  position: absolute; inset-inline: 1px; bottom: 1px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--scope, var(--accent)) 55%, transparent),
+    color-mix(in srgb, var(--scope, var(--accent)) 95%, transparent)
+  );
+}
+.tapeFillOver {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--threat, var(--sev-critical)) 55%, transparent),
+    color-mix(in srgb, var(--threat, var(--sev-critical)) 95%, transparent)
+  );
+}
+/* Graduations every 10% of full scale — enough to read a trend, not a ruler. */
+.tapeTicks {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    to top, transparent 0, transparent calc(10% - 1px),
+    color-mix(in srgb, var(--ink-3) 45%, transparent) calc(10% - 1px),
+    color-mix(in srgb, var(--ink-3) 45%, transparent) 10%
+  );
+}
+.tapeNeedle {
+  position: absolute; inset-inline: -1px; block-size: 0;
+  border-top: 2px solid var(--ink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.tapeNeedleOver { border-top-color: var(--threat, var(--sev-critical)); }
+.tapeValue { font-size: var(--text-sm); color: var(--ink); line-height: 1; }
+.tapeValueOver { color: var(--threat, var(--sev-critical)); }
+.tapeSub {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.gaugeFoot {
+  padding: var(--s-2); border-top: 1px solid var(--line);
+  font-size: var(--text-2xs); color: var(--ink-2); line-height: 1.35;
+}
+.instrumentsBody { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+
+/* Two lines of key under the map: what the rings mean, and which of the two
+   dispersion pictures is currently drawn. */
+.mapKey { display: grid; gap: 2px; }
+
+/* ── community reports ────────────────────────────────────────────────────
+   The inbound half of outreach. Shares the row shape used elsewhere in this
+   app so a resident's report reads with the same weight as a sensor contact —
+   which is the point: to this operator both are inbound signals. */
+.rows { display: grid; gap: 2px; min-inline-size: 0; }
+.trendWrap { display: grid; gap: 4px; padding: 0 var(--s-2) var(--s-2); }
+.reportRow {
+  display: flex; align-items: center; gap: var(--s-2);
+  inline-size: 100%; text-align: left; padding: 5px var(--s-2);
+  background: transparent; border: 1px solid transparent; border-radius: 3px;
+  color: inherit; cursor: pointer;
+}
+.reportRow:hover { border-color: var(--line); background: var(--surface); }
+.reportRowOn {
+  border-color: color-mix(in srgb, var(--actor-community) 60%, transparent);
+  background: color-mix(in srgb, var(--actor-community) 10%, transparent);
+}
+.reportGlyph { flex: none; inline-size: 1.4rem; text-align: center; font-size: var(--text-sm); }
+.reportCount {
+  flex: none; inline-size: 1.8rem; text-align: center;
+  font-family: var(--font-mono); font-size: var(--text-sm); color: var(--actor-community);
+}
+.reportBody { display: grid; gap: 1px; min-inline-size: 0; flex: 1; }
+.reportTitle {
+  font-size: var(--text-xs); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reportSub {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.reportDetail { display: grid; gap: var(--s-2); padding: var(--s-2); }
+.reportQuote {
+  margin: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--ink-2);
+  padding-inline-start: var(--s-2);
+  border-inline-start: 2px solid color-mix(in srgb, var(--actor-community) 55%, transparent);
+}
+.reportActions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; padding: var(--s-2); }
+.reportDetailHead { display: flex; align-items: flex-start; gap: var(--s-2); justify-content: space-between; }
+.linkBtn {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.linkBtn:hover { color: var(--scope, var(--accent)); }
+
+/* In the detail block the title is the point, so let it wrap to two lines
+   rather than truncating, and keep the downwind tag on one line beside it. */
+.reportDetailHead .reportTitle {
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.25;
+}
+.reportDetailHead > :last-child { white-space: nowrap; flex: none; }
+
+/* The selected-item column. Scrolls on its own so a long report never pushes
+   the gauges or the scope off the screen. */
+.selected { display: flex; flex-direction: column; min-height: 0; }
+.selBody { min-height: 0; overflow-y: auto; }
+.selHead { display: flex; align-items: flex-start; gap: var(--s-2); justify-content: space-between; }
+.selTitle { font-size: var(--text-sm); color: var(--ink); line-height: 1.25; }
+.selRow {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2);
+  padding-block: 2px; border-block-end: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.selKey {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.selVal { font-size: var(--text-xs); color: var(--ink); text-align: right; }
+
+/* ── horizontal performance bars ──────────────────────────────────────────
+   The tape, turned on its side so it can share a column with the wind. */
+.gauge { display: grid; gap: 3px; padding: var(--s-2) var(--s-3); }
+.gaugeHead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.gaugeLabel {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+.gaugeValue { font-size: var(--text-lg); line-height: 1; color: var(--ink); }
+.gaugeValueOver { color: var(--threat, var(--sev-critical)); }
+.gaugeTrack {
+  position: relative; block-size: 0.85rem;
+  background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 2px;
+  overflow: hidden;
+}
+/* The band you are not supposed to enter. */
+.gaugeRed {
+  position: absolute; inset-block: 0; inset-inline-end: 0;
+  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 22%, transparent);
+  border-inline-start: 1px solid var(--threat, var(--sev-critical));
+}
+.gaugeFill {
+  position: absolute; inset-block: 1px; inset-inline-start: 1px;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--scope, var(--accent)) 50%, transparent),
+    color-mix(in srgb, var(--scope, var(--accent)) 92%, transparent)
+  );
+}
+.gaugeFillOver {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--threat, var(--sev-critical)) 50%, transparent),
+    color-mix(in srgb, var(--threat, var(--sev-critical)) 92%, transparent)
+  );
+}
+.gaugeTicks {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    to right, transparent 0, transparent calc(10% - 1px),
+    color-mix(in srgb, var(--ink-3) 45%, transparent) calc(10% - 1px),
+    color-mix(in srgb, var(--ink-3) 45%, transparent) 10%
+  );
+}
+.gaugeNeedle {
+  position: absolute; inset-block: -1px; inline-size: 0;
+  border-inline-start: 2px solid var(--ink);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.gaugeNeedleOver { border-inline-start-color: var(--threat, var(--sev-critical)); }
+.gaugeSub {
+  font-family: var(--font-mono); font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
+}
+
+/* Column 1: the map, and the picked item directly beneath it. */
+.mapCol { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; }
+.mapCol > :first-child { flex: 1 1 auto; min-height: 0; }
+/* The detail pane is capped so a long report can never squeeze the map. */
+.mapCol > .selected { flex: 0 0 auto; max-block-size: 38%; }

@@ -58,7 +58,7 @@ export function ContactDetail({ alertId }: { alertId: string }) {
   const advisor = useAdvisor(alertId, site?.id ?? null)
 
   if (alertQ.isError) {
-    return <div className={`${s.page} ${s.detailPage}`}><div className={s.err}>Contact not found.</div></div>
+    return <div className={`${s.page} ${s.detailPage}`}><div className={s.err}>Alert not found.</div></div>
   }
   if (!alert) {
     return <div className={`${s.page} ${s.detailPage}`}><div className={s.err}>Acquiring contact…</div></div>
