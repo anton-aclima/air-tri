@@ -21,9 +21,37 @@ from collections import defaultdict
 
 import numpy as np
 
-from .measures import INDICATORS, MODALITIES, REF_LEVELS, SCALES
+from .measures import (
+    INDICATORS, MODALITIES, REF_LEVELS, SCALES, SENSE, SENSE_BETA, SENSE_K, UNITS,
+)
 
+# The `segment_pass` column contract. Must stay at ten: `vcols` below reads one
+# physical column per entry, and `campaign_summary` does the same.
 ORDER = list(MODALITIES) + list(INDICATORS)
+
+# What actually gets a `segment_stat` row. The composite is derived from three
+# of the columns above, so it rides along in the same matrix as an eleventh
+# column without ever being read from a pass row.
+STAT_ORDER = ORDER + [SENSE]
+
+# The AQHI coefficients are per-ppb for the gases and per-ug/m3 for PM2.5. That
+# is what `measures.UNITS` stores today, and nothing converts -- so a future edit
+# to any of those three unit strings would silently change the index by orders of
+# magnitude with no error anywhere. Fail the build instead.
+_SENSE_UNITS = {"no2": "ppb", "o3": "ppb", "pm25": "ug/m3"}
+for _m, _u in _SENSE_UNITS.items():
+    if UNITS[_m] != _u:
+        raise AssertionError(
+            f"aclima_sense expects {_m} in {_u!r}, measure_def says {UNITS[_m]!r}. "
+            "The AQHI coefficients are unit-specific; fix the unit or the coefficient."
+        )
+
+# The per-pass path is sound only while each term stays close to linear in its
+# concentration. Curvature is what would reintroduce a selection bias -- the
+# thing that makes a max composite read high. Measured at this campaign's p99
+# concentrations the worst term is ~6 % above linear; fail well before that
+# becomes the reason the number moved.
+SENSE_CURVATURE_TOL = 0.15
 
 # A per-day or per-hour statistic computed from one or two passes is degenerate --
 # median == p10 == p90 == max, and persistence is 0 or 1. Real Aclima does not
@@ -31,6 +59,18 @@ ORDER = list(MODALITIES) + list(INDICATORS)
 # written, whatever its pass count, so no segment is ever missing from the map.
 MIN_PASSES_DATE = 2
 MIN_PASSES_HOUR = 4
+
+# The composite deliberately rides the SAME floors as everything else.
+#
+# An earlier version gave it stricter ones (8/4/6), reasoning that a three-input
+# index inherits the weakest of its inputs' pass counts. Measured, that inheritance
+# is worth about 1 % -- MEASURE_DROP_RATE invalidates each channel independently, so
+# 98.95 % of passes carry all three -- while the stricter floors cost far more than
+# they bought: only 618 of 1,307 segments kept any `date:` row, against 1,307 for
+# every real measure, so the daily series on segment detail was empty on more than
+# half the streets in the campaign. A 1 % thinner sample does not justify a 53 %
+# hole, and the degeneracy the floors exist to prevent (median == p10 == p90 on two
+# passes) is not worse here than for any other measure.
 
 
 def risk_from_scale(value: float, scale) -> int:
@@ -56,6 +96,88 @@ def _risk_vec(vals: np.ndarray, scale) -> np.ndarray:
     return np.rint(np.interp(vals, xs, ys)).astype(int)
 
 
+def _sense(no2: np.ndarray, o3: np.ndarray, pm25: np.ndarray) -> np.ndarray:
+    """Aclima Sense, per pass. NaN wherever any of the three is missing.
+
+    Additive excess-relative-risk, not a max and not a weighted mean of the
+    `risk` ladders. Two reasons, both load-bearing:
+
+    * The ladders in `SCALES` are not mutually calibrated -- `risk_from_scale`
+      returns 92 for CO at its NAAQS, 59 for O3 at its NAAQS and 25 for PM2.5 at
+      the annual NAAQS -- so a max or a mean across them is decided by ladder
+      steepness rather than by air quality. Working from physical concentrations
+      with jointly-estimated coefficients makes that whole class of error
+      unreachable.
+    * Computing per pass is what buys honest p10/p90/max and a `persistence`
+      that has a definition at all. There is no selection bias to worry about,
+      unlike a max: the max of N noisy draws is pulled upward on every single
+      pass, whereas a sum is just a sum.
+
+    IT DOES NOT COMMUTE WITH THE MEDIAN, and an earlier version of this design
+    claimed it did. Measured on this campaign: the median of the per-pass index
+    is 27.4 across segments, while the index evaluated at each pollutant's median
+    is 20.4 -- a systematic 7-point gap, up to 17.6 on the worst street. The
+    reason is not the curvature of expm1 (that is under 1 % here); it is that a
+    median is not additive. NO2 and O3 are anti-correlated on this data
+    (r = -0.62, from the titration term in `field`), so a pass with high NO2 has
+    low O3 and vice versa -- most passes are elevated in *something*, while each
+    pollutant's own median is mid. The sum of the medians is therefore a
+    combination that no drive-by ever exhibited.
+
+    Both numbers are defensible and they answer different questions. This one
+    answers "what was in the air on a typical pass down this street", which is
+    the only version for which p10, p90 and persistence mean anything. The
+    consequence is that this index is NOT the AQHI of this street -- it is the
+    AQHI arithmetic evaluated on instantaneous curbside air, which runs higher
+    than the 3-hour averages the coefficients were fitted on. That has to be
+    said wherever the number is shown; it is not a footnote.
+
+    If this is ever changed to a max, or to anything strongly convex, the
+    per-pass path silently acquires exactly the upward selection bias it does not
+    have today. `_assert_sense_near_linear` is what catches that.
+
+    A missing component drops the whole pass rather than renormalising over the
+    survivors: each term is an absolute excess risk, not a share, so rescaling
+    would invent risk. At MEASURE_DROP_RATE this costs ~1 % of passes.
+    """
+    ex = (
+        np.expm1(SENSE_BETA["no2"] * no2)
+        + np.expm1(SENSE_BETA["o3"] * o3)
+        + np.expm1(SENSE_BETA["pm25"] * pm25)
+    )
+    return np.clip(SENSE_K * ex, 0.0, 100.0)
+
+
+def _assert_sense_near_linear(vals: np.ndarray, si: dict):
+    """Fail the build if the composite stops being near-linear in its inputs.
+
+    Per-pass is safe because a sum has no selection bias. Curvature is what would
+    change that: a strongly convex transform weights the spiky pass more than the
+    quiet one, which is a max in slow motion. So measure the curvature at the
+    concentrations this campaign actually produced, and refuse to build if the
+    form has drifted far enough for that to be the reason the number moved.
+
+    This deliberately does NOT check that the index commutes with the median --
+    it does not, by 7 index points, and that is a property of medians rather than
+    a defect. See `_sense`.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        for m, beta in SENSE_BETA.items():
+            x = float(np.nanpercentile(vals[:, si[m]], 99))
+            if not np.isfinite(x) or x <= 0:
+                continue
+            lin = beta * x
+            off = abs(float(np.expm1(lin)) - lin) / lin
+            if off > SENSE_CURVATURE_TOL:
+                raise AssertionError(
+                    f"aclima_sense is no longer near-linear in {m}: {off:.1%} above linear "
+                    f"at the p99 concentration ({x:.1f}), tolerance {SENSE_CURVATURE_TOL:.0%}. "
+                    "A convex composite reintroduces the upward selection bias that per-pass "
+                    "aggregation only avoids for additive forms."
+                )
+
+
 def build_segment_stats(segments, pass_cols, pass_rows, campaign_id: str):
     """Returns (columns, rows) for `segment_stat`."""
     if not pass_rows:
@@ -67,7 +189,7 @@ def build_segment_stats(segments, pass_cols, pass_rows, campaign_id: str):
     seg = np.empty(n, dtype=np.int32)
     dates = np.empty(n, dtype=np.int32)
     hours = np.empty(n, dtype=np.int8)
-    vals = np.full((n, len(ORDER)), np.nan, dtype=np.float64)
+    vals = np.full((n, len(STAT_ORDER)), np.nan, dtype=np.float64)
     date_list: list[str] = []
     date_ix: dict[str, int] = {}
     vcols = [ci[m] for m in ORDER]
@@ -87,7 +209,15 @@ def build_segment_stats(segments, pass_cols, pass_rows, campaign_id: str):
             if v is not None:
                 vals[i, k] = v
 
-    ref = np.array([REF_LEVELS[m] for m in ORDER], dtype=float)
+    # The composite is an eleventh column computed from three of the ten, not an
+    # eleventh thing the cars measured. `vcols` above still iterates ORDER, so
+    # nothing in the fill loop knows about it.
+    _si = {m: k for k, m in enumerate(ORDER)}
+    vals[:, -1] = _sense(vals[:, _si["no2"]], vals[:, _si["o3"]], vals[:, _si["pm25"]])
+
+    _assert_sense_near_linear(vals, _si)
+
+    ref = np.array([REF_LEVELS[m] for m in STAT_ORDER], dtype=float)
     cols = (
         "segment_id", "campaign_id", "measure", "window",
         "n_passes", "mean", "median", "p10", "p90", "max", "persistence", "risk",
@@ -107,7 +237,7 @@ def build_segment_stats(segments, pass_cols, pass_rows, campaign_id: str):
             mx = np.nanmax(block, axis=0)
             pers = np.nansum(block > ref[None, :], axis=0) / np.maximum(1, counts)
         sid = segments[seg_k].id
-        for k, m in enumerate(ORDER):
+        for k, m in enumerate(STAT_ORDER):
             if counts[k] < min_passes:
                 continue
             med = float(q[1, k])

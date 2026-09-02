@@ -23,6 +23,11 @@ MEASURE_LEVERS = {
     "methane_leak": ("gas supply train and turbine seals", "a leak indicator means unburned fuel is escaping"),
     "diesel": ("diesel backup generators", "the diesel indicator isolates compression-ignition exhaust"),
     "nondiesel": ("gas turbine load", "the non-diesel indicator points at the gas fleet"),
+    # No single lever moves a composite: it is built from three pollutants with
+    # different sources, so the honest advice is to name the term that is driving
+    # it rather than to pretend there is one dial.
+    "aclima_sense": ("whichever of NOx, PM or ozone precursors is driving the score",
+                     "this is a health index over three pollutants, not a tracer with one source"),
 }
 
 SEVERITY_THROTTLE = {"critical": 40, "warning": 25, "watch": 15, "info": 10}

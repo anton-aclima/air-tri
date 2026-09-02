@@ -12,7 +12,15 @@ export type Role = 'community' | 'regulator' | 'industry' | 'admin';
 
 export type ModalityCode = 'no2' | 'pm25' | 'bc' | 'o3' | 'co' | 'co2' | 'ch4';
 export type IndicatorCode = 'methane_leak' | 'diesel' | 'nondiesel';
-export type MeasureCode = ModalityCode | IndicatorCode;
+/**
+ * A derived index — computed from other measures, carried by no instrument.
+ * Kept as its own alternative rather than folded into `ModalityCode` so that
+ * every `family` check has to name it explicitly: a composite is not a species,
+ * cannot be a monitor channel, cannot carry an action level, and must never be
+ * painted on an auto-stretched colour domain.
+ */
+export type CompositeCode = 'aclima_sense';
+export type MeasureCode = ModalityCode | IndicatorCode | CompositeCode;
 
 export type Severity = 'info' | 'watch' | 'warning' | 'critical';
 export type MonitorGrade = 'reference' | 'fem' | 'lowcost';
@@ -104,7 +112,7 @@ export interface MeasureDef {
   label: string;
   short_label: string;
   unit: string;
-  family: 'modality' | 'indicator';
+  family: 'modality' | 'indicator' | 'composite';
   ref_level: number | null;
   healthy_max: number | null;
   /** [[concentration, risk0_100], ...] — piecewise-linear, community risk scores. */

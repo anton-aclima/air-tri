@@ -67,6 +67,7 @@ import type {
 } from '@/core/types'
 import { fleetDelayFor, timeParam, timeRange, useSession } from '@/core/session'
 import { findMeasure, measuresOf } from '@/core/measures'
+import type { MeasureFamily } from '@/core/measures'
 
 // ───────────────────────────────────────────────────────────── stale times
 
@@ -245,8 +246,10 @@ export function useBootstrap(opts?: QueryOpts<Bootstrap>): UseQueryResult<Bootst
   return useApiQuery(qk.bootstrap, api.getBootstrap, STALE.bootstrap, opts)
 }
 
-/** `measure_def` rows, sorted. `family` filters modality vs indicator. */
-export function useMeasures(family?: 'modality' | 'indicator'): MeasureDef[] {
+/** `measure_def` rows, sorted. `family` filters; pass `PICKABLE` for map lenses. */
+export function useMeasures(
+  family?: MeasureFamily | readonly MeasureFamily[],
+): MeasureDef[] {
   const { data } = useBootstrap()
   return measuresOf(data?.measures, family)
 }

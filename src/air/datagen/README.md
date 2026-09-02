@@ -219,9 +219,24 @@ alive the moment the database is built.
 
 ## Extending
 
-Adding a measure means: a row in `measures.py`, a term in `field._compose`, a column
-in `simulate.MOBILE_NOISE`, and the schema column — which datagen does not own, so
-ask the orchestrator first.
+Adding a **measured** thing means: a row in `_MEASURES` in `measures.py`, a term in
+`field._compose`, a column in `simulate.MOBILE_NOISE`, and the schema column — which
+datagen does not own, so ask the orchestrator first.
+
+Adding a **derived** thing costs none of those four. `aclima_sense` is the first one:
+a row in `_COMPOSITES` (`family='composite'`, so `MODALITIES`/`INDICATORS` exclude it
+and `simulate` never looks for a column that isn't there), plus a column appended to
+the stats matrix in `stats.py`. Nothing drives it, no instrument reads it, and it has
+no `segment_pass` column — it is computed from three columns that do.
+
+Two things to know before writing another one. It must be computed inside
+`build_segment_stats`, not in `build.py`: both write sites — `build_world` and
+`regenerate_drive_plan`, which backs `POST /admin/campaigns/{id}/drive-plan` — blind-insert
+whatever that function returns, so anything added in `build.py` is silently missing
+after a drive-plan regeneration. And builds run with `PRAGMA foreign_keys = OFF`
+(`db.py`), so a typo'd measure code inserts cleanly, orphans, and shows up only as a
+blank map layer with no error — share the code literal, never retype it, and count the
+rows after the build rather than trusting the map.
 
 The narrative layer hooks in at `air.datagen.narrative.seed(conn, ctx)`. The `ctx`
 contract is documented in full in the `build.py` module docstring. It is the

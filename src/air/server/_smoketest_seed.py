@@ -31,6 +31,14 @@ DAYS = 14
 
 MEASURES = [
     # code, label, short, unit, family, ref, healthy_max, scale, ramp, decimals, order, plain_name
+    # The composite leads, as it does in the real registry. Its scale is the
+    # identity because the value is already 0-100; its unit is the empty string
+    # because it has none, and every unit-suppression path in the web app keys
+    # off role and metric rather than off the measure.
+    ("aclima_sense", "Aclima Sense", "Sense", "", "composite", 20.0, 30.0,
+     [[0, 0], [100, 100]],
+     ["#3FBF8F", "#9ED45C", "#F2C744", "#F08A3C", "#E2544F", "#9B4FA8", "#7A2438"], 0, 0,
+     "the overall health score"),
     ("no2", "Nitrogen Dioxide", "NO2", "ppb", "modality", 20.0, 15.0,
      [[0, 0], [15, 20], [30, 45], [55, 70], [90, 90], [140, 100]],
      ["#e8f2e0", "#b9d99a", "#e8c95a", "#e08a3c", "#c0392b"], 1, 1, "traffic and generator exhaust"),

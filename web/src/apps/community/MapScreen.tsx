@@ -36,7 +36,7 @@ import {
   usePulse,
 } from '@/components'
 import { relativeTime } from '@/core/format'
-import { plainName } from '@/core/measures'
+import { PICKABLE, plainName } from '@/core/measures'
 import {
   useActiveMeasure,
   useConcernClusters,
@@ -62,7 +62,9 @@ export function MapScreen() {
   const fleet = useFleet().data ?? []
   const delayMin = useFlags()?.community_fleet_delay_min ?? 180
 
-  const measures = useMeasures('modality')
+  // PICKABLE, not 'modality': the overall health score is the lens this screen
+  // exists to show a resident, and it is a composite rather than a species.
+  const measures = useMeasures(PICKABLE)
   const measure = useActiveMeasure()
   const setMeasure = useSession((st) => st.setMeasure)
   const flyTo = useSession((st) => st.flyTo)

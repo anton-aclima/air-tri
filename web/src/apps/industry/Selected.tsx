@@ -183,10 +183,11 @@ export function Selected(props: SelectedProps) {
         {m.measures.map((code) => {
           const l = m.latest?.[code]
           if (!l) return null
+          const active = code === measure?.code
           return (
             <Row
               key={code}
-              label={code.toUpperCase()}
+              label={active ? `${code.toUpperCase()} ◂` : code.toUpperCase()}
               value={
                 <span style={{ color: l.exceeds ? 'var(--threat, var(--sev-critical))' : undefined }}>
                   {fmtNum(l.value, 1)}{l.exceeds ? ' · over' : ''}
@@ -195,6 +196,15 @@ export function Selected(props: SelectedProps) {
             />
           )
         })}
+        {/* An instrument that does not carry the channel you are reading is not
+            a quiet instrument — the dot on the map goes un-alarmed either way,
+            and only this line tells the two apart. */}
+        {measure && !m.measures.includes(measure.code) ? (
+          <span className={s.reportNote}>
+            This instrument has no {measure.short_label} channel. Nothing here confirms or
+            denies what the streets are showing you.
+          </span>
+        ) : null}
         {!mine ? (
           <span className={s.reportNote}>
             This is a reference instrument you do not own. Your fenceline exists so that this

@@ -22,6 +22,7 @@ import {
 } from '@/components'
 import { Button } from '@/app/ui'
 import { fmtCompact, fmtNum, fmtWind, relativeShort } from '@/core/format'
+import { PICKABLE } from '@/core/measures'
 import {
   useActiveMeasure, useAlerts, useCampaignBoundary, useCampaignInfo, useConcernClusters,
   useConcerns, useFleet, useMeasures, useMonitors, useSegments, useSites,
@@ -49,7 +50,10 @@ export function MapScreen() {
   const alerts = useAlerts({}).data
   const live = useMemo(() => liveAlerts(alerts), [alerts])
 
-  const measures = useMeasures('modality')
+  // PICKABLE, not 'modality' — the composite is a lens here too. What it is not
+  // is an instrument channel, which is why the blind-verdict banner below has to
+  // branch on family rather than on tower membership alone.
+  const measures = useMeasures(PICKABLE)
   const measure = useActiveMeasure()
   const measureCode = useSession((x) => x.measure)
   const setMeasure = useSession((x) => x.setMeasure)
@@ -104,16 +108,28 @@ export function MapScreen() {
 
   const { reach } = useReach(measureCode)
   const canSee = useMemo(() => towerMeasures(towers), [towers])
-  const blind = !canSee.has(measureCode)
+  /**
+   * A derived index is not a channel the agency failed to install. `blind`
+   * means "nobody is watching this pollutant"; for a composite the true
+   * statement is "nothing instruments this, because it is arithmetic" — and
+   * printing the first where the second is meant turns a property of the number
+   * into an accusation against DRAQA.
+   */
+  const derived = measure?.family === 'composite'
+  const blind = !derived && !canSee.has(measureCode)
 
-  const domain = useMemo(() => {
+  const domain = useMemo<[number, number]>(() => {
+    // A derived index is defined on 0-100 and means the same thing everywhere.
+    // Stretching it to the local spread would repaint a campaign that is
+    // honestly uniform as a full-scale emergency.
+    if (derived) return [0, 100]
     const vals: number[] = []
     for (const f of segments?.features ?? []) if (f.properties.value != null) vals.push(f.properties.value)
     // No floor at zero: ambient NO2 never approaches zero, so anchoring there
     // pushes every ordinary street into the hot half of the ramp and the real
     // hotspot stops standing out. p2–p98 of what was actually measured.
     return robustDomain(vals, { floorAtZero: false })
-  }, [segments])
+  }, [segments, derived])
 
   const otherMonitors = useMemo(
     () => allMonitors.filter((m) => m.owner_type !== 'regulator'),
@@ -135,7 +151,13 @@ export function MapScreen() {
             {fmtNum(campaign?.fleet_size ?? 0, 0)} cars
           </span>
           <span className={s.sub}>
-            {blind ? (
+            {derived ? (
+              <>
+                <b>{measure?.short_label}</b> is a derived index, not a species — no instrument
+                anywhere carries it. Every line on this map is the fleet’s own measurements
+                run through the formula.
+              </>
+            ) : blind ? (
               <>
                 No reference instrument carries a <b>{measureCode.toUpperCase()}</b> channel. Every
                 line on this map for this pollutant was measured by the fleet.
@@ -321,6 +343,8 @@ export function MapScreen() {
                   key={t.monitor.id}
                   monitor={t.monitor}
                   measureCode={measureCode}
+                  measureLabel={measure?.short_label ?? measureCode.toUpperCase()}
+                  derived={derived}
                   segments={t.segments}
                   km={t.km}
                   lo={t.lo}
@@ -484,10 +508,14 @@ export function MapScreen() {
 }
 
 function TowerRow({
-  monitor, measureCode, segments, km, lo, hi, towerValue, spread, active, onClick,
+  monitor, measureCode, measureLabel, derived, segments, km, lo, hi, towerValue, spread, active, onClick,
 }: {
   monitor: Monitor
   measureCode: string
+  /** `short_label` — `aclima_sense` uppercased is twelve characters of mono. */
+  measureLabel: string
+  /** A composite: no instrument carries it, and none was ever meant to. */
+  derived: boolean
   segments: number
   km: number
   lo: number | null
@@ -497,7 +525,7 @@ function TowerRow({
   active: boolean
   onClick(): void
 }) {
-  const carries = monitor.measures.includes(measureCode as MeasureCode)
+  const carries = !derived && monitor.measures.includes(measureCode as MeasureCode)
   return (
     <button
       type="button"
@@ -525,7 +553,10 @@ function TowerRow({
           </span>
         ) : (
           <span className={s.subTight}>
-            <span className={s.fleetInk}>▨</span> no {measureCode.toUpperCase()} channel — the{' '}
+            <span className={s.fleetInk}>▨</span>{' '}
+            {derived
+              ? `${measureLabel} is computed, not measured — the`
+              : `no ${measureLabel} channel — the`}{' '}
             {fmtNum(segments, 0)} streets inside this ring are measured only by the fleet
           </span>
         )}

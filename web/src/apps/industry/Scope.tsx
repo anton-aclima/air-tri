@@ -26,17 +26,19 @@ import { Link, useNavigate } from '@tanstack/react-router'
 
 import {
   AlertTimeline, BaseMap, DispersionLayer, MapOverlay, MapWindField,
-  MonitorLayer, RadarScope, SegmentLayer, SiteLayer,
+  MonitorLayer, RadarScope, SegmentLayer, SiteLayer, makeColorScale, measureDomain,
 } from '@/components'
 import type { MapView, RadarContact, SegmentFeature, Theme } from '@/components'
 import { Button } from '@/app/ui'
 import { compassPoint, fmtBearing, fmtCompact, fmtDistance, fmtNum, fmtPct, relativeShort } from '@/core/format'
-import { SEVERITY_LABEL, severityVar } from '@/core/measures'
+import { SEVERITY_LABEL, severityVar, shortName, unitFor } from '@/core/measures'
 import {
   useActiveMeasure, useAlerts, useConcernClusters, useConcerns, useDispersion,
-  useDispersionModels, useModelVerification, useMonitors, useSegments, useWind, useWindField,
+  useDispersionModels, useMeasures, useModelVerification, useMonitors, useSegments,
+  useWind, useWindField,
 } from '@/core/queries'
-import type { Alert, Position } from '@/core/types'
+import { useSession } from '@/core/session'
+import type { Alert, MeasureCode, Position } from '@/core/types'
 
 import { Selected } from './Selected'
 import type { MapPick } from './Selected'
@@ -88,6 +90,21 @@ export function Scope() {
   const segsQ = useSegments({ bbox, limit: 9000 }, { enabled: !!bbox && showGrid })
   const monitorsQ = useMonitors()
   const measureDef = useActiveMeasure()
+  /**
+   * Every measure, not `useMeasures('modality')` like the other three apps.
+   * The indicators are *derived source apportionment* — diesel vs non-diesel
+   * combustion, methane excess over background — and an operator who runs
+   * trucks and a gas line is the one reader for whom those are the interesting
+   * lenses rather than analyst furniture.
+   */
+  const measures = useMeasures()
+  const setMeasure = useSession((x) => x.setMeasure)
+  /**
+   * The plume does NOT follow the picker, deliberately. `dispersion_model` rows
+   * exist for bc, no2 and pm25 only, so passing the session measure through
+   * would silently blank the cone for the other seven. The MFD legend names the
+   * species the plume is actually showing.
+   */
   const plumeQ = useDispersion({ site_id: site?.id })
   const concernsQ = useConcerns({ limit: 400 })
   const clustersQ = useConcernClusters()
@@ -236,8 +253,44 @@ export function Scope() {
     if (off > 0.004) setLocked(false)
   }, [focus])
 
+  /**
+   * A measure with no unit is an *index*, not a concentration: its value is
+   * already on 0-100 and has to be painted against that fixed scale. The grid's
+   * default is a robust p2-p98 stretch, which is right for concentrations —
+   * ppb, ug/m3 and ppm share no scale — and wrong for a score, where stretching
+   * a seven-point spread across the whole ramp manufactures alarm out of air
+   * that is genuinely uniform.
+   */
+  const isIndex = measureDef?.unit === ''
+  /**
+   * Which species the cone is actually showing. Named out loud because the
+   * channel picker now sits three centimetres away and does not move it — an
+   * unlabelled plume beside a channel selector reads as the selector's output.
+   */
+  const plumeSpecies = useMemo(() => {
+    const code = plumeQ.data?.features?.[0]?.properties?.measure
+    const def = code ? measures.find((m) => m.code === code) : undefined
+    if (!def) return null
+    return def.code === measureDef?.code ? null : shortName(def)
+  }, [plumeQ.data, measures, measureDef])
+  /**
+   * No instrument carries an index as a channel, so `latest[code]` is undefined
+   * on every monitor and every dot would drop silently to un-alarmed. Passing
+   * `undefined` restores the any-channel fallback: the dot means "something on
+   * this instrument is over", which is the honest reading of a tower when the
+   * grid is showing a derived score.
+   */
+  const dotMeasure = isIndex ? undefined : (measureDef?.code as MeasureCode | undefined)
+  const gridScale = useCallback(
+    (theme: Theme) => makeColorScale(theme, { domain: measureDomain(measureDef, segsQ.data), ramp: 'map' }),
+    [measureDef, segsQ.data],
+  )
+
   const mfdLayers = useCallback((theme: Theme) => [
-    ...(showGrid ? SegmentLayer({ data: segsQ.data, theme, dualEncode: 'width', minPasses: 3 }) : []),
+    ...(showGrid ? SegmentLayer({
+      data: segsQ.data, theme, dualEncode: 'width', minPasses: 3,
+      measure: measureDef?.code, scale: gridScale(theme),
+    }) : []),
     ...(showPermit ? permitFootprintLayer({ theme, contours: model?.contours }) : []),
     ...(showPlume ? DispersionLayer({ data: plumeQ.data, theme, maxOpacity: 0.16 }) : []),
     /* The campus goes UNDER its own instruments. deck picks the topmost
@@ -247,12 +300,14 @@ export function Scope() {
     ...SiteLayer({ data: site ? [site] : [], theme, emissionPoints: true, labels: true }),
     ...MonitorLayer({
       id: 'fenceline', data: fenceline, theme, rings: false, labels: false, sizePx: 11,
+      measure: dotMeasure,
       selectedId: pick?.kind === 'monitor' ? pick.id : null,
     }),
     // Rings ON for these: a 2.5 km representativeness radius is exactly the
     // question — is my plume crossing the ground this instrument speaks for?
     ...MonitorLayer({
       id: 'reference', data: reference, theme, rings: true, labels: true, sizePx: 16,
+      measure: dotMeasure,
       selectedId: pick?.kind === 'monitor' ? pick.id : (exposed?.monitor.id ?? null),
     }),
     ...(showReports ? reportsOverlay({
@@ -273,6 +328,7 @@ export function Scope() {
   ], [
     showGrid, showPlume, showPermit, showReports, segsQ.data, plumeQ.data, model, fenceline,
     reference, site, focus, contacts, pick, transportDeg, exposed, reports, nearClusters,
+    measureDef, dotMeasure, gridScale,
   ])
 
   if (!site) {
@@ -425,23 +481,43 @@ export function Scope() {
               <MapWindField field={windQ.data} particles={700} opacity={0.42} lineWidth={1} />
             ) : null}
           >
-            {/* Slew-to-designate: your buildings and every stack on them. */}
+            {/* Slew-to-designate: your buildings and every stack on them.
+                Beside it, the channel everything on the map is reading. Two
+                chips, same idiom: one says where you are looking, one says
+                what you are looking at. */}
             <MapOverlay place="top-left">
-              <label className={s.sourcePick}>
-                <span className={s.sourcePickCaps}>slew to</span>
-                <select
-                  className={s.sourceSelect}
-                  value={focusEp ?? ''}
-                  onChange={(e) => { setFocusEp(e.target.value || null); setLocked(true) }}
-                >
-                  <option value="">Whole site</option>
-                  {site.emission_points.map((ep) => (
-                    <option key={ep.id} value={ep.id}>
-                      {epShort(ep.name)}{ep.active ? '' : ' · idle'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className={s.mfdPicks}>
+                <label className={s.sourcePick}>
+                  <span className={s.sourcePickCaps}>slew to</span>
+                  <select
+                    className={s.sourceSelect}
+                    value={focusEp ?? ''}
+                    onChange={(e) => { setFocusEp(e.target.value || null); setLocked(true) }}
+                  >
+                    <option value="">Whole site</option>
+                    {site.emission_points.map((ep) => (
+                      <option key={ep.id} value={ep.id}>
+                        {epShort(ep.name)}{ep.active ? '' : ' · idle'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={s.sourcePick}>
+                  <span className={s.sourcePickCaps}>channel</span>
+                  <select
+                    className={s.sourceSelect}
+                    value={measureDef?.code ?? ''}
+                    onChange={(e) => setMeasure(e.target.value as MeasureCode)}
+                  >
+                    {measures.map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {shortName(m)}{unitFor(m) ? ` · ${unitFor(m)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </MapOverlay>
 
             <MapOverlay place="bottom-left">
@@ -450,6 +526,15 @@ export function Scope() {
                   rings 1 · 2 · 4 · 6 km from {focusName}
                   {contacts.length ? ` · ${contacts.length} alert${contacts.length === 1 ? '' : 's'} nearby` : ' · nothing nearby'}
                 </Caps>
+                {showGrid && (
+                  <Caps>
+                    streets — {shortName(measureDef)}
+                    {isIndex
+                      ? ' on a fixed 0–100 health scale'
+                      : `${unitFor(measureDef) ? ` in ${unitFor(measureDef)}` : ''}, colour stretched to what is in view`}
+                    {' · width is how often'}
+                  </Caps>
+                )}
                 {showReports && (
                   <Caps>
                     reports — filled is downwind of you, hollow is off your axis
@@ -460,7 +545,7 @@ export function Scope() {
                   <Caps>
                     {showPermit ? 'permit — the study\u2019s long-run average, all wind directions' : ''}
                     {showPermit && showPlume ? ' · ' : ''}
-                    {showPlume ? 'plume — this hour, one cone per running stack' : ''}
+                    {showPlume ? `plume — this hour, one cone per running stack${plumeSpecies ? ` · ${plumeSpecies}, not the picked channel` : ''}` : ''}
                   </Caps>
                 )}
               </div>

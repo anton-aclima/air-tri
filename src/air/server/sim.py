@@ -149,7 +149,7 @@ def generator_test(conn: sqlite3.Connection, cid: str, site_id: str | None = Non
         mon = _monitor_near_bearing(conn, cid, site, 95.0, measure)
         if mon is None:
             continue
-        base = _baseline(conn, mon["id"], measure, MEASURE_FALLBACK[measure])
+        base = _baseline(conn, mon["id"], measure, _fallback(measure))
         peak = _target_level(conn, cid, measure, 1.35, base)
         _inject_ramp(conn, mon["id"], measure, peak, base, hours=5)
         touched.append(f"{mon['name']}·{measure}")
@@ -341,7 +341,7 @@ def wind_shift(conn: sqlite3.Connection, cid: str, site_id: str | None = None) -
             )
         if mon is None:
             continue
-        base = _baseline(conn, mon["id"], measure, MEASURE_FALLBACK[measure])
+        base = _baseline(conn, mon["id"], measure, _fallback(measure))
         hours = max(1, int(float(integrated[0]["averaging_hours"] or 1)))
         # Every hour in the averaging window has to be over the line for an
         # integrated exposure to trip, so hold it high rather than spike it.

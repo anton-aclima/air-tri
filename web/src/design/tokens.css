@@ -127,6 +127,12 @@
   --mod-co:   #FF8FA3;
   --mod-co2:  #8FA3B8;
   --mod-ch4:  #FFD84D;
+  /* The composite. Not --actor-aclima (#00D3A7): that token means "us", and an
+     index that claims to describe your air must not read as a vendor badge.
+     Warm neutral, deliberately outside the cool/warm pollutant pairs above, and
+     separable from --mod-o3 under deuteranopia — which matters because the
+     composite's most natural chart plots it against its own constituents. */
+  --mod-aclima_sense: #E8E0D0;
 }
 
 /* ===========================================================================

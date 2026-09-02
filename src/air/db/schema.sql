@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS measure_def (
   label        TEXT NOT NULL,             -- 'Nitrogen Dioxide'
   short_label  TEXT NOT NULL,             -- 'NO2'
   unit         TEXT NOT NULL,             -- 'ppb'
-  family       TEXT NOT NULL CHECK (family IN ('modality','indicator')),
+  -- 'composite' is a derived index with no per-pass column and no instrument
+  -- behind it. Keeping it a distinct family is what lets datagen exclude it from
+  -- the physical pipeline automatically and gives all four interfaces one field
+  -- to branch on, rather than hardcoding the code string in a dozen places.
+  family       TEXT NOT NULL CHECK (family IN ('modality','indicator','composite')),
   ref_level    REAL,                      -- level used to compute persistence (share of passes above)
   healthy_max  REAL,                      -- top of the "clean" band, for risk scaling
   scale_json   TEXT,                      -- [[concentration, risk0_100], ...] breakpoints

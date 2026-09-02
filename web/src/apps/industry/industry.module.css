@@ -331,6 +331,17 @@
 /* ── MFD furniture ────────────────────────────────────────────────────────
    Slew-to-designate chips. Deliberately quiet: they sit on top of the map and
    the map is the thing being read. */
+
+/* Two chips, wrapping rather than overflowing: "channel" carries measure names
+   long enough to push "slew to" off a narrow MFD, and the map underneath is
+   worth more than keeping them on one line. */
+.mfdPicks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .sourcePick {
   display: inline-flex;
   align-items: center;

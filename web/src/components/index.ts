@@ -45,7 +45,7 @@ export { BASE_STYLE_URL, skinPalette, applyMapLibreSkin, googleMapStyles } from 
 export type { SkinPalette, GoogleStyleRule } from './map/styles/mapStyles';
 
 // ── layers (factory functions, not components — call them in `layers=[]`) ──
-export { SegmentLayer, SegmentHighlightLayer, segmentDomain, segmentTooltipRows } from './map/layers/SegmentLayer';
+export { SegmentLayer, SegmentHighlightLayer, measureDomain, segmentDomain, segmentTooltipRows } from './map/layers/SegmentLayer';
 export type { SegmentLayerProps, SegmentFeature, DualEncoding } from './map/layers/SegmentLayer';
 export { MonitorLayer, monitorExceeds } from './map/layers/MonitorLayer';
 export type { MonitorLayerProps } from './map/layers/MonitorLayer';

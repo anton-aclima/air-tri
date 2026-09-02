@@ -187,6 +187,84 @@ _MEASURES: list[tuple] = [
 ]
 
 
+# ---------------------------------------------------------------- composites
+
+SENSE = "aclima_sense"
+
+# Health Canada AQHI coefficients (Stieb et al. 2008): mutually-adjusted
+# log-relative-risks of same-day non-accidental mortality, from a JOINT
+# three-pollutant time-series model over 12 cities. Being jointly estimated is
+# the whole licence for adding them: NO2, PM2.5 and every combustion tracer in
+# this dataset are correlated at r = 0.57-0.93, so single-pollutant coefficients
+# would re-weight one latent factor several times and call it independent
+# evidence. Units are per-ppb for the gases and per-ug/m3 for PM2.5, which is
+# exactly what UNITS already stores -- `stats` asserts that at build time.
+SENSE_BETA = {"no2": 0.000871, "o3": 0.000537, "pm25": 0.000487}
+
+# 1000/10.4 is the AQHI's own normaliser; the extra x10 maps AQHI 1-10 onto
+# 0-100 so the published band edges survive: 30 = top of Low, 60 = top of
+# Moderate, 100 = AQHI 10.
+SENSE_K = 10 * (1000.0 / 10.4)
+
+_SENSE_DESC = (
+    "A derived index, not a measurement. "
+    "sense = 961.538 x [ (e^0.000871*NO2ppb - 1) + (e^0.000537*O3ppb - 1) "
+    "+ (e^0.000487*PM25ugm3 - 1) ], clamped to 0-100, computed on each drive-by pass "
+    "and then aggregated like any other measure. "
+    "The three weights are same-day mortality coefficients from the joint "
+    "three-pollutant model behind Health Canada's AQHI (Stieb et al. 2008). They are "
+    "mutually adjusted -- estimated together -- which is the only thing that makes "
+    "adding them legitimate, because NO2 and PM2.5 are far too correlated to combine "
+    "with coefficients fitted separately. The scale is AQHI x10, so 30 = top of the "
+    "Low band and 60 = top of Moderate. "
+    "IT IS NOT THE AQHI OF THIS STREET. The coefficients were fitted on 3-hour "
+    "averages; this applies them to instantaneous curbside air, which runs higher. "
+    "On this campaign the typical street reads 27 that way, against 20 if the index "
+    "were evaluated at each pollutant's median instead -- a 7-point gap that comes "
+    "from NO2 and ozone being anti-correlated at the curb, so most passes are "
+    "elevated in one or the other while neither median is high. "
+    "The per-pass version is published because it is the only one for which the "
+    "spread, the worst pass and the persistence share mean anything. "
+    "It covers three pollutants and no others -- nothing here sees methane, CO2, "
+    "carbon monoxide or black carbon, so a gas leak scoring zero is not a safe leak. "
+    "It is short-term risk, not lifetime burden: the risk of being outside on a bad "
+    "day here, not the risk of living here for twenty years. "
+    "It is not an AQI and is not comparable to one. "
+    "Source: Aclima construct, after Stieb et al. 2008. No agency publishes this "
+    "number and there is no external standard behind it."
+)
+
+# Same 11-field shape as _MEASURES. `ref_level` and `healthy_max` are INDEX
+# POINTS, not concentrations. The scale is the identity on purpose: the value is
+# already 0-100, and a second ladder on top of it would be an undocumented
+# transform -- see `stats.risk_from_scale` and the frontend's `riskFromValue`,
+# both of which become no-ops against it.
+_COMPOSITES: list[tuple] = [
+    (
+        SENSE,
+        "Aclima Sense",
+        "Sense",
+        "",
+        "composite",
+        # Both land on 30 = AQHI 3, the top of Health Canada's Low band -- the
+        # one externally anchored boundary on this scale. As `ref_level` it is
+        # also, by luck rather than design, where `persistence` spreads widest on
+        # this campaign: the per-pass index runs p25/p50/p75 = 21.7/28.1/39.3, so
+        # a threshold of 30 splits roughly in half and the width channel carries
+        # real contrast (persistence p10/p50/p90 = 0.32/0.42/0.54).
+        # An earlier draft used 20, which was read off the index-of-medians
+        # distribution -- not the one that ships. At 20 nearly every pass exceeds
+        # and the width channel goes flat.
+        30.0,
+        30.0,
+        [[0, 0], [100, 100]],
+        0,
+        "the overall health score",
+        _SENSE_DESC,
+    ),
+]
+
+
 def measure_rows() -> list[dict]:
     out = []
     for i, (
@@ -201,7 +279,7 @@ def measure_rows() -> list[dict]:
         dec,
         plain,
         desc,
-    ) in enumerate(_MEASURES):
+    ) in enumerate(_COMPOSITES + _MEASURES):
         out.append(
             {
                 "code": code,
@@ -212,6 +290,8 @@ def measure_rows() -> list[dict]:
                 "ref_level": ref,
                 "healthy_max": healthy,
                 "scale_json": json.dumps(scale),
+                # Modalities are analytical magnitude; indicators and the health
+                # composite are public-health colour.
                 "ramp_json": json.dumps(RAMP_INTENSITY if family == "modality" else RAMP_AQI),
                 "decimals": dec,
                 "sort_order": i,
@@ -222,13 +302,22 @@ def measure_rows() -> list[dict]:
     return out
 
 
+# MEASURE_CODES / MODALITIES / INDICATORS drive the *physical* pipeline:
+# `simulate` splices MODALITIES + INDICATORS into the `segment_pass` column
+# tuple and subscripts MOBILE_NOISE with each one. A composite has no per-pass
+# column and no instrument noise, so it must stay out of all three or the build
+# dies before it reaches the database. The lookup maps below are a different
+# job -- `stats` indexes them per emitted row -- so those do include it.
 MEASURE_CODES = [m[0] for m in _MEASURES]
 MODALITIES = [m[0] for m in _MEASURES if m[4] == "modality"]
 INDICATORS = [m[0] for m in _MEASURES if m[4] == "indicator"]
-REF_LEVELS = {m[0]: m[5] for m in _MEASURES}
-SCALES = {m[0]: m[7] for m in _MEASURES}
-UNITS = {m[0]: m[3] for m in _MEASURES}
-DECIMALS = {m[0]: m[8] for m in _MEASURES}
+COMPOSITES = [m[0] for m in _COMPOSITES]
+
+_ALL = _COMPOSITES + _MEASURES
+REF_LEVELS = {m[0]: m[5] for m in _ALL}
+SCALES = {m[0]: m[7] for m in _ALL}
+UNITS = {m[0]: m[3] for m in _ALL}
+DECIMALS = {m[0]: m[8] for m in _ALL}
 
 
 # ---------------------------------------------------------------- action levels

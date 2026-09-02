@@ -78,10 +78,24 @@ def community_stats(
         )
 
     by_measure: list[dict[str, Any]] = []
+    composite: dict[str, Any] | None = None
     for r in agg:
         code = r["measure"]
         md = mdefs.get(code, {})
         if md.get("family") == "indicator" and code not in ("methane_leak",):
+            continue
+        # The composite is the headline, not a peer. Left in `by_measure` it wins
+        # the max below *by construction* -- it is built from three of the rows it
+        # would be competing against -- and then becomes `worst_measure`, which
+        # silently reroutes worst_streets, best_streets and the passes fallback
+        # onto a derived index that names no pollutant.
+        if md.get("family") == "composite":
+            risk = (r["risk_num"] / r["risk_den"]) if r["risk_den"] else None
+            a, b = mean_risk(code, recent), mean_risk(code, prior)
+            composite = {
+                "risk": round(risk) if risk is not None else 0,
+                "trend": round(100.0 * (a - b) / b, 1) if (a is not None and b) else 0.0,
+            }
             continue
         risk = (r["risk_num"] / r["risk_den"]) if r["risk_den"] else None
         if risk is None:
@@ -101,10 +115,20 @@ def community_stats(
         )
     by_measure.sort(key=lambda m: m["risk"], reverse=True)
 
-    overall = max((m["risk"] for m in by_measure), default=0)
-    overall_trend = round(
-        sum(m["trend_pct"] for m in by_measure) / len(by_measure), 1
-    ) if by_measure else 0.0
+    # The headline is the composite when there is one. The old behaviour -- a max
+    # over every measure's risk -- was an undefended max over ladders that are not
+    # calibrated against each other (CO returns 92 at its NAAQS where PM2.5
+    # returns 25 at its annual one), so it reported whichever measure happened to
+    # have the steepest curve. Falling back to it is still better than reporting
+    # nothing, but only as a fallback.
+    if composite is not None:
+        overall = composite["risk"]
+        overall_trend = composite["trend"]
+    else:
+        overall = max((m["risk"] for m in by_measure), default=0)
+        overall_trend = round(
+            sum(m["trend_pct"] for m in by_measure) / len(by_measure), 1
+        ) if by_measure else 0.0
 
     worst_measure = by_measure[0]["measure"] if by_measure else "no2"
     streets = rows(

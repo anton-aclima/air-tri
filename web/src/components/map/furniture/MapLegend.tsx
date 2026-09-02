@@ -52,13 +52,17 @@ export function MapLegend(props: MapLegendProps) {
   const theme = useTheme(ref);
 
   const stops = (scale?.stops?.length ? scale.stops : theme.ramp).filter(Boolean);
+  // A measure with no unit is a derived index: its value is already the score,
+  // so EVERY metric of it is fixed 0-100, not just `risk`. Without this the
+  // legend prints "25 to 32" beneath a ramp that is defined 0-100.
+  const isIndex = measure?.unit === '';
   // Persistence and risk have fixed, known ranges. Inheriting a concentration
   // domain here is how a legend ends up reading "4263 %".
   const fixedDomain: [number, number] | null = metric === 'persistence'
     ? [0, 1]
-    : metric === 'risk' ? [0, 100] : null;
+    : metric === 'risk' || isIndex ? [0, 100] : null;
   const [lo, hi] = fixedDomain ?? scale?.domain ?? domain ?? [0, 1];
-  const unitless = metricIsUnitless(metric) || plainLanguage;
+  const unitless = metricIsUnitless(metric) || plainLanguage || isIndex;
   const unit = unitless ? (metric === 'persistence' ? '%' : '') : unitFor(measure ?? undefined);
   const name = measure
     ? plainName(measure, plainLanguage ? 'community' : null)
@@ -67,7 +71,7 @@ export function MapLegend(props: MapLegendProps) {
   const fmt = (v: number) => {
     if (metric === 'persistence') return `${Math.round(v * 100)}`;
     // Risk is a whole-number score — a decimal implies precision it lacks.
-    if (metric === 'risk') return String(Math.round(v));
+    if (metric === 'risk' || isIndex) return String(Math.round(v));
     return fmtNum(v, measure?.decimals ?? (hi - lo > 20 ? 0 : 1));
   };
 

@@ -52,6 +52,13 @@ export interface SegmentLayerProps {
   selectedId?: string | null;
   /** Segments below this pass count draw as "not enough data" rather than a value. */
   minPasses?: number;
+  /**
+   * The measure the values belong to. Nothing is drawn from it — it exists only
+   * so that switching measures always invalidates deck's cached accessors. Two
+   * measures can share a domain, a ramp and a metric (any two unitless 0-100
+   * scores do), and without this the grid keeps the previous measure's colours.
+   */
+  measure?: string;
   onHover?: (info: PickingInfo) => void;
   onClick?: (info: PickingInfo) => void;
   visible?: boolean;
@@ -67,6 +74,27 @@ export function segmentDomain(data: SegmentCollection | null | undefined): [numb
 }
 
 /**
+ * The colour domain for painting *this measure's* values.
+ *
+ * Concentrations get the robust p2–p98 stretch, because ppb, µg/m³ and ppm share
+ * no scale and a fixed domain would be meaningless across them. An index does
+ * not: it is already defined on 0–100, it means the same thing in every city,
+ * and stretching it to whatever happens to be in view is the one thing that
+ * would turn an honest, uniform map into a manufactured alarm. `aclima_sense`
+ * spans roughly 25–32 across this whole campaign; auto-stretched, that seven
+ * point spread paints full-scale red.
+ *
+ * The test is the unit rather than the family so it needs no type import and
+ * says what it means: a measure with no unit is a score.
+ */
+export function measureDomain(
+  measure: { unit: string } | null | undefined,
+  data: SegmentCollection | null | undefined,
+): [number, number] {
+  return measure?.unit === '' ? [0, 100] : segmentDomain(data);
+}
+
+/**
  * Build the layer stack for the road grid.
  * Not a React component — call it inside your `layers` array:
  *   `layers={[...SegmentLayer({ data, theme })]}`
@@ -75,7 +103,7 @@ export function SegmentLayer(props: SegmentLayerProps): LayersList {
   const {
     id = 'segments', data, theme, metric = 'median', dualEncode = 'width',
     baseWidthM = 15, widthMinPixels = 1.6, widthMaxPixels = 15,
-    casing = true, hoveredId, selectedId, minPasses = 0,
+    casing = true, hoveredId, selectedId, minPasses = 0, measure,
     onHover, onClick, visible = true, opacity = 1, pickable = true,
   } = props;
 
@@ -104,7 +132,7 @@ export function SegmentLayer(props: SegmentLayerProps): LayersList {
 
   const trigger = [
     scale.domain.join(','), scale.mode, scale.ramp, theme.ramp.join(','),
-    dualEncode, metric, minPasses, baseWidthM,
+    dualEncode, metric, measure, minPasses, baseWidthM,
   ].join('|');
 
   const layers: LayersList = [];

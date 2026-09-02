@@ -37,6 +37,11 @@ export function Status() {
   const now = resolveNow(time)
   const places = usePlaces()
   const orgs = useOrgs()
+  // 'modality', deliberately NOT PICKABLE. This screen asks what the agency's
+  // instruments do and do not cover, and `uncovered` below turns that into
+  // "nothing measures X". A derived index belongs in neither list: no instrument
+  // carries it and none was ever supposed to, so listing it here would accuse
+  // DRAQA of a gap that does not exist.
   const measures = useMeasures('modality')
   const bootstrap = useBootstrap().data
   const monitors = useMonitors().data ?? []

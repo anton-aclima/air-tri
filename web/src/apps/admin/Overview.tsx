@@ -13,7 +13,7 @@ import { Link } from '@tanstack/react-router'
 
 import {
   BaseMap, BoundaryLayer, MapLegend, MapOverlay, MapScale, SeasonalStrip,
-  SegmentLayer, robustDomain, segmentDomain,
+  SegmentLayer, makeColorScale, measureDomain, robustDomain, segmentDomain,
 } from '@/components'
 import { fmtCompact, fmtDay, fmtNum } from '@/core/format'
 import {
@@ -114,6 +114,9 @@ export function Overview() {
                 ...SegmentLayer({
                   data: segments.data,
                   theme,
+                  measure: measure?.code,
+                  // Pinned for a derived index, stretched for a concentration.
+                  scale: makeColorScale(theme, { domain: measureDomain(measure, segments.data) }),
                   metric,
                   dualEncode: 'both',
                   minPasses: 1,

@@ -31,6 +31,7 @@ export const TOKENS = [
   'actor-community', 'actor-regulator', 'actor-industry', 'actor-aclima',
   // modality identity hues
   'mod-no2', 'mod-pm25', 'mod-bc', 'mod-o3', 'mod-co', 'mod-co2', 'mod-ch4',
+  'mod-aclima_sense',
   // role-specific map furniture (present only in some skins — fall back gracefully)
   'tower', 'tower-ring', 'invader', 'fleet',
   'scope', 'scope-dim', 'scope-grid', 'threat', 'threat-glow',

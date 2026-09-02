@@ -398,16 +398,31 @@ export function findMeasure(
   return measures.find((m) => m.code === code)
 }
 
-/** Sorted, filtered by family — `measuresOf(all, 'modality')`. */
+export type MeasureFamily = MeasureDef['family']
+
+/**
+ * Sorted, filtered by family — `measuresOf(all, 'modality')`, or a list:
+ * `measuresOf(all, ['modality', 'composite'])`.
+ *
+ * The list form exists because `aclima_sense` is a third family and every
+ * caller that used to say `'modality'` now has to mean one of two different
+ * things: "the lenses a reader may choose" (which includes the composite) or
+ * "the species an instrument can carry" (which cannot). They looked identical
+ * before the composite existed.
+ */
 export function measuresOf(
   measures: readonly MeasureDef[] | undefined,
-  family?: 'modality' | 'indicator',
+  family?: MeasureFamily | readonly MeasureFamily[],
 ): MeasureDef[] {
+  const want = family == null ? null : (Array.isArray(family) ? family : [family]) as MeasureFamily[]
   return (measures ?? [])
-    .filter((m) => !family || m.family === family)
+    .filter((m) => !want || want.includes(m.family))
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
 }
+
+/** The lenses a reader may pick on a map: real species plus derived indices. */
+export const PICKABLE: readonly MeasureFamily[] = ['composite', 'modality']
 
 /** Per-modality identity hue (`--mod-no2`), for multi-series charts only. */
 export function modalityVar(code: MeasureCode): string {
