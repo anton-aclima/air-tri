@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "appRoot": "/Users/antonvattay/Workspace/air/web",
+  "repoRoot": "/Users/antonvattay/Workspace/air",
+  "contextRoot": "/Users/antonvattay/Workspace/air",
+  "sessionRoot": "/Users/antonvattay/Workspace/air/web/.impeccable/live",
+  "productPath": "/Users/antonvattay/Workspace/air/PRODUCT.md",
+  "designPath": "/Users/antonvattay/Workspace/air/docs/DESIGN.md",
+  "resolvedFrom": "target:web/index.html"
+}

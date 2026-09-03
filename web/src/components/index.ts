@@ -49,7 +49,7 @@ export { SegmentLayer, SegmentHighlightLayer, measureDomain, segmentDomain, segm
 export type { SegmentLayerProps, SegmentFeature, DualEncoding } from './map/layers/SegmentLayer';
 export { MonitorLayer, monitorExceeds } from './map/layers/MonitorLayer';
 export type { MonitorLayerProps } from './map/layers/MonitorLayer';
-export { SiteLayer } from './map/layers/SiteLayer';
+export { SiteLayer, pickedSite } from './map/layers/SiteLayer';
 export type { SiteLayerProps } from './map/layers/SiteLayer';
 export { ConcernLayer, concernStatusToken } from './map/layers/ConcernLayer';
 export type { ConcernLayerProps } from './map/layers/ConcernLayer';

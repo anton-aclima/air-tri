@@ -22,6 +22,8 @@ import {
   usePlaces,
 } from '@/apps/community/lib'
 import { DelayNote, FootNote, RiskPill, SimNote } from '@/apps/community/parts'
+import { Picked } from '@/apps/community/Picked'
+import type { MapPick } from '@/apps/community/Picked'
 import { Badge, Button, Chip, Empty, Toggle } from '@/app/ui'
 import {
   BaseMap,
@@ -32,13 +34,16 @@ import {
   MapScale,
   MeasurePicker,
   SegmentLayer,
+  SiteLayer,
   makeColorScale,
+  pickedSite,
   usePulse,
 } from '@/components'
 import { relativeTime } from '@/core/format'
 import { PICKABLE, plainName } from '@/core/measures'
 import {
   useActiveMeasure,
+  useBootstrapSites,
   useConcernClusters,
   useConcerns,
   useFleet,
@@ -60,6 +65,18 @@ export function MapScreen() {
   const concerns = useConcerns({ limit: 200 }).data ?? []
   const clusters = useConcernClusters().data ?? []
   const fleet = useFleet().data ?? []
+  /**
+   * Industrial sites, shown to residents.
+   *
+   * They were absent from this map and present in Outreach, which was an
+   * inconsistency rather than a policy — nothing in the contract withholds them,
+   * and facility locations are public record. Hiding the emitter from the one
+   * party living downwind of it is the least defensible omission the product
+   * could make: a resident looking at a red street with no visible source cannot
+   * even form a question. The care goes into the wording, not the withholding —
+   * see the `site` branch in Picked.
+   */
+  const sites = useBootstrapSites()
   const delayMin = useFlags()?.community_fleet_delay_min ?? 180
 
   // PICKABLE, not 'modality': the overall health score is the lens this screen
@@ -93,7 +110,25 @@ export function MapScreen() {
   const [nearOnly, setNearOnly] = useState(false)
   const [kindFilter, setKindFilter] = useState<ConcernKind | null>(null)
   const [showCars, setShowCars] = useState(true)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [showSites, setShowSites] = useState(true)
+  /**
+   * ONE selection for the whole map. Previously this was a bare concern id
+   * whose only effect was moving a highlight into a rail list that was usually
+   * scrolled elsewhere — so a tap appeared to do nothing at all. Streets were
+   * not even pickable.
+   */
+  const [pick, setPick] = useState<MapPick | null>(null)
+  const railRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Put the card where the eye already is. Selecting from the map means the
+   * answer must come to you; a card that renders above the fold of a scrolled
+   * rail is the same bug in a nicer costume.
+   */
+  const choose = (next: MapPick | null) => {
+    setPick(next)
+    if (next) railRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const rows = useMemo(() => {
     return concerns
@@ -124,21 +159,63 @@ export function MapScreen() {
             initialView={{ longitude: places.home[0], latitude: places.home[1], zoom: 12.4 }}
             view={mapView}
             onViewChange={(v) => useSession.getState().setMapView(v)}
+            /**
+             * Classify by which layer answered. deck hands back the topmost
+             * pickable object, so the layer id is the only reliable way to know
+             * whether that was a report, a group or a street.
+             */
             onClick={(info) => {
-              const id = (info.object as { id?: string } | null)?.id
-              setSelected(id ?? null)
+              const layer = info.layer?.id ?? ''
+              const obj = info.object as { id?: string; properties?: { id?: string } } | null
+              if (!obj) return choose(null)
+              if (layer.startsWith('concerns-cluster')) {
+                return choose(obj.id ? { kind: 'cluster', id: obj.id } : null)
+              }
+              if (layer.startsWith('concerns')) {
+                return choose(obj.id ? { kind: 'concern', id: obj.id } : null)
+              }
+              if (layer.startsWith('sites')) {
+                // The footprint, the badge and a stack each hand back a
+                // different shape; only the badge has a bare `id`.
+                const { siteId } = pickedSite(obj)
+                return choose(siteId ? { kind: 'site', id: siteId } : null)
+              }
+              if (layer.startsWith('segments')) {
+                const sid = obj.properties?.id
+                return choose(sid ? { kind: 'street', id: sid } : null)
+              }
+              return choose(null)
             }}
             layers={(t) => [
               ...SegmentLayer({
                 data: segments,
                 theme: t,
                 metric: 'risk',
+                measure: measure?.code,
                 scale: makeColorScale(t, { domain: [0, 100], ramp: 'aqi' }),
                 dualEncode: 'width',
                 minPasses: 8,
                 widthMinPixels: 1.4,
-                pickable: false,
+                // Was false, which is why tapping a road did nothing. The road
+                // grid is the hero of this screen; it has to answer.
+                pickable: true,
+                selectedId: pick?.kind === 'street' ? pick.id : null,
               }),
+              /* Under the reports on purpose. A site footprint is a polygon
+                 big enough to swallow every pin standing on it, and deck hands
+                 back the topmost layer — drawn last, it would eat their clicks.
+                 Emission points are off: stack-level detail is not a resident's
+                 question, and pulsing stacks read as "emitting right now",
+                 which is a claim this screen does not get to make. */
+              ...(showSites
+                ? SiteLayer({
+                    data: sites,
+                    theme: t,
+                    emissionPoints: false,
+                    labels: true,
+                    selectedId: pick?.kind === 'site' ? pick.id : null,
+                  })
+                : []),
               ...(showCars
                 ? FleetLayer({ data: fleet, theme: t, pulse, labels: true, trails: true })
                 : []),
@@ -147,7 +224,7 @@ export function MapScreen() {
                 clusters,
                 theme: t,
                 pulse,
-                selectedId: selected,
+                selectedId: pick?.kind === 'concern' ? pick.id : null,
               }),
             ]}
           >
@@ -178,7 +255,19 @@ export function MapScreen() {
           </BaseMap>
         </div>
 
-        <div className={s.mapSide}>
+        <div className={s.mapSide} ref={railRef}>
+          <Picked
+            pick={pick}
+            onClear={() => setPick(null)}
+            now={now}
+            home={places.home}
+            concerns={concerns}
+            clusters={clusters}
+            segments={segments?.features ?? []}
+            sites={sites}
+            measureName={measure ? plainName(measure, 'community') : 'the air'}
+          />
+
           <section className={s.railCard}>
             <h2 className={s.railTitle}>Filter the pins</h2>
             <div className={s.filters}>
@@ -203,6 +292,7 @@ export function MapScreen() {
                 label={`Only near ${places.homeName}`}
               />
               <Toggle checked={showCars} onChange={setShowCars} label="Show where our cars were" />
+              <Toggle checked={showSites} onChange={setShowSites} label="Show industrial places" />
             </div>
             <div className={s.railFoot}>
               <DelayNote minutes={delayMin} />
@@ -225,7 +315,10 @@ export function MapScreen() {
               {rows.map(({ c, d }) => (
                 <div
                   key={c.id}
-                  className={[s.concernRow, selected === c.id ? s.concernRowActive : ''].join(' ')}
+                  className={[
+                    s.concernRow,
+                    pick?.kind === 'concern' && pick.id === c.id ? s.concernRowActive : '',
+                  ].join(' ')}
                 >
                   <span style={{ fontSize: '1.3rem', lineHeight: 1 }} aria-hidden>
                     {c.photo_emoji ?? kindEmoji(c.kind)}
@@ -260,8 +353,11 @@ export function MapScreen() {
                         variant="quiet"
                         icon="pin"
                         onClick={() => {
-                          setSelected(c.id)
-                          flyTo([c.lon, c.lat] as Position, 15)
+                          choose({ kind: 'concern', id: c.id })
+                          // 14, not 15. At 15 a single report fills the frame
+                          // and the streets around it — the reason the report
+                          // matters — go off the edge.
+                          flyTo([c.lon, c.lat] as Position, 14)
                         }}
                       >
                         Show me
@@ -285,7 +381,12 @@ export function MapScreen() {
                     key={cl.id}
                     type="button"
                     className={s.railRow}
-                    onClick={() => flyTo(cl.centroid, 15)}
+                    onClick={() => {
+                      choose({ kind: 'cluster', id: cl.id })
+                      // A group spans a few blocks by definition, so it needs
+                      // more room than a single pin, not less.
+                      flyTo(cl.centroid, 13.4)
+                    }}
                   >
                     <span>
                       <span className={s.railRowName}>📍 {cl.label ?? 'Nearby reports'}</span>
@@ -305,16 +406,55 @@ export function MapScreen() {
           ) : null}
 
           <section className={s.railCard}>
-            <h2 className={s.railTitle}>Reading the colours</h2>
+            <h2 className={s.railTitle}>Reading the map</h2>
+
+            <div className={s.railSubLabel}>The coloured lines are streets</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
               <RiskPill risk={10} label="Clean" />
               <RiskPill risk={30} label="Fair" />
               <RiskPill risk={50} label="Moderate" />
               <RiskPill risk={75} label="High" />
             </div>
-            <div className={s.railFoot}>
+            <div className={s.railFoot} style={{ marginBlockEnd: 'var(--s-3)' }}>
               A score out of 100 for {measure ? plainName(measure, 'community') : 'the air'}. No
-              units, no acronyms — the same scale on every screen here.
+              units, no acronyms — the same scale on every screen here. A thicker line means the
+              air was bad there more often, not just worse once.
+            </div>
+
+            {/* The pin colours carry the most consequential fact on this screen
+                — whether anybody has picked the report up — and until now they
+                were explained nowhere at all. They are the actor hues, which is
+                an insider concept; say it in plain words instead. Kept in step
+                with `concernStatusToken` in ConcernLayer.ts. */}
+            <div className={s.railSubLabel}>The pins are your neighbours’ reports</div>
+            <div className={s.pinKey}>
+              {[
+                ['actor-community', 'Nobody has answered it yet'],
+                ['actor-regulator', 'The air agency is looking into it'],
+                ['actor-industry', 'A company has replied'],
+                ['sev-ok', 'Closed by the agency'],
+              ].map(([token, what]) => (
+                <span key={token} className={s.pinKeyRow}>
+                  <span
+                    className={s.pinKeySwatch}
+                    style={{ color: `var(--${token})` }}
+                    aria-hidden
+                  />
+                  <span>{what}</span>
+                </span>
+              ))}
+            </div>
+            <div className={s.railSubLabel}>The outlined blocks are industrial places</div>
+            <div className={s.railFoot} style={{ marginBlockEnd: 'var(--s-3)' }}>
+              Where they are, not a finding about them. Tap one to read what it is and who runs
+              it. Air moves with the wind, so being near something is not evidence it caused
+              anything.
+            </div>
+
+            <div className={s.railFoot}>
+              The shape inside a pin is what was reported — a smell, a noise, smoke. A bigger pin
+              means the person who reported it said it was worse. A ring around several pins means
+              they became a group. Tap anything to read it.
             </div>
           </section>
         </div>

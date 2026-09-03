@@ -1149,3 +1149,28 @@ Two fixes the first render exposed:
   the darker exceedance band clearly starting at `1.00`.
 - **`.stack > * { flex: none }` had also frozen the alert list**, which is the one panel in
   that column meant to absorb slack. It grows again.
+
+---
+
+## Deployed (2026-09-02)
+
+Live at <https://air-demo-224782196484.us-central1.run.app> — `aclima-lab` /
+`us-central1` / Cloud Run service `air-demo`, behind IAP restricted to
+`domain:aclima.earth`. One container serves both the API and `web/dist`; the
+SQLite database is generated inside the image at build time.
+
+Full runbook, including the two things that broke on the way and the reasoning
+behind every deploy flag, is in `docs/DEPLOY.md`. The two worth remembering:
+
+1. **The build needs `data/cache/`** — the datagen fetches its OSM extract from
+   Overpass, and excluding `data/` from the build context turned that into a live
+   network call that failed on Cloud Build (`0 elements` from a flaky mirror).
+   That cache is gitignored, so the deploy currently only works from a machine
+   that has it.
+2. **IAP is the only door.** The Cloud Run invoker role is scoped to the IAP
+   service agent alone, so the service cannot be smoke-tested from a terminal
+   any more — `print-identity-token` gets 401 by design. Verification is a
+   browser.
+
+Redeploy before any demo that matters: the generator anchors "now" to build
+time, so a stale container's clock runs off the end of its own data.

@@ -199,6 +199,33 @@ export function familyForRole(role: Role | null): RampFamily {
 
 // ───────────────────────────────────────────────────────── risk & bands
 
+/**
+ * The colour domain for a derived index (`aclima_sense`) on the ANALYTICAL maps
+ * — regulator, industry, admin, where the grid paints `median` on the intensity
+ * ramp and no band word is attached to the colour.
+ *
+ * 60, not 100. Both are absolute: the point of pinning an index rather than
+ * auto-stretching it is that a given value must be the same colour in every
+ * campaign and every city, which is exactly what a health score is for.
+ * `[0,100]` delivered that and cost too much contrast — measured on this
+ * campaign, segment medians span 22.9-37.0, which is 14 % of a `[0,100]` ramp
+ * against the 100 % every concentration gets from its auto-stretch. The map
+ * went nearly monochrome.
+ *
+ * 60 = AQHI 6 = the top of Health Canada's Moderate band, so it is a published
+ * boundary rather than a number read off this dataset. That distinction is the
+ * whole point: `[0,45]` would have looked better still (31 % of the ramp) and
+ * was rejected because 45 is just above THIS campaign's maximum, which is
+ * auto-stretching through the back door. Nothing clamps at 60 here — the
+ * highest segment median is 43.8.
+ *
+ * NOT used on the community map. That one paints `metric: 'risk'` on the AQI
+ * ramp, where a colour position corresponds to a RISK_BANDS word — 40 is
+ * "Moderate". Rescaling to [0,60] would put 40 at 67 % of the ramp, painting it
+ * in the High colours while the label says Moderate. Community keeps [0,100].
+ */
+export const INDEX_DOMAIN: [number, number] = [0, 60]
+
 export const RISK_BANDS: { min: number; label: string; short: string }[] = [
   { min: 0, label: 'Good', short: 'GOOD' },
   { min: 20, label: 'Fair', short: 'FAIR' },

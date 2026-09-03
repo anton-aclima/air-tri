@@ -9,22 +9,14 @@
 import { Link } from '@tanstack/react-router'
 
 import s from '@/apps/community/community.module.css'
-import { usePlaces } from '@/apps/community/lib'
+import { KIND_WORD, usePlaces } from '@/apps/community/lib'
 import { FootNote, SimNote, VoiceTag } from '@/apps/community/parts'
 import { SitePostCard } from '@/apps/community/FeedCards'
 import { Badge, Empty } from '@/app/ui'
 import { bearingBetween, compassWords, distanceBetween, fmtDistanceImperial } from '@/core/format'
 import { useBootstrapSites, useConcerns, useOrgs, usePosts } from '@/core/queries'
 import { resolveNow, useTime } from '@/core/session'
-import type { IndustrySite, Position, SiteKind } from '@/core/types'
-
-const KIND_WORD: Record<SiteKind, string> = {
-  datacenter: 'A data centre — rooms of computers, with generators to keep them running',
-  logistics: 'A freight yard — trucks and containers moving through, day and night',
-  manufacturing: 'A factory — furnaces and finishing lines',
-  power: 'A power plant',
-  other: 'An industrial site',
-}
+import type { IndustrySite, Position } from '@/core/types'
 
 export function Outreach() {
   const time = useTime()

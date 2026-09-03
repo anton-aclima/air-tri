@@ -155,15 +155,31 @@ street-to-street spread out of nothing.
 
 ### Render rules
 
+- ⚠️ **Domain is `[0, 60]` on the analytical maps, `[0, 100]` on community.**
+  *Revised 2026-09-03 after measuring the cost of the original `[0,100]` pin.*
+  On this campaign segment medians span 22.9–37.0, which is **14 % of a `[0,100]`
+  ramp** against the **100 %** every concentration gets from its auto-stretch —
+  the flagship road grid went nearly monochrome the moment you picked Sense.
+  `[0,60]` gets it to 23.5 %, comparable to what `no2`'s risk view already has.
+  60 = AQHI 6 = the top of Health Canada's Moderate band, so it is a *published*
+  boundary, not a number read off this dataset — `[0,45]` would have given 31 %
+  and was refused for exactly that reason. Nothing clamps: the highest segment
+  median here is 43.8. Lives in one place, `INDEX_DOMAIN` in `core/measures.ts`,
+  consumed by `measureDomain`, `MapLegend.fixedDomain` and
+  `regulator/MapScreen`'s own `useMemo`, so the map and its legend cannot drift.
+  **Community is the deliberate exception** — it paints `metric: 'risk'` on the
+  AQI ramp, where a colour position corresponds to a `RISK_BANDS` word, and 40
+  means "Moderate". Rescaling to `[0,60]` would put 40 at 67 % of the ramp,
+  colouring it "High" while the label said "Moderate".
 - **Ramp `'map'`, continuous mode, never quantized.** `'map'` aliases to `--ramp-aqi-*` under
   `[data-role='community']` and `--ramp-intensity-*` under the other three. That skin split is
   the house rule every other measure gets: residents read colour as public health, analysts
   read it as magnitude. Quantized is banned because aqi has 7 stops and map has 8 — a
   quantized composite lands one band off in three of the four skins.
-- **Domain pinned `[0,100]` at every call site, for every metric.** Never `segmentDomain()`,
-  never `robustDomain()`. The index's p10–p90 on this data is 18–25; a p2–p98 auto-stretch
-  would repaint a 7-point spread as full-scale red. That is the single most dishonest thing
-  this codebase could do with this number.
+- **Domain pinned, never `segmentDomain()` or `robustDomain()`.** A p2–p98 auto-stretch
+  would repaint a genuinely uniform campaign as full-scale red, and would make the same value
+  a different colour in every city — the one property an absolute health score exists to
+  have. See the `INDEX_DOMAIN` note above for the ceiling.
 - **No action level in v1.** Every `_ACTION_LEVELS` entry cites a real authority ("EPA NAAQS
   1-hr"). There is none for this index. Consequences, all correct: no alerts, no advisories,
   no `exceeds` flag, and the composite can never drive industry's worst-vs-limit gauge.
@@ -463,13 +479,45 @@ places where the UI would otherwise assert something false.
 
 ### Found during implementation — not in the original list
 
-- [ ] **A1** `regulator/Analysis.tsx` — its picker asks `useMeasures('modality')`, so the
-      composite is absent, but the **session measure is global**: pick Sense on the regulator
-      map, walk to Analysis, and the picker shows a value it does not offer while `carriers`
-      (`towersFor(towers, 'aclima_sense')`) is empty — a dead tower select, an empty reference
-      clock, and null `towerValue`/`spread`. Either offer it and branch the
-      reference-instrument half, or reconcile the session measure on mount. Not a crash;
-      a screen that quietly reads as broken.
+- [ ] **A1** `regulator/Analysis.tsx` — Sense can reach this screen but is not offered on it.
+      The picker asks `useMeasures('modality')`, so Sense is absent from the list, but the
+      session measure is **global** — pick Sense on the regulator map, walk to Analysis, and the
+      picker is displaying a value it does not contain.
+
+      **Scoped it panel by panel. Four of the six panels are already fine**, because they read
+      the road grid, which has real Sense rows:
+
+      | panel | with Sense selected |
+      |---|---|
+      | Diurnal · this street | ✅ works |
+      | Distribution · every measured street | ✅ works |
+      | Regional wind · observed | ✅ works (measure-independent) |
+      | Ranking | ✅ works |
+      | header readout | ❌ *"0 of 4 reference instruments carry this channel"* |
+      | Diurnal · reference instrument | ⚠️ already falls back, but the copy is wrong |
+
+      So this is **not** "branch the reference-instrument half" as a piece of work — it is the
+      same small copy fix already shipped for the map screen (**H1**), in three places:
+
+      1. `:150` the picker — `useMeasures('modality')` → `useMeasures(PICKABLE)`. Also
+         `:146` formats each option as `` `${m.short_label} · ${m.unit}` ``, and the composite's
+         unit is `''`, so it renders **"Sense · "** with a dangling separator.
+      2. `:125` the header — *"{carriers.length} of {towers.length} reference instruments carry
+         this channel"* reads as an accusation against DRAQA when the honest statement is that
+         nothing instruments a derived index.
+      3. `:188` the reference-clock empty state — already has a fallback, but it says *"No
+         reference instrument carries a ACLIMA_SENSE channel"*: accusatory, and a
+         twelve-character code in mono furniture. Should branch on `family === 'composite'` and
+         use `short_label`.
+
+      **The rejected alternative**, recorded because it is the tempting one: *reconcile the
+      session measure on mount* — i.e. if you land here with a composite selected, silently
+      switch the app to a real pollutant. Cheaper, and worse. You picked Sense, walked one
+      screen, and the app changed your lens without saying so; the shared-measure model is what
+      makes walking between screens coherent in the first place, and this would put a hole in
+      it. One panel explaining itself beats the whole app quietly disagreeing with you.
+
+      *Documented 2026-09-02 at the user's request; deliberately not actioned yet.*
 - [ ] **A2** The regulator's default metric is `p90`, and the composite's p90 is near the
       100 clamp on the worst streets (measured 99.6 / 99.0 / 95.5 on the top three). The clamp
       itself is negligible and faithful to AQHI's own "10+" convention — it bites on **12 of

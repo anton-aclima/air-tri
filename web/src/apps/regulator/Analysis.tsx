@@ -23,6 +23,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { DiurnalClock, Distribution, SeasonalStrip, TimeSeries, WindRose } from '@/components'
 import { Segmented, Select } from '@/app/ui'
 import { fmtCompact, fmtHourLabel, fmtNum, fmtWind } from '@/core/format'
+import { PICKABLE } from '@/core/measures'
 import {
   useActiveMeasure, useMeasures, useMonitorReadings, useSegmentDetail, useWind,
 } from '@/core/queries'
@@ -47,9 +48,18 @@ interface StatBlock { median: number; p90: number; max: number; persistence: num
 
 export function Analysis() {
   const navigate = useNavigate()
-  const measures = useMeasures('modality')
+  // PICKABLE, not 'modality'. The session measure is global, so Sense could
+  // already reach this screen from the map — the picker was displaying a value
+  // it did not contain.
+  const measures = useMeasures(PICKABLE)
   const measure = useActiveMeasure()
   const measureCode = useSession((x) => x.measure)
+  /**
+   * A derived index. Four of the six panels here read the road grid and work
+   * unchanged; the two that ask a stationary instrument for a 24-hour shape
+   * cannot, and must say why without blaming the agency for it.
+   */
+  const derived = measure?.family === 'composite'
   const setMeasure = useSession((x) => x.setMeasure)
   const select = useSession((x) => x.select)
 
@@ -122,7 +132,9 @@ export function Analysis() {
         <div className={s.verdictLines}>
           <span className={s.verdictHead}>
             {measure?.label ?? measureCode.toUpperCase()} · {fmtNum(reach.total, 0)} segments ·{' '}
-            {carriers.length} of {towers.length} reference instruments carry this channel
+            {derived
+              ? 'a computed index — no instrument carries it'
+              : `${carriers.length} of ${towers.length} reference instruments carry this channel`}
           </span>
           <span className={s.sub}>
             {streetPeak ? (
@@ -143,7 +155,11 @@ export function Analysis() {
           <div className={s.readout}>
             <Select
               value={measureCode as MeasureCode}
-              options={measures.map((m) => ({ value: m.code as MeasureCode, label: `${m.short_label} · ${m.unit}` }))}
+              options={measures.map((m) => ({
+                value: m.code as MeasureCode,
+                // The composite has no unit, and `Sense · ` reads as a bug.
+                label: m.unit ? `${m.short_label} · ${m.unit}` : m.short_label,
+              }))}
               onValueChange={(c) => { setMeasure(c); setPickedId(null) }}
               size="sm"
             />
@@ -167,7 +183,9 @@ export function Analysis() {
                 size="sm"
               />
             ) : (
-              <Caps>{tower?.name ?? 'no carrier'}</Caps>
+              /* "no carrier" is true of a pollutant nobody instrumented; it is
+                 the wrong word for something that is not a channel at all. */
+              <Caps>{tower?.name ?? (derived ? 'not an instrument channel' : 'no carrier')}</Caps>
             )
           }
         >
@@ -185,9 +203,20 @@ export function Analysis() {
               />
             ) : (
               <div className={s.empty}>
-                No reference instrument carries a {measureCode.toUpperCase()} channel. There is no
-                stationary 24-hour shape for this pollutant anywhere in the region — only the fleet
-                has one.
+                {derived ? (
+                  <>
+                    {measure?.short_label} is computed from three pollutants, not measured — no
+                    instrument anywhere carries it as a channel, and none was ever meant to.
+                    Compare the streets against each other, or switch to one of its inputs to
+                    check the fleet against a reference.
+                  </>
+                ) : (
+                  <>
+                    No reference instrument carries a {measure?.short_label ?? measureCode.toUpperCase()}{' '}
+                    channel. There is no stationary 24-hour shape for this pollutant anywhere in
+                    the region — only the fleet has one.
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -23,6 +23,7 @@
 import { PathLayer } from '@deck.gl/layers';
 import type { LayersList, PickingInfo } from 'deck.gl';
 import type { Position, SegmentCollection, SegmentMetric, SegmentProps } from '@/core/types';
+import { INDEX_DOMAIN } from '@/core/measures';
 import type { Theme } from '../../lib/theme';
 import type { ColorScale } from '../../lib/scales';
 import { makeColorScale, persistenceAlpha, persistenceWidth, robustDomain } from '../../lib/scales';
@@ -86,12 +87,15 @@ export function segmentDomain(data: SegmentCollection | null | undefined): [numb
  *
  * The test is the unit rather than the family so it needs no type import and
  * says what it means: a measure with no unit is a score.
+ *
+ * See `INDEX_DOMAIN` for why an index is pinned to [0,60] rather than [0,100],
+ * and why the community map is the one place that does not use this.
  */
 export function measureDomain(
   measure: { unit: string } | null | undefined,
   data: SegmentCollection | null | undefined,
 ): [number, number] {
-  return measure?.unit === '' ? [0, 100] : segmentDomain(data);
+  return measure?.unit === '' ? INDEX_DOMAIN : segmentDomain(data);
 }
 
 /**

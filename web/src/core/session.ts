@@ -103,7 +103,8 @@ export interface SessionState {
   select: (patch: Partial<Selection>) => void
   clearSelection: () => void
   setMapView: (view: Partial<MapView>) => void
-  flyTo: (center: Position, zoom?: number) => void
+  /** Slew the camera. `durationMs` 0 jumps; default is a followable ~900 ms. */
+  flyTo: (center: Position, zoom?: number, opts?: { durationMs?: number }) => void
   resetView: () => void
   setMeasure: (measure: MeasureCode) => void
   setMetric: (metric: SegmentMetric) => void
@@ -120,6 +121,13 @@ export interface SessionState {
   setTransitioningTo: (role: Role | null) => void
   reset: () => void
 }
+
+/**
+ * The in-flight camera animation, if any. Module-level because there is exactly
+ * one camera: starting a new flight must cancel the old one, or two rAF loops
+ * write alternating frames and the map shudders between two destinations.
+ */
+let cancelFlight: (() => void) | null = null
 
 const INITIAL = {
   role: null as Role | null,
@@ -165,15 +173,69 @@ export const useSession = create<SessionState>()(
       clearSelection: () => set({ selection: EMPTY_SELECTION }),
 
       setMapView: (view) => set((s) => ({ mapView: { ...s.mapView, ...view } })),
-      flyTo: (center, zoom) =>
-        set((s) => ({
-          mapView: {
-            ...s.mapView,
-            longitude: center[0],
-            latitude: center[1],
-            zoom: zoom ?? Math.max(s.mapView.zoom, 14.5),
-          },
-        })),
+
+      /**
+       * Move the camera over time instead of teleporting it.
+       *
+       * `<Map longitude latitude zoom>` is a CONTROLLED camera, so react-map-gl
+       * applies a state change as `jumpTo` — the view cuts, and a cut costs the
+       * reader every bit of spatial context they had. You look up somewhere
+       * else and have to rebuild where you are from scratch. Interpolating the
+       * store instead makes the same state change a slew, which the eye can
+       * follow, and it works for both backends because both are driven off this
+       * one value.
+       *
+       * Longitude is interpolated on the short way round so a flight never
+       * crosses the antimeridian the long way. Zoom is interpolated
+       * logarithmically — it already is a log scale, so a linear ramp reads as
+       * a lurch at the end.
+       */
+      flyTo: (center, zoom, opts) => {
+        const from = get().mapView
+        const to = {
+          ...from,
+          longitude: center[0],
+          latitude: center[1],
+          zoom: zoom ?? Math.max(from.zoom, 14.5),
+        }
+        const ms = opts?.durationMs ?? 900
+
+        if (cancelFlight) cancelFlight()
+        if (ms <= 0 || typeof requestAnimationFrame === 'undefined') {
+          set({ mapView: to })
+          return
+        }
+
+        // Short way round, so a flight never takes the scenic route.
+        let dLon = to.longitude - from.longitude
+        if (dLon > 180) dLon -= 360
+        if (dLon < -180) dLon += 360
+
+        const t0 = performance.now()
+        let raf = 0
+        let live = true
+        cancelFlight = () => { live = false; cancelAnimationFrame(raf) }
+
+        const step = (t: number) => {
+          if (!live) return
+          const k = Math.min(1, (t - t0) / ms)
+          // easeInOutCubic — leaves and arrives slowly, moves in the middle.
+          const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2
+          set({
+            mapView: {
+              ...get().mapView,
+              longitude: from.longitude + dLon * e,
+              latitude: from.latitude + (to.latitude - from.latitude) * e,
+              zoom: Math.log2(
+                Math.pow(2, from.zoom) * Math.pow(Math.pow(2, to.zoom - from.zoom), e),
+              ),
+            },
+          })
+          if (k < 1) raf = requestAnimationFrame(step)
+          else { live = false; cancelFlight = null }
+        }
+        raf = requestAnimationFrame(step)
+      },
       resetView: () => set({ mapView: DEFAULT_VIEW }),
 
       setMeasure: (measure) => set({ measure }),

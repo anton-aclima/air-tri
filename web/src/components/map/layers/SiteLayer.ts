@@ -35,9 +35,42 @@ export interface SiteLayerProps {
   pickable?: boolean;
 }
 
+/** Anything with a pictographic codepoint renders in its own colours. */
+const PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
+
 type Ring = { site: IndustrySite; polygon: Position[] };
 type Outline = { site: IndustrySite; path: Position[] };
 type Point = { point: EmissionPoint; site: IndustrySite };
+
+/**
+ * Unwrap whatever `SiteLayer` just handed back from a click.
+ *
+ * The layer is pickable in three places and each returns a DIFFERENT shape:
+ * the footprint fill returns a `Ring` (`{site, polygon}`), an emission point
+ * returns a `Point` (`{point, site}`), and the brand badge returns the
+ * `IndustrySite` itself. Only the last of those has an `id` on it, so a caller
+ * reading `info.object.id` silently gets `undefined` for two of the three — the
+ * footprint, which is by far the biggest target, does nothing at all. Both the
+ * community map and the industry scope had that bug.
+ *
+ * Knowing the shapes belongs next to the code that makes them, not copied into
+ * every screen that draws a site.
+ */
+export function pickedSite(obj: unknown): { siteId: string | null; emissionPointId: string | null } {
+  const o = obj as {
+    id?: unknown;
+    site?: { id?: unknown };
+    point?: { id?: unknown };
+  } | null;
+  if (!o) return { siteId: null, emissionPointId: null };
+  const siteId = typeof o.site?.id === 'string' ? o.site.id
+    : typeof o.id === 'string' ? o.id
+    : null;
+  return {
+    siteId,
+    emissionPointId: typeof o.point?.id === 'string' ? o.point.id : null,
+  };
+}
 
 /** A site's own brand colour, or the industry actor token when it has none. */
 function brand(theme: Theme, site: IndustrySite, alpha?: number) {
@@ -195,12 +228,22 @@ export function SiteLayer(props: SiteLayerProps): LayersList {
         getText: (s) => s.logo_emoji ?? '',
         getSize: 20,
         sizeUnits: 'pixels',
-        getColor: [255, 255, 255, 255],
+        /*
+          A COLOUR emoji ignores this tint and renders in its own colours, so
+          white was fine for ⚒️ and 🚚. A geometric glyph does not: Ridgeline's
+          badge is `▲`, a plain character, and hardcoded white painted it white
+          on the community skin's light background — invisible, and therefore
+          unhittable. Tint only the glyphs that actually take a tint.
+        */
+        getColor: (s) => (PICTOGRAPHIC.test(s.logo_emoji ?? '')
+          ? [255, 255, 255, 255]
+          : theme.color('ink', dim(s))),
         getTextAnchor: 'middle',
         getAlignmentBaseline: 'center',
         getPixelOffset: [0, -8],
         characterSet: 'auto',
         fontSettings: { sdf: false },
+        updateTriggers: { getColor: theme.css('ink') },
         onHover,
         onClick,
       }));

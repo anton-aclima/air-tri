@@ -13,7 +13,7 @@
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
 import type { MeasureDef, SegmentMetric } from '@/core/types';
-import { METRIC_LABEL_SHORT, metricIsUnitless, plainName, unitFor } from '@/core/measures';
+import { INDEX_DOMAIN, METRIC_LABEL_SHORT, metricIsUnitless, plainName, unitFor } from '@/core/measures';
 import { fmtNum } from '@/core/format';
 import { useTheme } from '../../lib/theme';
 import type { ColorScale } from '../../lib/scales';
@@ -58,9 +58,17 @@ export function MapLegend(props: MapLegendProps) {
   const isIndex = measure?.unit === '';
   // Persistence and risk have fixed, known ranges. Inheriting a concentration
   // domain here is how a legend ends up reading "4263 %".
+  //
+  // ORDER MATTERS. `risk` is checked before `isIndex` so the community map —
+  // which passes metric="risk" and paints the AQI ramp, where a colour position
+  // means a RISK_BANDS word — keeps its [0,100] scale. An index on any other
+  // metric is the analytical case and must match `measureDomain`, or the legend
+  // prints one range under a ramp drawn to another.
   const fixedDomain: [number, number] | null = metric === 'persistence'
     ? [0, 1]
-    : metric === 'risk' || isIndex ? [0, 100] : null;
+    : metric === 'risk' ? [0, 100]
+    : isIndex ? INDEX_DOMAIN
+    : null;
   const [lo, hi] = fixedDomain ?? scale?.domain ?? domain ?? [0, 1];
   const unitless = metricIsUnitless(metric) || plainLanguage || isIndex;
   const unit = unitless ? (metric === 'persistence' ? '%' : '') : unitFor(measure ?? undefined);

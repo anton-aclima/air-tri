@@ -986,3 +986,142 @@ button.railRow:hover .railRowName { color: var(--accent); }
   border-radius: var(--r-pill);
   padding: 3px var(--s-3);
 }
+
+/* ── the picked-item card ──────────────────────────────────────────────────
+   Sits at the head of the rail whenever something on the map is selected. It
+   leads rather than floats: a popover over a 200 m street occludes the very
+   thing you tapped, and this rail is already where a resident reads. */
+.pickCard {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.pickBar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-block-end: var(--s-3);
+}
+.pickHead {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  margin-block-end: var(--s-3);
+}
+.pickEmoji { font-size: 1.6rem; line-height: 1; }
+.pickTitle {
+  display: block;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.pickSub {
+  display: block;
+  margin-block-start: 2px;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+}
+
+/* The resident's own words. The one thing on this screen that is not a number. */
+.pickQuote {
+  margin: 0 0 var(--s-3);
+  padding-inline-start: var(--s-3);
+  border-inline-start: 2px solid var(--accent);
+  font-style: italic;
+  color: var(--ink-1);
+}
+
+.pickRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-block: 4px;
+  border-block-end: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.pickRow:last-of-type { border-block-end: 0; }
+.pickKey { color: var(--ink-2); }
+.pickVal {
+  text-align: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pickDot {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pickScore {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-block-end: var(--s-3);
+}
+.pickScoreCaption { font-size: var(--text-xs); color: var(--ink-2); }
+
+.pickList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-block: var(--s-2);
+}
+.pickListRow {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: var(--text-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.pickListRow:hover { background: var(--surface-2, var(--surface)); }
+.pickListTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickListWhen { font-size: var(--text-xs); color: var(--ink-2); }
+
+.pickNote {
+  margin: var(--s-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.pickActions { margin-block-start: var(--s-3); }
+
+/* ── the pin key ───────────────────────────────────────────────────────────
+   Pin colour carries whether anyone has answered, which is the most consequential
+   fact on the screen and was previously explained nowhere. */
+.pinKey {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.pinKeyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-sm);
+}
+.pinKeySwatch {
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: var(--bg);
+  flex: none;
+}
+
+/* Sub-heading inside a rail card, for a legend that now explains two different
+   visual systems (street colour, pin colour) in one place. */
+.railSubLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-block: var(--s-3) var(--s-2);
+}
+.railSubLabel:first-of-type { margin-block-start: 0; }

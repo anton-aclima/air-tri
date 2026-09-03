@@ -22,7 +22,7 @@ import {
 } from '@/components'
 import { Button } from '@/app/ui'
 import { fmtCompact, fmtNum, fmtWind, relativeShort } from '@/core/format'
-import { PICKABLE } from '@/core/measures'
+import { INDEX_DOMAIN, PICKABLE } from '@/core/measures'
 import {
   useActiveMeasure, useAlerts, useCampaignBoundary, useCampaignInfo, useConcernClusters,
   useConcerns, useFleet, useMeasures, useMonitors, useSegments, useSites,
@@ -119,10 +119,11 @@ export function MapScreen() {
   const blind = !derived && !canSee.has(measureCode)
 
   const domain = useMemo<[number, number]>(() => {
-    // A derived index is defined on 0-100 and means the same thing everywhere.
-    // Stretching it to the local spread would repaint a campaign that is
-    // honestly uniform as a full-scale emergency.
-    if (derived) return [0, 100]
+    // A derived index means the same thing everywhere, so it is pinned rather
+    // than stretched to the local spread — that would repaint a campaign which
+    // is honestly uniform as a full-scale emergency. See INDEX_DOMAIN for why
+    // the ceiling is 60 (AQHI 6, a published band edge) and not 100.
+    if (derived) return INDEX_DOMAIN
     const vals: number[] = []
     for (const f of segments?.features ?? []) if (f.properties.value != null) vals.push(f.properties.value)
     // No floor at zero: ambient NO2 never approaches zero, so anchoring there

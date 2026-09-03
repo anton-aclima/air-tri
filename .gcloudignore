@@ -1,0 +1,46 @@
+# What gets uploaded to Cloud Build by `gcloud run deploy --source .`.
+#
+# This file exists mostly to stop a surprise: with no .gcloudignore, gcloud
+# silently DERIVES one from .gitignore. That happens to be safe here — .gitignore
+# excludes .env — but "safe by coincidence" is not how secrets should work, and
+# the derived behaviour is invisible to whoever reads this repo next.
+#
+# Two separate layers, both needed:
+#   .gcloudignore  — what leaves this machine for Cloud Build
+#   .dockerignore  — what the Docker build inside Cloud Build can see
+
+# SECRETS. ANTHROPIC_API_KEY, GOOGLE_MAPS_API_KEY. Secret Manager, not a layer.
+.env
+.env.*
+*.pem
+*.key
+
+# The 100 MB database is regenerated inside the image, so it stays out. But
+# `data/cache/` MUST go in: it holds the three Overpass/OpenStreetMap responses
+# (748 KB) that the datagen builds the road network from, and `osm.py` never
+# re-fetches a cached file.
+#
+# Excluding all of `data/` is what broke the first Cloud Build — the datagen
+# fell through to a live Overpass call and got `0 elements` back from a flaky
+# mirror. Shipping the cache also pins the deployed world to the same road
+# network the demo was developed against, instead of whatever Overpass happens
+# to return on build day.
+data/*
+!data/cache
+
+# Rebuilt in the image's `web` stage.
+web/dist/
+web/node_modules/
+
+var/
+*.log
+
+.git/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store

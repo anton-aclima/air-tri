@@ -14,14 +14,7 @@ import { distanceBetween, fmtDistanceImperial } from '@/core/format'
 import { useSegments, useUsers } from '@/core/queries'
 import { DEFAULT_VIEW, usePersona } from '@/core/session'
 import type {
-  Concern,
-  ConcernKind,
-  ConcernStatus,
-  Monitor,
-  Position,
-  Role,
-  SegmentCollection,
-  User,
+  Concern, ConcernKind, ConcernStatus, Monitor, Position, Role, SegmentCollection, SiteKind, User,
 } from '@/core/types'
 
 // ───────────────────────────────────────────────────────────────── identity
@@ -97,6 +90,19 @@ export function usePlaces(): Places {
 }
 
 // ────────────────────────────────────────────────────────── concern language
+
+/**
+ * What an industrial site IS, for someone who has never read a permit. Lives
+ * here rather than in Outreach because the map explains sites too now, and two
+ * copies of a sentence like this drift.
+ */
+export const KIND_WORD: Record<SiteKind, string> = {
+  datacenter: 'A data centre — rooms of computers, with generators to keep them running',
+  logistics: 'A freight yard — trucks and containers moving through, day and night',
+  manufacturing: 'A factory — furnaces and finishing lines',
+  power: 'A power plant',
+  other: 'An industrial site',
+}
 
 export const CONCERN_KINDS: ConcernKind[] = [
   'smell',

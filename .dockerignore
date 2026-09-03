@@ -1,0 +1,46 @@
+# The build context is uploaded to Cloud Build, so this file controls both image
+# size and what leaves this machine.
+
+# SECRETS. `.env` holds ANTHROPIC_API_KEY and GOOGLE_MAPS_API_KEY. They belong in
+# Secret Manager, mounted as env vars at deploy time — never in a layer, where
+# anyone who can pull the image can read them.
+.env
+.env.*
+*.pem
+*.key
+
+# The 100 MB database is regenerated inside the image, so it stays out. But
+# `data/cache/` MUST go in: it holds the three Overpass/OpenStreetMap responses
+# (748 KB) that the datagen builds the road network from, and `osm.py` never
+# re-fetches a cached file.
+#
+# Excluding all of `data/` is what broke the first Cloud Build — the datagen
+# fell through to a live Overpass call and got `0 elements` back from a flaky
+# mirror. Shipping the cache also pins the deployed world to the same road
+# network the demo was developed against, instead of whatever Overpass happens
+# to return on build day.
+data/*
+!data/cache
+
+# Rebuilt in the `web` stage. Copying the local one risks deploying a stale bundle.
+web/dist/
+web/node_modules/
+
+# Logs and scratch — `var/` is where dev/serve.sh and dev/web.sh append.
+var/
+*.log
+
+.git/
+.gitignore
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# Not needed at runtime.
+docs/
+dev/

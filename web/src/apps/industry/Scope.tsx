@@ -27,6 +27,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   AlertTimeline, BaseMap, DispersionLayer, MapOverlay, MapWindField,
   MonitorLayer, RadarScope, SegmentLayer, SiteLayer, makeColorScale, measureDomain,
+  pickedSite,
 } from '@/components'
 import type { MapView, RadarContact, SegmentFeature, Theme } from '@/components'
 import { Button } from '@/app/ui'
@@ -468,10 +469,13 @@ export function Scope() {
               } else if (lid.startsWith('reference') || lid.startsWith('fenceline')) {
                 if (typeof obj.id === 'string') setPick({ kind: 'monitor', id: obj.id })
               } else if (lid.startsWith('sites')) {
-                // SiteLayer picks either a footprint or one of its stacks.
-                const point = (obj as { point?: { id?: string } }).point
-                if (point?.id) setPick({ kind: 'emission', id: point.id })
-                else if (typeof obj.id === 'string') setPick({ kind: 'site', id: obj.id })
+                // SiteLayer picks a footprint, a stack, or the brand badge, and
+                // each is a different shape — reading `obj.id` alone silently
+                // dropped every click on the campus polygon, which is the
+                // largest target on the screen.
+                const { siteId, emissionPointId } = pickedSite(obj)
+                if (emissionPointId) setPick({ kind: 'emission', id: emissionPointId })
+                else if (siteId) setPick({ kind: 'site', id: siteId })
               }
             }}
             minZoom={10}
@@ -530,7 +534,7 @@ export function Scope() {
                   <Caps>
                     streets — {shortName(measureDef)}
                     {isIndex
-                      ? ' on a fixed 0–100 health scale'
+                      ? ' · colour fixed 0–60, where 60 is the top of the Moderate band'
                       : `${unitFor(measureDef) ? ` in ${unitFor(measureDef)}` : ''}, colour stretched to what is in view`}
                     {' · width is how often'}
                   </Caps>
