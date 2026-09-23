@@ -72,7 +72,9 @@ air-server = "air.server.__main__:main"
 | GET | `/drive-plan/{id}/coverage` | |
 | GET | `/wind` | `from` `to` |
 | GET | `/wind/current` † | the wind row in force at `at` |
-| GET | `/wind/dispersion` | `site_id` `at` `measure` `reach_m` → 3 banded plume polygons per active emission point |
+| GET | `/wind/dispersion` | `site_id` `at` `measure` → 3 banded plume polygons **per site** (unioned; the shape comes from `air.dispersion`, the same kernel that writes the truth field) |
+| GET | `/sites/{id}/touchdown` | `measure` `from` `to` `regime` `r_lo_m` `r_hi_m` → the **measured** plume as road LineStrings, plus the site-level roll-up that is the verdict, plus a 12×4 polar view. Never a Polygon — see the router docstring |
+| GET | `/campaigns/{id}/coverage` | `cell_m` → driven-coverage mask as GeoJSON cells. `cell_m` is the cell SIDE, not a radius |
 | GET | `/wind/mobile` | `from` `to` `bbox=w,s,e,n` `quality` `limit` → `MobileWindObs[]` from the fleet anemometers. `quality` is comma-separated; **the default excludes only `rejected`**, so `suspect` is visible and filterable rather than hidden |
 | GET | `/wind/field` | `from` `to` `cell_m` `bbox` `quality` → `WindField`. Observed wind binned onto a clean lattice; **direction averaged circularly**. Feeds the particle overlay |
 | GET | `/sites/{id}/dispersion-models` | `DispersionModel[]` with contours; `assumed_wind` re-binned onto the canonical 16-point rose |

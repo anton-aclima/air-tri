@@ -66,7 +66,7 @@ cd web && npm run dev        # UI on :5173
 ## Docs
 
 - `docs/CONTRACT.md` — the build contract: data model, API surface, design system, ownership
-- `docs/design.md` — the original design brief
+- `docs/ORIGIN_PROMPT.md` — the original design brief
 - `docs/aclima.md` — company and domain background
 - `src/air/db/schema.sql` — the shared schema
 - `web/src/design/tokens.css` — the design tokens and the four role themes

@@ -1,0 +1,834 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T23:31:45Z",
+  "title": "Design System: air",
+  "extensions": {
+    "colorMeta": {
+      "ember-0": {
+        "role": "primary",
+        "displayName": "Ember 0 — Midnight",
+        "canonical": "#10182F"
+      },
+      "ember-1": {
+        "role": "primary",
+        "displayName": "Ember 1 — Deep Indigo",
+        "canonical": "#24356F"
+      },
+      "ember-2": {
+        "role": "primary",
+        "displayName": "Ember 2 — Violet",
+        "canonical": "#4B3D9B"
+      },
+      "ember-3": {
+        "role": "primary",
+        "displayName": "Ember 3 — Orchid",
+        "canonical": "#823C93"
+      },
+      "ember-4": {
+        "role": "primary",
+        "displayName": "Ember 4 — Magenta",
+        "canonical": "#C0417F"
+      },
+      "ember-5": {
+        "role": "primary",
+        "displayName": "Ember 5 — Coral",
+        "canonical": "#E6614F"
+      },
+      "ember-6": {
+        "role": "primary",
+        "displayName": "Ember 6 — Amber",
+        "canonical": "#F79B3D"
+      },
+      "ember-7": {
+        "role": "primary",
+        "displayName": "Ember 7 — Gold",
+        "canonical": "#FFD84D"
+      },
+      "ember-light-0": {
+        "role": "primary",
+        "displayName": "Ember Light 0 — light-basemap inversion",
+        "canonical": "#BFE6DE"
+      },
+      "ember-light-1": {
+        "role": "primary",
+        "displayName": "Ember Light 1 — light-basemap inversion",
+        "canonical": "#79C9C4"
+      },
+      "ember-light-2": {
+        "role": "primary",
+        "displayName": "Ember Light 2 — light-basemap inversion",
+        "canonical": "#4FA8C2"
+      },
+      "ember-light-3": {
+        "role": "primary",
+        "displayName": "Ember Light 3 — light-basemap inversion",
+        "canonical": "#6E82C4"
+      },
+      "ember-light-4": {
+        "role": "primary",
+        "displayName": "Ember Light 4 — light-basemap inversion",
+        "canonical": "#A264B4"
+      },
+      "ember-light-5": {
+        "role": "primary",
+        "displayName": "Ember Light 5 — light-basemap inversion",
+        "canonical": "#CE4F86"
+      },
+      "ember-light-6": {
+        "role": "primary",
+        "displayName": "Ember Light 6 — light-basemap inversion",
+        "canonical": "#E2543F"
+      },
+      "ember-light-7": {
+        "role": "primary",
+        "displayName": "Ember Light 7 — light-basemap inversion",
+        "canonical": "#A8211F"
+      },
+      "aqi-good": {
+        "role": "tertiary",
+        "displayName": "AQI — Good",
+        "canonical": "#3FBF8F"
+      },
+      "aqi-fair": {
+        "role": "tertiary",
+        "displayName": "AQI — Fair",
+        "canonical": "#9ED45C"
+      },
+      "aqi-moderate": {
+        "role": "tertiary",
+        "displayName": "AQI — Moderate",
+        "canonical": "#F2C744"
+      },
+      "aqi-sensitive": {
+        "role": "tertiary",
+        "displayName": "AQI — Unhealthy (Sensitive)",
+        "canonical": "#F08A3C"
+      },
+      "aqi-unhealthy": {
+        "role": "tertiary",
+        "displayName": "AQI — Unhealthy",
+        "canonical": "#E2544F"
+      },
+      "aqi-very-unhealthy": {
+        "role": "tertiary",
+        "displayName": "AQI — Very Unhealthy",
+        "canonical": "#9B4FA8"
+      },
+      "aqi-hazardous": {
+        "role": "tertiary",
+        "displayName": "AQI — Hazardous",
+        "canonical": "#7A2438"
+      },
+      "sev-ok": {
+        "role": "tertiary",
+        "displayName": "Severity — Clear",
+        "canonical": "#3FBF8F",
+        "tonalRamp": [
+          "#18352A",
+          "#27604A",
+          "#348D6C",
+          "#3FBD8D",
+          "#6CC9A6",
+          "#9AD6BF",
+          "#C5E5D9",
+          "#EEF7F3"
+        ]
+      },
+      "sev-info": {
+        "role": "tertiary",
+        "displayName": "Severity — Info",
+        "canonical": "#4FA8E0",
+        "tonalRamp": [
+          "#122B3A",
+          "#1C4C6B",
+          "#236F9E",
+          "#2692D5",
+          "#5AAADC",
+          "#8EC1E2",
+          "#BFDAEB",
+          "#ECF4F8"
+        ]
+      },
+      "sev-watch": {
+        "role": "tertiary",
+        "displayName": "Severity — Watch",
+        "canonical": "#F2C744",
+        "tonalRamp": [
+          "#3F330D",
+          "#745C13",
+          "#AD8714",
+          "#EAB511",
+          "#EBC34A",
+          "#ECD284",
+          "#F1E3BA",
+          "#FAF6EB"
+        ]
+      },
+      "sev-warning": {
+        "role": "tertiary",
+        "displayName": "Severity — Warning",
+        "canonical": "#F0803C",
+        "tonalRamp": [
+          "#3F200E",
+          "#733814",
+          "#AC4E15",
+          "#E96313",
+          "#EA874C",
+          "#EBAB85",
+          "#F0CEBA",
+          "#FAF0EB"
+        ]
+      },
+      "sev-critical": {
+        "role": "tertiary",
+        "displayName": "Severity — Critical",
+        "canonical": "#FF3B4E",
+        "tonalRamp": [
+          "#430A0F",
+          "#7B0C16",
+          "#B9091A",
+          "#FB0119",
+          "#F73E50",
+          "#F47C88",
+          "#F5B5BC",
+          "#FBEAEB"
+        ]
+      },
+      "actor-community": {
+        "role": "tertiary",
+        "displayName": "Actor — Residents",
+        "canonical": "#F2A65A",
+        "tonalRamp": [
+          "#3F260E",
+          "#734314",
+          "#AC6115",
+          "#E87E13",
+          "#EA9B4C",
+          "#EBB885",
+          "#F0D5BA",
+          "#FAF2EB"
+        ]
+      },
+      "actor-regulator": {
+        "role": "tertiary",
+        "displayName": "Actor — Agency",
+        "canonical": "#4FD1E0",
+        "tonalRamp": [
+          "#12363A",
+          "#1C626B",
+          "#23919E",
+          "#26C3D5",
+          "#5ACEDC",
+          "#8ED9E2",
+          "#BFE7EB",
+          "#ECF7F8"
+        ]
+      },
+      "actor-industry": {
+        "role": "tertiary",
+        "displayName": "Actor — Operator",
+        "canonical": "#B58CFF",
+        "tonalRamp": [
+          "#1E0A43",
+          "#330C7B",
+          "#4709B9",
+          "#5A01FB",
+          "#803EF7",
+          "#A77CF4",
+          "#CCB5F5",
+          "#F0EAFB"
+        ]
+      },
+      "actor-aclima": {
+        "role": "tertiary",
+        "displayName": "Actor — Aclima",
+        "canonical": "#00D3A7",
+        "tonalRamp": [
+          "#0A4337",
+          "#0C7B64",
+          "#09B994",
+          "#01FBC7",
+          "#3EF7D1",
+          "#7CF4DB",
+          "#B5F5E8",
+          "#EAFBF7"
+        ]
+      },
+      "mod-no2": {
+        "role": "tertiary",
+        "displayName": "Modality — NO2",
+        "canonical": "#4FD1E0"
+      },
+      "mod-pm25": {
+        "role": "tertiary",
+        "displayName": "Modality — PM2.5",
+        "canonical": "#F2A65A"
+      },
+      "mod-bc": {
+        "role": "tertiary",
+        "displayName": "Modality — Black Carbon",
+        "canonical": "#B58CFF"
+      },
+      "mod-o3": {
+        "role": "tertiary",
+        "displayName": "Modality — Ozone",
+        "canonical": "#7ED957"
+      },
+      "mod-co": {
+        "role": "tertiary",
+        "displayName": "Modality — CO",
+        "canonical": "#FF8FA3"
+      },
+      "mod-co2": {
+        "role": "tertiary",
+        "displayName": "Modality — CO2",
+        "canonical": "#8FA3B8"
+      },
+      "mod-ch4": {
+        "role": "tertiary",
+        "displayName": "Modality — Methane",
+        "canonical": "#FFD84D"
+      },
+      "mod-aclima-sense": {
+        "role": "tertiary",
+        "displayName": "Modality — Aclima Sense",
+        "canonical": "#E8E0D0"
+      },
+      "civic-green": {
+        "role": "primary",
+        "displayName": "Civic Green",
+        "canonical": "#0E7C66",
+        "tonalRamp": [
+          "#103D34",
+          "#17705E",
+          "#1AA78B",
+          "#1AE1B9",
+          "#51E4C7",
+          "#88E7D4",
+          "#BCEEE4",
+          "#EBF9F6"
+        ]
+      },
+      "civic-alarm": {
+        "role": "secondary",
+        "displayName": "Civic Alarm",
+        "canonical": "#C4442F",
+        "tonalRamp": [
+          "#381A15",
+          "#662B21",
+          "#973A2B",
+          "#CA4731",
+          "#D37262",
+          "#DD9E93",
+          "#E9C7C2",
+          "#F8EEED"
+        ]
+      },
+      "sensor-cyan": {
+        "role": "primary",
+        "displayName": "Sensor Cyan",
+        "canonical": "#4FD1E0",
+        "tonalRamp": [
+          "#12363A",
+          "#1C626B",
+          "#23919E",
+          "#26C3D5",
+          "#5ACEDC",
+          "#8ED9E2",
+          "#BFE7EB",
+          "#ECF7F8"
+        ]
+      },
+      "sensor-threat": {
+        "role": "secondary",
+        "displayName": "Sensor Threat",
+        "canonical": "#FF6B4A",
+        "tonalRamp": [
+          "#43140A",
+          "#7B200C",
+          "#B92909",
+          "#FB2E01",
+          "#F7603E",
+          "#F4927C",
+          "#F5C1B5",
+          "#FBEDEA"
+        ]
+      },
+      "sensor-tower": {
+        "role": "secondary",
+        "displayName": "Sensor Tower",
+        "canonical": "#5EE6A8"
+      },
+      "sensor-fleet": {
+        "role": "secondary",
+        "displayName": "Sensor Fleet",
+        "canonical": "#FFD84D"
+      },
+      "scope-phosphor": {
+        "role": "primary",
+        "displayName": "Scope Phosphor",
+        "canonical": "#39FF9E",
+        "tonalRamp": [
+          "#0A4327",
+          "#0C7B45",
+          "#09B962",
+          "#01FB80",
+          "#3EF79D",
+          "#7CF4B9",
+          "#B5F5D6",
+          "#EAFBF2"
+        ]
+      },
+      "scope-caution": {
+        "role": "secondary",
+        "displayName": "Scope Caution",
+        "canonical": "#FFB020"
+      },
+      "scope-threat": {
+        "role": "secondary",
+        "displayName": "Scope Threat",
+        "canonical": "#FF3B30"
+      },
+      "aclima-teal": {
+        "role": "primary",
+        "displayName": "Aclima Teal",
+        "canonical": "#00D3A7",
+        "tonalRamp": [
+          "#0A4337",
+          "#0C7B64",
+          "#09B994",
+          "#01FBC7",
+          "#3EF7D1",
+          "#7CF4DB",
+          "#B5F5E8",
+          "#EAFBF7"
+        ]
+      },
+      "blueprint-blue": {
+        "role": "secondary",
+        "displayName": "Blueprint Blue",
+        "canonical": "#7CA9FF",
+        "tonalRamp": [
+          "#0A1D43",
+          "#0C327B",
+          "#0945B9",
+          "#0157FB",
+          "#3E7EF7",
+          "#7CA5F4",
+          "#B5CBF5",
+          "#EAF0FB"
+        ]
+      },
+      "community-paper": {
+        "role": "neutral",
+        "displayName": "Community Paper",
+        "canonical": "#F6F3ED"
+      },
+      "community-surface": {
+        "role": "neutral",
+        "displayName": "Community Surface",
+        "canonical": "#FFFFFF"
+      },
+      "community-ink": {
+        "role": "neutral",
+        "displayName": "Community Ink",
+        "canonical": "#191C1F"
+      },
+      "community-line": {
+        "role": "neutral",
+        "displayName": "Community Line",
+        "canonical": "#E2DCD2"
+      },
+      "regulator-ground": {
+        "role": "neutral",
+        "displayName": "Regulator Ground",
+        "canonical": "#090E14"
+      },
+      "regulator-surface": {
+        "role": "neutral",
+        "displayName": "Regulator Surface",
+        "canonical": "#111A23"
+      },
+      "regulator-ink": {
+        "role": "neutral",
+        "displayName": "Regulator Ink",
+        "canonical": "#DEE9F1"
+      },
+      "regulator-line": {
+        "role": "neutral",
+        "displayName": "Regulator Line",
+        "canonical": "#1F2C39"
+      },
+      "industry-ground": {
+        "role": "neutral",
+        "displayName": "Industry Ground",
+        "canonical": "#05070A"
+      },
+      "industry-surface": {
+        "role": "neutral",
+        "displayName": "Industry Surface",
+        "canonical": "#0C1114"
+      },
+      "industry-ink": {
+        "role": "neutral",
+        "displayName": "Industry Ink",
+        "canonical": "#D9E8E0"
+      },
+      "industry-line": {
+        "role": "neutral",
+        "displayName": "Industry Line",
+        "canonical": "#1A262A"
+      },
+      "admin-ground": {
+        "role": "neutral",
+        "displayName": "Admin Ground",
+        "canonical": "#0C1017"
+      },
+      "admin-surface": {
+        "role": "neutral",
+        "displayName": "Admin Surface",
+        "canonical": "#141A23"
+      },
+      "admin-ink": {
+        "role": "neutral",
+        "displayName": "Admin Ink",
+        "canonical": "#E6EDF3"
+      },
+      "admin-line": {
+        "role": "neutral",
+        "displayName": "Admin Line",
+        "canonical": "#232E3C"
+      },
+      "landing-ground": {
+        "role": "neutral",
+        "displayName": "Landing Ground",
+        "canonical": "#06080B"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero readouts and the landing page only. One per screen at most."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Screen titles and large community stat values."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Modal titles and card titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default running text. Dense console body drops to 0.8125rem."
+      },
+      "label": {
+        "displayName": "Micro-label",
+        "purpose": "Panel titles, table headers, stat labels, axis ticks, RWR micro-labels. Uppercase, tracked 0.09em. The most characteristic type object in the product."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Every number in the product, without exception. Monospace and tabular so a ticking value never shifts width."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-card-community",
+        "value": "0 1px 2px rgba(24,22,18,.05), 0 8px 24px -12px rgba(24,22,18,.18)",
+        "purpose": "Community casts: a real paper drop shadow with a warm-black tint. The only room that behaves like physical material."
+      },
+      {
+        "name": "shadow-card-instrument",
+        "value": "0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px #000",
+        "purpose": "Regulator and admin bevel: an inset top highlight over a deep tight drop. Machined metal, not paper."
+      },
+      {
+        "name": "shadow-card-scope",
+        "value": "0 0 0 1px #1A262A, 0 0 24px -12px #39FF9E33",
+        "purpose": "Industry emits: a hairline ring plus a green bloom. There is no light source; the surface glows."
+      },
+      {
+        "name": "shadow-pop-community",
+        "value": "0 8px 40px -12px rgba(24,22,18,.32)",
+        "purpose": "Community modals, sheets, popovers."
+      },
+      {
+        "name": "shadow-pop-instrument",
+        "value": "0 24px 60px -20px #000C",
+        "purpose": "Regulator and admin modals, sheets, popovers."
+      },
+      {
+        "name": "shadow-pop-scope",
+        "value": "0 0 60px -16px #39FF9E22, 0 24px 60px -24px #000",
+        "purpose": "Industry overlays: bloom over depth."
+      },
+      {
+        "name": "glow-accent",
+        "value": "0 0 12px #39FF9E66",
+        "purpose": "Industry only. Primary buttons and locked scope elements."
+      },
+      {
+        "name": "glow-threat",
+        "value": "0 0 16px #FF3B3088",
+        "purpose": "Industry only. Danger buttons and active threat contacts."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing. Fast departure, long settle."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.65, 0, 0.35, 1)",
+        "purpose": "Symmetric moves — a value travelling from one place to another."
+      },
+      {
+        "name": "dur-fast",
+        "value": "120ms",
+        "purpose": "Every hover, focus, and border-colour state change on a primitive."
+      },
+      {
+        "name": "dur-med",
+        "value": "240ms",
+        "purpose": "Modal and sheet entrances, card lift."
+      },
+      {
+        "name": "dur-slow",
+        "value": "520ms",
+        "purpose": "Layout-scale transitions."
+      },
+      {
+        "name": "dur-sweep",
+        "value": "3200ms",
+        "purpose": "The regulator's tower coverage-ring sweep and the landing hub. Nowhere else — the RadarScope deliberately has no sweep."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "all four duration tokens collapse to 0ms; animations clamp to 0.01ms",
+        "purpose": "prefers-reduced-motion is honoured at the token level, so every component degrades without knowing about it. The wind particle field falls back to a static streamline render."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "regulator-wide",
+        "value": "1400px"
+      },
+      {
+        "name": "admin-wide",
+        "value": "1240px"
+      },
+      {
+        "name": "dense-collapse",
+        "value": "1180px"
+      },
+      {
+        "name": "rail-collapse",
+        "value": "1100px"
+      },
+      {
+        "name": "two-col-collapse",
+        "value": "1080px"
+      },
+      {
+        "name": "community-wide",
+        "value": "1040px"
+      },
+      {
+        "name": "community-tablet",
+        "value": "820px"
+      },
+      {
+        "name": "community-phone",
+        "value": "620px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button — Regulator",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The default action in the two instrument rooms: 36px, 6px radius, wide-tracked, accent ground. Hover brightens the accent rather than swapping to a second token.",
+      "html": "<div class=\"ds-room-reg\"><button class=\"ds-btn ds-btn-primary\">Apply action level</button><button class=\"ds-btn ds-btn-secondary\">Cancel</button><button class=\"ds-btn ds-btn-ghost\">Reset</button></div>",
+      "css": ".ds-room-reg { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 6px; border: 1px solid transparent; font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; cursor: pointer; transition: background 120ms cubic-bezier(0.16,1,0.3,1), border-color 120ms cubic-bezier(0.16,1,0.3,1), color 120ms cubic-bezier(0.16,1,0.3,1), transform 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:active { transform: translateY(0.5px) scale(0.995); } .ds-btn-primary { background: #4FD1E0; color: #04161A; border-color: #4FD1E0; font-weight: 600; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: 2px solid #4FD1E0; outline-offset: 2px; } .ds-btn-secondary { background: #16212C; color: #DEE9F1; border-color: #2C3E4F; } .ds-btn-secondary:hover { background: #1B2733; border-color: #64798A; } .ds-btn-ghost { background: transparent; color: #93A7B8; } .ds-btn-ghost:hover { background: #16212C; color: #DEE9F1; }"
+    },
+    {
+      "name": "Report a Concern — Community CTA",
+      "kind": "button",
+      "refersTo": "button-cta",
+      "description": "The one loud object in the warm room. Pill, 40px, Civic Alarm ground, carrying the community card shadow. At most one per view.",
+      "html": "<div class=\"ds-room-com\"><button class=\"ds-btn-c ds-btn-cta\">Report a concern</button><button class=\"ds-btn-c ds-btn-cprimary\">See the map</button></div>",
+      "css": ".ds-room-com { background: #F6F3ED; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-btn-c { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 24px; border-radius: 999px; border: 1px solid transparent; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(24,22,18,.05), 0 8px 24px -12px rgba(24,22,18,.18); transition: filter 120ms cubic-bezier(0.16,1,0.3,1), transform 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-c:active { transform: translateY(0.5px) scale(0.995); } .ds-btn-cta { background: #C4442F; color: #FFFFFF; border-color: #C4442F; } .ds-btn-cprimary { background: #0E7C66; color: #FFFFFF; border-color: #0E7C66; } .ds-btn-c:hover { filter: brightness(1.08); } .ds-btn-c:focus-visible { outline: 2px solid #0E7C66; outline-offset: 2px; }"
+    },
+    {
+      "name": "Scope Button — Industry",
+      "kind": "button",
+      "refersTo": "button-primary-industry",
+      "description": "Same 36px chassis, refinished for the scope: 3px radius, uppercase at 11px with caps tracking, and a phosphor bloom instead of a shadow.",
+      "html": "<div class=\"ds-room-ind\"><button class=\"ds-btn-i ds-btn-i-primary\">Acknowledge</button><button class=\"ds-btn-i ds-btn-i-danger\">Escalate</button></div>",
+      "css": ".ds-room-ind { background: #05070A; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-btn-i { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border-radius: 3px; border: 1px solid transparent; font-family: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; cursor: pointer; transition: filter 120ms cubic-bezier(0.16,1,0.3,1), transform 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-i:active { transform: translateY(0.5px) scale(0.995); } .ds-btn-i-primary { background: #39FF9E; color: #00110A; border-color: #39FF9E; box-shadow: 0 0 12px #39FF9E66; } .ds-btn-i-danger { background: var(--sev-critical, #FF3B4E); color: #000103; border-color: var(--sev-critical, #FF3B4E); box-shadow: 0 0 16px #FF3B3088; } .ds-btn-i:hover { filter: brightness(1.1); } .ds-btn-i:focus-visible { outline: 2px solid #39FF9E; outline-offset: 2px; }"
+    },
+    {
+      "name": "Severity Badge + Dot",
+      "kind": "chip",
+      "refersTo": "badge-critical",
+      "description": "Severity never travels on colour alone. The badge sets one colour and color-mix derives text, border, and 12% fill together; the paired dot adds a second channel, and the pulsing ring marks live and unacknowledged.",
+      "html": "<div class=\"ds-room-reg2\"><span class=\"ds-sev ds-sev-crit\"><span class=\"ds-dot ds-dot-pulse\"></span></span><span class=\"ds-badge ds-b-crit\">Critical</span><span class=\"ds-badge ds-b-warn\">Warning</span><span class=\"ds-badge ds-b-watch\">Watch</span><span class=\"ds-badge ds-b-info\">Info</span><span class=\"ds-badge ds-b-ok\">Clear</span></div>",
+      "css": ".ds-room-reg2 { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 8px; border-radius: 3px; font-family: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; border: 1px solid currentColor; background: color-mix(in srgb, currentColor 12%, transparent); } .ds-b-crit { color: var(--sev-critical, #FF3B4E); } .ds-b-warn { color: var(--sev-warning, #F0803C); } .ds-b-watch { color: var(--sev-watch, #F2C744); } .ds-b-info { color: var(--sev-info, #4FA8E0); } .ds-b-ok { color: var(--sev-ok, #3FBF8F); } .ds-sev { color: var(--sev-critical, #FF3B4E); display: inline-flex; } .ds-dot { position: relative; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; } .ds-dot-pulse::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid currentColor; animation: dsPulse 1800ms cubic-bezier(0.16,1,0.3,1) infinite; } @keyframes dsPulse { 0% { transform: scale(0.7); opacity: 0.9; } 100% { transform: scale(2.1); opacity: 0; } } @media (prefers-reduced-motion: reduce) { .ds-dot-pulse::after { animation: none; } }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "26px pill on the sunk surface. The active state is the product's universal three-token pattern: accent-soft ground, accent border, accent text — the same one used by active tabs and icon buttons.",
+      "html": "<div class=\"ds-room-reg3\"><button class=\"ds-chip ds-chip-on\"><span class=\"ds-chipdot\"></span>NO2</button><button class=\"ds-chip\">PM2.5</button><button class=\"ds-chip\">Black carbon</button><button class=\"ds-chip\">Ozone</button></div>",
+      "css": ".ds-room-reg3 { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-chip { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 12px; border-radius: 999px; border: 1px solid #1F2C39; background: #16212C; color: #93A7B8; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 120ms cubic-bezier(0.16,1,0.3,1); } .ds-chip:hover { border-color: #2C3E4F; color: #DEE9F1; } .ds-chip-on { background: #0F2D34; border-color: #4FD1E0; color: #4FD1E0; } .ds-chip:focus-visible { outline: 2px solid #4FD1E0; outline-offset: 2px; } .ds-chipdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "description": "The measure / metric / window picker. A 2px-inset track sunk below the surface; the selected item lifts onto the raised surface with the room's card shadow rather than taking an accent fill.",
+      "html": "<div class=\"ds-room-reg4\"><div class=\"ds-seg\"><button class=\"ds-segi ds-segi-on\">Median</button><button class=\"ds-segi\">p90</button><button class=\"ds-segi\">Max</button></div></div>",
+      "css": ".ds-room-reg4 { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 6px; border: 1px solid #1F2C39; background: #06090D; } .ds-segi { padding: 0 12px; height: 26px; display: inline-flex; align-items: center; border: none; border-radius: 4px; background: none; font-family: inherit; font-size: 12px; color: #64798A; cursor: pointer; transition: all 120ms cubic-bezier(0.16,1,0.3,1); } .ds-segi:hover { color: #DEE9F1; } .ds-segi-on { background: #1B2733; color: #DEE9F1; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px #000; } .ds-segi:focus-visible { outline: 2px solid #4FD1E0; outline-offset: 2px; }"
+    },
+    {
+      "name": "Instrument Panel",
+      "kind": "card",
+      "refersTo": "panel-header",
+      "description": "The workhorse container of the three dark rooms: a fixed 34px header on the second surface carrying an uppercase 10px title, over a scrolling body. Community re-skins this header to sentence case so it stops reading as chrome.",
+      "html": "<div class=\"ds-room-reg5\"><section class=\"ds-panel\"><header class=\"ds-panel-h\"><span class=\"ds-panel-t\">Exceedances</span><span class=\"ds-badge2\">3 active</span></header><div class=\"ds-panel-b\"><div class=\"ds-row\"><span>Riverport Road</span><span class=\"ds-n\">120.6</span></div><div class=\"ds-row\"><span>Weaver Road</span><span class=\"ds-n\">94.2</span></div><div class=\"ds-row\"><span>Mallory Avenue</span><span class=\"ds-n\">71.8</span></div></div></section></div>",
+      "css": ".ds-room-reg5 { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-panel { width: 320px; display: flex; flex-direction: column; background: #111A23; border: 1px solid #1F2C39; border-radius: 6px; overflow: clip; box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px #000; } .ds-panel-h { display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-height: 34px; border-bottom: 1px solid #1F2C39; background: #16212C; } .ds-panel-t { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: #93A7B8; margin-right: auto; } .ds-badge2 { height: 18px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 3px; font-size: 10px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--sev-critical, #FF3B4E); border: 1px solid currentColor; background: color-mix(in srgb, currentColor 12%, transparent); } .ds-panel-b { padding: 4px 0; } .ds-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 13px; color: #93A7B8; border-bottom: 1px solid #1F2C39; } .ds-row:last-child { border-bottom: none; } .ds-row:hover { background: #16212C; color: #DEE9F1; } .ds-n { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; color: #DEE9F1; }"
+    },
+    {
+      "name": "Community Card",
+      "kind": "card",
+      "refersTo": "card-community",
+      "description": "The feed object. 16px radius on warm paper, a real cast shadow, and a 2px lift on hover — the only room in the product that behaves like physical material.",
+      "html": "<div class=\"ds-room-com2\"><article class=\"ds-ccard\"><div class=\"ds-chead\"><span class=\"ds-avatar\">MJ</span><div><div class=\"ds-cname\">Marcus J.</div><div class=\"ds-cmeta\">Boxtown · 2 hours ago</div></div></div><p class=\"ds-cbody\">Strong diesel smell near the rail crossing again this morning. Third time this week.</p><div class=\"ds-cfoot\"><span class=\"ds-ctag\">Smell</span><span class=\"ds-ctag\">Noise</span></div></article></div>",
+      "css": ".ds-room-com2 { background: #F6F3ED; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-ccard { width: 320px; display: block; background: #FFFFFF; border: 1px solid #E2DCD2; border-radius: 16px; padding: 16px; box-shadow: 0 1px 2px rgba(24,22,18,.05), 0 8px 24px -12px rgba(24,22,18,.18); transition: border-color 120ms cubic-bezier(0.16,1,0.3,1), transform 240ms cubic-bezier(0.16,1,0.3,1); cursor: pointer; } .ds-ccard:hover { border-color: #CFC7B9; transform: translateY(-2px); } .ds-chead { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; } .ds-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: color-mix(in srgb, var(--actor-community, #F2A65A) 22%, transparent); border: 1px solid #E2DCD2; font-size: 13px; font-weight: 600; color: #4A5157; flex: none; } .ds-cname { font-size: 15px; font-weight: 600; color: #191C1F; } .ds-cmeta { font-size: 12px; color: #7C858C; } .ds-cbody { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: #4A5157; text-wrap: pretty; } .ds-cfoot { display: flex; gap: 8px; } .ds-ctag { height: 26px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid #E2DCD2; background: #FAF8F4; font-size: 12px; font-weight: 500; color: #4A5157; }"
+    },
+    {
+      "name": "Sunk Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Inputs sit below the surface, not on it: bg-sunk ground with a hairline border. Hover pre-signals with the stronger line, focus takes the accent. Community grows the same field to 44px on the raised surface with a 10px radius.",
+      "html": "<div class=\"ds-room-reg6\"><label class=\"ds-field\"><span class=\"ds-flabel\">NO2 action level <span class=\"ds-freq\">*</span></span><input class=\"ds-input ds-input-num\" value=\"100.0\" /><span class=\"ds-fhint\">1-hour average, ppb</span></label></div>",
+      "css": ".ds-room-reg6 { background: #090E14; padding: 24px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-field { display: flex; flex-direction: column; gap: 8px; width: 240px; } .ds-flabel { font-size: 12px; font-weight: 500; color: #93A7B8; } .ds-freq { color: #FF6B4A; } .ds-input { width: 100%; background: #06090D; border: 1px solid #1F2C39; border-radius: 6px; padding: 0 12px; height: 36px; color: #DEE9F1; font-family: inherit; font-size: 13px; transition: border-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-input-num { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; } .ds-input:hover { border-color: #2C3E4F; } .ds-input:focus-visible { border-color: #4FD1E0; outline: 2px solid #4FD1E0; outline-offset: 1px; } .ds-fhint { font-size: 12px; color: #64798A; }"
+    },
+    {
+      "name": "Stat Readout",
+      "kind": "custom",
+      "refersTo": "stat-value",
+      "description": "Uppercase micro-label over a mono tabular value with a smaller unit on the baseline. Trend arrows invert the usual convention on purpose: up is warning, down is clear, because these are pollutants.",
+      "html": "<div class=\"ds-room-reg7\"><div class=\"ds-stat\"><span class=\"ds-slabel\">NO2 median</span><span class=\"ds-svalue\">42.8<span class=\"ds-sunit\">ppb</span><span class=\"ds-strend ds-up\">&#9650; 12%</span></span></div><div class=\"ds-stat\"><span class=\"ds-slabel\">Segments at 25+ passes</span><span class=\"ds-svalue\">95.6<span class=\"ds-sunit\">%</span><span class=\"ds-strend ds-flat\">&#9644;</span></span></div></div>",
+      "css": ".ds-room-reg7 { background: #090E14; padding: 24px 32px; font-family: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ds-room-reg7 { gap: 40px; } .ds-stat { display: flex; flex-direction: column; gap: 2px; } .ds-slabel { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; color: #64798A; font-weight: 600; white-space: nowrap; } .ds-svalue { font-family: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; color: #DEE9F1; line-height: 1.05; display: flex; align-items: baseline; gap: 6px; } .ds-sunit { font-size: 12px; color: #64798A; font-weight: 400; } .ds-strend { font-size: 12px; } .ds-up { color: var(--sev-warning, #F0803C); } .ds-flat { color: #64798A; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Contested Ground",
+    "overview": "Southwest Memphis is the ground, and three parties are arguing over what the air above it is doing. `air` does not resolve that argument — it renders it. Every interface in this product is a *claim* on the same 1,307 road segments, and the design's entire job is to make each claim feel native to whoever is making it while the evidence underneath stays identical. A resident opens warm paper and reads a coloured street. An agency analyst opens a dark watchfloor and reads the same street as an exact concentration. An operator opens a near-black scope and reads it as a bearing. Nobody is shown a different number.\n\nThat produces the system's central and deliberately uncomfortable property: **one measurement language, four rooms that do not want to look like each other.** The measurement language — the two ramps, the severity scale, the actor hues, the mono tabular numerals, the uppercase micro-labels — is a single calibrated instrument that is never re-tuned per audience. Everything else is. The same `<Button>` is a soft pill on warm paper in community, an uppercase phosphor block with a green bloom in industry, and a wide-tracked slab in regulator and admin. That is not inconsistency to be cleaned up later; it is the product thesis expressed in CSS. If a component looks identical in all four rooms, it has failed to pick a side.\n\nDensity follows the room, not the brand. Community is generous — 40px pill buttons, 44px inputs, 16px card radii, a page that scrolls. The three dark rooms are instrument-dense — 26px chips, 18px badges, 34px panel headers, hairline `1px` rules, panes that scroll independently under a shell that never does. The palettes never meet: community is the only light skin in the product and the only one that paints its road grid on the public-health ramp. Confirmed anti-references, each pinned to its room: community must not read as a dashboard, a science tool, or a government site; regulator must not read as a consumer app; industry must not read as an analytics product; admin must not read as polished marketing.",
+    "keyCharacteristics": [
+      "One measurement language, four irreconcilable skins, switched by a single `data-role` attribute on the shell — no component branches on role in JavaScript.",
+      "A coloured road grid, never hexbins and never points, is the hero of every map.",
+      "Two measurement ramps that never mix: public-health for residents, analytical for experts.",
+      "Numerals are always monospace and tabular; micro-labels are always uppercase and tracked.",
+      "Depth is tonal first — a four-step surface ladder — with shadow reserved as a response.",
+      "Severity is never carried by colour alone.",
+      "Nothing decorative: motion exists only where a real state changed."
+    ],
+    "rules": [
+      {
+        "name": "The Two Ramps Rule",
+        "body": "`--ramp-aqi-*` is public-health language and belongs to residents and to any score framed as \"risk\". `--ramp-intensity-*` — *The Ember Ramp* — is analytical magnitude and belongs to the regulator, industry, and admin. Never mix them in one view, and never resolve a measurement colour from a role accent. `--ramp-map-*` is the per-role alias the road grid reads, and it is the only correct way to reach a ramp from a map layer.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ember Ramp",
+        "body": "Eight stops from `#10182F` midnight through violet, magenta, and coral to `#FFD84D` gold. Its luminance is monotonic by construction so that a 1px segment at the low end recedes into a dark basemap and the high end burns through it. `--ramp-intensity-light-*` is the same ramp inverted in luminance for the one light basemap. Never reorder its stops, never sample a subset, and never substitute a generic sequential scale.",
+        "section": "colors"
+      },
+      {
+        "name": "The Learned Code Rule",
+        "body": "`--actor-*` means the same speaker in every interface. Never re-bind an actor hue per room, and never use one to encode a magnitude or a severity.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never Colour Alone Rule",
+        "body": "Severity is carried by at least two channels — colour plus shape, size, position, or a glyph. The RadarScope encodes it three ways at once (colour, mark size, and a severity glyph in the contact's own label) specifically so it survives a colourblind reader at a glance.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every numeral is `--font-mono` with `font-variant-numeric: tabular-nums`. No exceptions, including inside prose. `.num` and `[data-num]` are global for exactly this reason, so no component needs to import anything to comply. A number that shifts width as it ticks is a bug.",
+        "section": "typography"
+      },
+      {
+        "name": "The Caps Are Labels Rule",
+        "body": "Uppercase with `--tracking-caps` (`0.09em`) is reserved for micro-labels at `--text-3xs`. Never set a sentence in caps. Industry is the deliberate exception and inherits it as a *voice*: its buttons, chips, segmented items, and field labels all go uppercase at `--text-2xs`/`--text-3xs`, because terse machine shorthand is the room.",
+        "section": "typography"
+      },
+      {
+        "name": "The Community Plain-Speech Rule",
+        "body": "Community overrides strip the caps treatment wherever it appears — panel titles become sentence case at `--text-sm`, stat labels become sentence case at `--text-xs`. Residents get labels, not readouts.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shell Owns Scroll Rule",
+        "body": "`body` is `overflow: hidden` and every pane scrolls itself with `overscroll-behavior: contain`. Never introduce a document-level scroll; a page that scrolls as a whole belongs only to community's feed, and even that scrolls inside `main`.",
+        "section": "layout"
+      },
+      {
+        "name": "The Tonal First Rule",
+        "body": "Reach for the surface ladder before reaching for a shadow. If two surfaces need to be distinguished, step the tone and the border. A shadow is what you add when something has *moved* — opened, floated, or been picked up — not what you add to make a box visible.",
+        "section": "elevation-depth"
+      },
+      {
+        "name": "The Room's Physics Rule",
+        "body": "A new surface adopts the depth physics of the room it is in, via `--shadow-card` / `--shadow-pop`. Never hard-code a shadow value, and never import one room's treatment into another: a paper drop shadow on the industry scope, or a phosphor glow on community paper, breaks the fiction immediately.",
+        "section": "elevation-depth"
+      },
+      {
+        "name": "The Radius Tells You Where You Are Rule",
+        "body": "Pill means community, 6px means an analyst, 3px means a scope. A designer who wants a rounder industry button is asking for the wrong room.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Same Component Must Not Look The Same Rule",
+        "body": "A primitive that renders identically in all four rooms has failed. Before shipping one, check it under every `data-role` and confirm it picked a side. Consistency in this product lives in the measurement language, not in the chrome.",
+        "section": "components"
+      },
+      {
+        "name": "The Semantic-Only Rule",
+        "body": "A component references `--bg`, `--surface`, `--ink`, `--line`, `--accent`, `--sev-*`, `--ramp-map-*`. It never references a raw hex and never reaches past a semantic token to a ramp primitive. That indirection is the entire mechanism by which one component survives four skins.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do resolve every colour from a semantic token in `web/src/design/tokens.css`. The `data-role` attribute on the shell does the rest.",
+      "Do set every numeral in `--font-mono` with `font-variant-numeric: tabular-nums` — reach for the global `.num` or `[data-num]` rather than re-declaring it.",
+      "Do pick the ramp from the audience, not the component: `--ramp-aqi-*` for residents and any \"risk\" framing, The Ember Ramp (`--ramp-intensity-*`) for analysts and operators, always via the `--ramp-map-*` alias.",
+      "Do pair severity colour with a second channel — a `sevDot`, a badge glyph, a mark size, or a position.",
+      "Do build depth from the surface ladder first (`--bg` → `--surface` → `--surface-2` → `--surface-raised`) and add `--shadow-card` only when something is genuinely raised.",
+      "Do let the road grid be the hero of every map, coloured by magnitude and weighted by persistence.",
+      "Do keep the `SIMULATED DATA` marker visible; the shell owns it, so don't cover it.",
+      "Do write community copy with no units and no acronyms — `plain_name` and unitless 0–100 risk scores exist for exactly that.",
+      "Do express role differences in CSS via `:global([data-role='…'])`, never by branching on role in a component.",
+      "Do state uncertainty when the data is thin (low `n_obs`, high `dir_sd`). Trustworthy measurement is the brand; fake confidence is off-brand."
+    ],
+    "donts": [
+      "Don't write a raw hex value in a component, and don't reach past a semantic token to a `--ramp-*` or `--c-*` primitive.",
+      "Don't mix the two measurement ramps in one view, and don't colour a measurement from a role accent.",
+      "Don't re-bind `--actor-*` per room or use an actor hue to encode magnitude. A viewer learns that code once.",
+      "Don't use a modality hue (`--mod-*`) for magnitude — those identify a series only.",
+      "Don't substitute `--actor-aclima` for `--mod-aclima_sense`. An index describing someone's air must not read as a vendor badge.",
+      "Don't carry one room's finish into another: no pill buttons on the scope, no phosphor glow on community paper, no paper drop shadow in a dark room.",
+      "Don't set a sentence in uppercase. Caps plus `--tracking-caps` means micro-label — except in industry, where uppercase is the room's whole voice.",
+      "Don't add a sweep, a scanline, or an idle animation to the RadarScope. It is a modern compass instrument, not a CRT, and its stillness is what makes real motion mean something.",
+      "Don't render the map data as hexbins or points. The ~200m segment is the atom of this product and the grid is what makes it look like nothing else.",
+      "Don't introduce a document-level scroll. The shell owns layout; each pane scrolls itself.",
+      "Don't hard-code a shadow, a radius, or a breakpoint — and note that there is no shared breakpoint token yet, so a new responsive rule should follow the existing per-module `max-width` pattern rather than inventing a scale."
+    ]
+  }
+}

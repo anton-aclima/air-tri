@@ -424,6 +424,10 @@ def dispersion_models(world, field, true_rose, campaign_id: str):
                 "issued_at": (world.start - timedelta(days=118)).isoformat(timespec="seconds"),
                 "assumed_wind_json": json.dumps(assumed),
                 "notes": notes,
+                # The filed study. An `aclima` row is computed from the observed
+                # rose at request time rather than generated, because it has to
+                # move when the fleet measures more wind.
+                "model_tier": "permit",
             }
         )
         for band, lv, ring in polys:

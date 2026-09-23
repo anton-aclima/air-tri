@@ -27,6 +27,13 @@ import type {
   Campaign,
   CampaignStats,
   CommunityStats,
+  Calibration,
+  CoverageMask,
+  Interception,
+  Residency,
+  Siting,
+  Envelope as EnvelopeT,
+  Touchdown,
   Concern,
   ConcernCluster,
   ConcernKind,
@@ -43,6 +50,7 @@ import type {
   IndustrySite,
   MeasureCode,
   Mitigation,
+  MissionBrief,
   MobileWindObs,
   ModelVerification,
   Monitor,
@@ -57,6 +65,7 @@ import type {
   StatWindow,
   Vehicle,
   WindField,
+  WindClimatology,
   WindPoint,
 } from '@/core/types'
 
@@ -584,6 +593,117 @@ export function getModelVerification(
 ): Promise<ModelVerification> {
   return request<ModelVerification>(
     `/sites/${encodeURIComponent(siteId)}/model-verification`,
+    { signal, params: { ...params } },
+  )
+}
+
+// ───────────────────────────────────────────────────────────── coverage
+
+/** Where the fixed network stands relative to the modelled plume. */
+export function getInterception(signal?: AbortSignal): Promise<Interception> {
+  return request<Interception>('/coverage/interception', { signal })
+}
+
+/** Modelled plume-hours per street, and how many nothing was standing in. */
+export function getResidency(signal?: AbortSignal): Promise<Residency> {
+  return request<Residency>('/coverage/residency', { signal })
+}
+
+/** Streets carrying the most unobserved plume-hours. NOT a recommendation. */
+export function getSiting(limit = 10, signal?: AbortSignal): Promise<Siting> {
+  return request<Siting>('/coverage/siting', { signal, params: { limit } })
+}
+
+/** Per-channel anchoring state. */
+export function getCalibration(signal?: AbortSignal): Promise<Calibration> {
+  return request<Calibration>('/coverage/calibration', { signal })
+}
+
+// ──────────────────────────────────────────────────────────── climatology
+
+/**
+ * How often the wind carries from each site over each neighbourhood, over the
+ * whole campaign. Omit `site_id` for every site, which is what a resident
+ * needs: their own district, and each of the places on the map, in one answer.
+ */
+export function getClimatology(
+  params: { site_id?: string; from?: string; to?: string } = {},
+  signal?: AbortSignal,
+): Promise<WindClimatology> {
+  return request<WindClimatology>('/wind/climatology', { signal, params: { ...params } })
+}
+
+// ─────────────────────────────────────────────────────────── mission brief
+
+/**
+ * The Mission Brief — the whole 07:00 screen in one request. `date` picks the
+ * day; omit it for the last day with data. Read-only over the datagen plan.
+ */
+export function getMissionBrief(
+  params: { date?: string; site_id?: string } = {},
+  signal?: AbortSignal,
+): Promise<MissionBrief> {
+  return request<MissionBrief>('/admin/brief', { signal, params: { ...params } })
+}
+
+// ─────────────────────────────────────────────────────────────── envelope
+
+/**
+ * How hard this site can run, measured. The industry tier's spine.
+ *
+ * 400s with `measure_not_calibrated` for a measure with no decoy-null
+ * calibration — an excess served without one could not be told apart from an
+ * arbitrary patch of road.
+ */
+export function getEnvelope(
+  siteId: string,
+  params: { measure?: MeasureCode } = {},
+  signal?: AbortSignal,
+): Promise<EnvelopeT> {
+  return request<EnvelopeT>(
+    `/sites/${encodeURIComponent(siteId)}/envelope`,
+    { signal, params: { ...params } },
+  )
+}
+
+// ────────────────────────────────────────────────────────── touchdown (§10)
+
+export interface TouchdownParams {
+  measure?: MeasureCode
+  from?: string
+  to?: string
+  /** Pasquill classes to condition on. Default 'EF' — stable air. */
+  regime?: string
+  r_lo_m?: number
+  r_hi_m?: number
+}
+
+/**
+ * The MEASURED plume. `getDispersion` is the model; never draw them alike.
+ *
+ * 400s with `measure_not_calibrated` for a measure with no detection floor —
+ * an excess served without a null calibration could not be told from noise,
+ * which is the one thing phase 2 says never to do.
+ */
+export function getTouchdown(
+  siteId: string,
+  params: TouchdownParams = {},
+  signal?: AbortSignal,
+): Promise<Touchdown> {
+  return request<Touchdown>(
+    `/sites/${encodeURIComponent(siteId)}/touchdown`,
+    { signal, params: { ...params } },
+  )
+}
+
+/** Where a car has actually been. `cell_m` is the cell SIDE, not a radius. */
+export function getCoverage(
+  campaignId = 'current',
+  params: { cell_m?: number } = {},
+  signal?: AbortSignal,
+): Promise<CoverageMask> {
+  return request<CoverageMask>(
+    `/campaigns/${encodeURIComponent(campaignId)}/coverage`,
     { signal, params: { ...params } },
   )
 }

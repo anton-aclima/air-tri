@@ -12,6 +12,7 @@ import { rootRoute } from '@/app/route-root'
 import { Community } from './Community'
 import { Contacts } from './Contacts'
 import { ContactDetail } from './ContactDetail'
+import { Evidence } from './Evidence'
 import { Outreach } from './Outreach'
 import { Scope } from './Scope'
 import { SiteConfig } from './SiteConfig'
@@ -38,7 +39,9 @@ const contactDetail = createRoute({
 const community = createRoute({ getParentRoute: () => layout, path: 'community', component: Community })
 const outreach = createRoute({ getParentRoute: () => layout, path: 'outreach', component: Outreach })
 const siteConfig = createRoute({ getParentRoute: () => layout, path: 'site', component: SiteConfig })
+// "Says who" — the measurements the envelope on the scope rests on.
+const evidence = createRoute({ getParentRoute: () => layout, path: 'evidence', component: Evidence })
 
 export const industryRoutes = layout.addChildren([
-  scope, scopeAlias, contacts, contactDetail, community, outreach, siteConfig,
+  scope, scopeAlias, contacts, contactDetail, community, outreach, siteConfig, evidence,
 ])

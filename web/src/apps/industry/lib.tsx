@@ -17,11 +17,12 @@ import type { Theme } from '@/components'
 import { API_BASE } from '@/core/api'
 import { fmtBearing, fmtDistance, fmtDuration, fmtNum } from '@/core/format'
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
-import { useActiveSite, useAskAdvisor, useBootstrapSites, useOrgs } from '@/core/queries'
+import { useActiveSite, useAskAdvisor, useBootstrapSites, useCampaignInfo, useOrgs } from '@/core/queries'
 import { roleMeta } from '@/core/roles'
 import { useDemoClock, useSession } from '@/core/session'
 import type {
-  Alert, AdvisorReply, BBox, Concern, ConcernCluster, DispersionModel, IndustrySite, Monitor,
+  Alert, AdvisorReply, BBox, Concern, ConcernCluster, DispersionModel,
+  Envelope as EnvelopeT, EnvelopeState, IndustrySite, Monitor,
   Position, Severity,
 } from '@/core/types'
 
@@ -163,6 +164,38 @@ export function useStableWindow(hours = 24, bucketMin = 5): { from: string; to: 
 }
 
 /**
+ * The WHOLE campaign, as a query window — for anything comparing a filed model
+ * against the campaign's measured record.
+ *
+ * `useStableWindow` above is anchored to the wall clock, which is right for
+ * "what is happening now" and wrong for "was the consultant's study correct".
+ * `/sites/{id}/model-verification` defaults to the last 30 days ending at
+ * `domain.data_now`, and `data_now` returns `max(latest_row, wall_clock)` — so
+ * once the machine's clock runs past the end of the generated data, that
+ * default window slides off the record a day at a time.
+ *
+ * Measured 2026-09-10, with data ending 2026-08-28: the default window saw
+ * 6,346 of 28,324 fleet wind observations and returned `consistent` for ALL
+ * THREE sites. The same call over the campaign returns `understates`, +5.8
+ * points on the SW bearing, over Boxtown and White Chapel. The flagship
+ * "verify your consultant" claim was switched off by a default parameter, and
+ * it degrades further every day — past 2026-09-28 the window holds no
+ * observations at all.
+ *
+ * Anchored to `campaign.start_date`/`end_date` rather than to literal dates so
+ * a rebuild with a different `--now` still asks the right question.
+ */
+export function useCampaignWindow(): { from: string; to: string } | undefined {
+  const campaign = useCampaignInfo()
+  const start = campaign?.start_date
+  const end = campaign?.end_date
+  return useMemo(
+    () => (start && end ? { from: `${start}T00:00:00Z`, to: `${end}T23:59:59Z` } : undefined),
+    [start, end],
+  )
+}
+
+/**
  * The scope carries one contact per real threat, not one per tripped rule. A
  * watch and a warning from the same instrument for the same pollutant are the
  * same problem seen twice; folding them keeps the dial readable and the count
@@ -191,26 +224,107 @@ export function shortTitle(a: Alert): string {
 
 // ────────────────────────────────────────────────────────────── the envelope
 
-export interface Envelope {
-  usedPct: number
-  freePct: number
-  /** Megawatts still available inside the safe envelope, at today's load. */
-  freeMw: number | null
-  tight: boolean
+export interface EnvelopeRead {
+  /** Which regime this reading describes. */
+  regime: 'unstable' | 'neutral' | 'stable'
+  state: EnvelopeState
+  /** One line for the big readout. Never a bare number without its condition. */
+  headline: string
+  /** The condition the headline is true under, and the evidence behind it. */
+  detail: string
+  /** How much of the site's own contribution has to go. Null when nothing does. */
+  cutPct: number | null
+  /** The same thing in megawatts. MODELLED — see `Envelope.headroom_is_modelled`. */
+  capMw: number | null
+  loadMw: number | null
+  /** True when the typical episode in this regime already needs a cut. */
+  binding: boolean
+  /** Share of campaign hours in this regime, 0–1. */
+  shareOfHours: number
+  /** Episodes the estimate rests on. Small numbers are stated, not hidden. */
+  episodes: number
+}
+
+const REGIME_WORD: Record<string, string> = {
+  unstable: 'well-mixed air',
+  neutral: 'neutral air',
+  stable: 'stable air',
 }
 
 /**
- * `headroom_pct` is "how much of the community-and-regulatory-safe envelope is
- * USED" (schema comment). The operator's number is what is LEFT, so both are
- * stated, and the MW figure is the promise made concrete.
+ * The operating envelope, read for one regime — **the industry tier's spine**.
+ *
+ * This used to be `envelopeOf(site)`, computed from `site.headroom_pct`: a
+ * constant baked into the generator (79 / 61 / 44), identical on every screen
+ * and every day, that an operator could neither verify nor improve. The
+ * promise on this interface is "run at the top of your safe envelope", and a
+ * constant cannot be run at the top of.
+ *
+ * What replaces it is measured — the site's own fenceline against class-matched
+ * roads at least 2 km from every site — and it moves with the weather, which is
+ * what makes it manageable. Measured on the shipped build, Ridgeline:
+ *
+ *     well-mixed   +13.2 ppb over comparable roads    0% of passes over the line
+ *     stable       +55.7 ppb                         76% over the line
+ *
+ * `insufficient` is a FIRST-CLASS outcome, not an error. Across four seeds the
+ * magnitude barely moves (+55.2 to +63.7) but one seed in four cannot form
+ * three paired episodes at all — the fleet drove the fenceline on five nights
+ * and covered enough comparison roads on only two of them. Saying so is the
+ * argument for targeted driving; hiding it behind a dash is not.
  */
-export function envelopeOf(site: IndustrySite | undefined): Envelope | null {
-  if (!site || site.headroom_pct == null) return null
-  const usedPct = site.headroom_pct
-  const freePct = Math.max(0, 100 - usedPct)
-  const load = site.it_load_mw
-  const freeMw = load != null && usedPct > 0 ? (load / usedPct) * freePct : null
-  return { usedPct, freePct, freeMw, tight: freePct < 15 }
+export function envelopeRead(
+  env: EnvelopeT | undefined,
+  regime: 'unstable' | 'neutral' | 'stable',
+): EnvelopeRead | null {
+  const r = env?.regimes.find((x) => x.regime === regime)
+  if (!env || !r) return null
+  const word = REGIME_WORD[regime] ?? regime
+  const watch = r.thresholds.length
+    ? r.thresholds.reduce((a, b) => (a.threshold <= b.threshold ? a : b))
+    : null
+  const cutPct = watch?.cut_pct_typical ?? null
+  const capMw = watch?.headroom_mw_typical ?? null
+  const binding = r.state === 'binding'
+
+  let headline: string
+  let detail: string
+  if (r.state === 'insufficient') {
+    headline = 'Not enough passes'
+    detail = `We have not driven your fenceline on enough ${word} nights to say. `
+      + `${r.n_fenceline} passes over ${r.n_episodes} usable episodes.`
+  } else if (r.state === 'indistinct') {
+    headline = 'Clear'
+    detail = `In ${word} your fenceline is not measurably different from comparable roads `
+      + `elsewhere. ${r.n_fenceline} passes over ${r.n_episodes} episodes.`
+  } else if (binding && capMw != null && env.load_mw != null) {
+    headline = `${fmtNum(capMw, 0)} MW`
+    detail = `In ${word} the air has room for about ${fmtNum(capMw, 0)} MW against the `
+      + `${watch?.threshold} ${watch?.unit} ${watch?.severity} level. You are running `
+      + `${fmtNum(env.load_mw, 0)}.`
+  } else if (binding && cutPct != null) {
+    headline = `−${fmtNum(cutPct, 0)}%`
+    detail = `In ${word} about ${fmtNum(cutPct, 0)}% of your own contribution has to go to `
+      + `hold the ${watch?.threshold} ${watch?.unit} level.`
+  } else {
+    headline = 'Clear'
+    detail = `In ${word} your fenceline runs about ${fmtNum(r.excess ?? 0, 0)} ${env.unit} `
+      + `over comparable roads and crosses no action level.`
+  }
+
+  return {
+    regime, state: r.state, headline, detail, cutPct, capMw,
+    loadMw: env.load_mw, binding,
+    shareOfHours: r.share_of_hours, episodes: r.n_episodes,
+  }
+}
+
+/** Pasquill class -> the regime the envelope is reported in. */
+export function regimeOf(stability: string | null | undefined): 'unstable' | 'neutral' | 'stable' {
+  const c = (stability ?? 'D').toUpperCase()
+  if (c === 'A' || c === 'B') return 'unstable'
+  if (c === 'E' || c === 'F') return 'stable'
+  return 'neutral'
 }
 
 // ───────────────────────────────────────────────────────── the advisor answer

@@ -260,12 +260,20 @@ def build(ctx: dict[str, Any]) -> dict[str, Any]:
     ver_txt = ""
     if ver.get("verdict") in ("understates", "overstates"):
         ver_txt = f" Our measured rose {ver['verdict']} against {ver.get('model_name') or 'the study on file'}."
-    rationale = (
-        f"{why.capitalize()}, so {lever} is the shortest lever. {wind_txt}{ver_txt}{level_txt} "
-        f"Headroom on this site is {site.get('headroom_pct')}% of its community-safe envelope."
-        if site.get("headroom_pct") is not None
-        else f"{why.capitalize()}, so {lever} is the shortest lever. {wind_txt}{ver_txt}{level_txt}"
-    )
+    # The envelope sentence used to quote `site.headroom_pct` — a constant baked
+    # into the generator, identical on a still night and a windy afternoon, that
+    # an operator could not check. Quoting it to an operator (or to a model that
+    # then quotes it back) is asserting something nobody measured. The measured
+    # envelope lives on `GET /sites/{id}/envelope`; the rules advisor has no
+    # database handle here, so it says nothing rather than something false.
+    env_txt = ""
+    if ctx.get("envelope"):
+        e = ctx["envelope"]
+        env_txt = (
+            f" In {e['regime']} air your fenceline runs {e['excess']:+.0f} {e['unit']} over "
+            f"comparable roads, measured over {e['episodes']} episodes."
+        )
+    rationale = f"{why.capitalize()}, so {lever} is the shortest lever. {wind_txt}{ver_txt}{level_txt}{env_txt}"
 
     return {
         "recommendation": recommendation.strip(),

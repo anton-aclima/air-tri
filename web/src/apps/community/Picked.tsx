@@ -29,7 +29,8 @@ import type { Concern, ConcernCluster, IndustrySite } from '@/core/types'
 import s from './community.module.css'
 import { RiskPill } from './parts'
 import {
-  KIND_WORD, distanceFromHome, kindEmoji, kindLabel, nearWords, severityWord, statusPlain,
+  KIND_WORD, PLUME_COPY, distanceFromHome, kindEmoji, kindLabel, nearWords, severityWord,
+  statusPlain,
 } from './lib'
 import type { Position } from '@/core/types'
 
@@ -130,6 +131,25 @@ export function Picked(props: PickedProps) {
             value={`${c.corroborations} ${c.corroborations === 1 ? 'neighbour' : 'neighbours'}`}
           />
         ) : null}
+
+        {/*
+          WHERE THE AIR CAME FROM, or an admission that we do not know.
+
+          137 of 204 reports have no site attached, and the honest branch is
+          the one that matters more: an app willing to say "we could not
+          connect this to anywhere on the map" is one you believe when it says
+          the opposite. Both sentences live in `PLUME_COPY` so the never-say
+          list is reviewable in one screen — see the rules there. The named
+          branch is careful to say the wind came from somewhere, never that
+          somewhere did something.
+        */}
+        <p className={s.pickNote}>
+          {c.suspected_site_id
+            ? PLUME_COPY.concern.attributed(
+                sites.find((x) => x.id === c.suspected_site_id)?.name ?? 'a place on the map',
+              )
+            : PLUME_COPY.concern.unattributed}
+        </p>
 
         <p className={s.pickNote}>{statusPlain(c.status).hint}.</p>
 

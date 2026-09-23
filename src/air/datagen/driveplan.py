@@ -118,6 +118,12 @@ class DriveDay:
     passes: list[PassEvent] = field(default_factory=list)
     pings: list[Ping] = field(default_factory=list)
     status: str = "complete"
+    #: Why this drive happened — see `drive.sampling_mode` in schema.sql.
+    #: Every drive the planner produces today is routine coverage. The Mission
+    #: Brief (phase 9) is what will set anything else, and this is the single
+    #: place it has to set it: `drive_rows` writes it to the database and
+    #: `segment_passes` inherits it onto every pass.
+    sampling_mode: str = "uniform"
 
 
 # ---------------------------------------------------------------- clustering

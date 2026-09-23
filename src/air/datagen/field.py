@@ -40,47 +40,40 @@ is documented in `README.md`.
 from __future__ import annotations
 
 import math
+import zlib
 
 import numpy as np
+
+from air.dispersion import (
+    NEAR_Q,
+    NEAR_SIGMA_M,
+    RISE,
+    SIGMA_X0,
+    SQRT2PI,
+    effective_height,
+    meander_factor,
+    sigmas,
+    stack_wind,
+)
 
 from .measures import INDICATORS, MODALITIES  # noqa: F401
 from .network import ROAD_WEIGHT
 from .noise import bilinear_sample, box_blur, fbm3, ridged3
-
-SQRT2PI = math.sqrt(2.0 * math.pi)
 
 # ---------------------------------------------------------------- tunables
 
 GRID_N = 256          # raster cells per side over the padded bbox (~46 m/cell)
 PAD_M = 1500.0        # metres of padding around the campaign bbox
 
-# Briggs open-country dispersion coefficients, keyed by Pasquill class.
-# sigma_y = ay*x*(1+1e-4*x)^-0.5 ;  sigma_z per the class-specific form below.
-_SIGY = {"A": 0.22, "B": 0.16, "C": 0.11, "D": 0.08, "E": 0.06, "F": 0.04}
-_WIND_EXP = {"A": 0.07, "B": 0.07, "C": 0.10, "D": 0.15, "E": 0.35, "F": 0.55}
-
-# Virtual-source offset (m). Real plumes do not start as points: stack diameter,
-# exit momentum and building downwash give an initial spread, so sigma is evaluated
-# at (x + SIGMA_X0). Without it the near-field lobe is a few tens of metres wide and
-# no road segment ever intersects it.
-SIGMA_X0 = 115.0
-
-# Campus-scale near field. A 1.1 km2 industrial site is an *area* source: 24 turbine
-# exhausts, on-site traffic, fugitive losses and building-wake recirculation blend
-# into one campus plume within the first kilometre, which is how AERMOD treats a
-# large facility. NEAR_Q sets the amplitude, NEAR_SIGMA_M its radius.
-NEAR_Q = 1.00e-4
-NEAR_SIGMA_M = 640.0
-
-# Buoyant plume rise coefficient by emission-point kind: dh ~= COEF / u_stack.
-RISE = {
-    "generator": 58.0,
-    "stack": 74.0,
-    "backup": 22.0,
-    "cooling_tower": 36.0,
-    "traffic_gate": 0.0,
-    "substation": 0.0,
-}
+# The Briggs dispersion coefficients, the virtual-source offset, the near-field
+# amplitude and the buoyant-rise table all live in `air.dispersion` now, and
+# are imported above. They moved because the SERVER needs the same arithmetic
+# to draw the cone an operator sees, and for a while it did not have it: the
+# drawn plume used `(700 + 240 * speed) * reach_mult` and disagreed with this
+# file about reach by a factor of forty under stable air. `air.dispersion`
+# imports nothing from `air.datagen` or `air.server`, so there is no cycle and
+# no second copy. Their documentation is in that module; the tuning table in
+# `README.md` still points at them by name.
 
 # Background amplitudes (in each measure's own unit).
 BG_NOX_PPB = (5.4, 13.4)     # (floor, span) regional NO2 before diurnal scaling
@@ -124,6 +117,32 @@ NIGHT_TRAP_REF_M = 620.0  # PBL height at which the night trapping factor is 1.0
 
 # Ridgeline load ramp across the campaign (phase-2 turbines coming online).
 LOAD_RAMP = (0.74, 1.00)
+
+
+def _stable_idx(key: str) -> int:
+    """A per-source offset derived from an id, REPRODUCIBLY.
+
+    This was `abs(hash(key)) % 997`, and Python randomises `hash()` on str per
+    process (PEP 456, on by default since 3.3). So every leak drew a different
+    duty series on every build: two runs of
+
+        python -m air.datagen.build build --seed 20260827 --now 2026-08-28T13:54:00
+
+    produced SUM(ch4) of 109821.09 and 109802.39, and 2,777 differing
+    `segment_stat` rows — all of them ch4 and its derivative methane_leak,
+    because leaks are the only thing that hashed an id. Every other measure
+    reproduced exactly, which is why this survived: the failure was invisible
+    unless you diffed the one column.
+
+    That mattered more than the size of the drift. The whole phase-2 method is
+    "freeze the seed, sweep one parameter, compare" — and for ch4 the baseline
+    was moving on its own.
+
+    crc32 rather than the loop index so that adding a leak does not reshuffle
+    the duty of the others, and rather than hashlib because this is a spreader,
+    not a digest.
+    """
+    return zlib.crc32(key.encode()) % 997
 
 
 def duty_series(kind_duty: str, hours: np.ndarray, seed: int, idx: int) -> np.ndarray:
@@ -207,7 +226,7 @@ class FieldModel:
             wob = 30.0 * (fbm3(hours * 0.13, np.zeros_like(hours) + i * 5.5, np.zeros_like(hours), self.seed + 1301) - 0.5)
             self.points.append((i, p, px, py, duty, wob))
         self.leak_duty = [
-            duty_series(lk.duty, hours, self.seed + 3000, abs(hash(lk.id)) % 997)
+            duty_series(lk.duty, hours, self.seed + 3000, _stable_idx(lk.id))
             for lk in world.leaks
         ]
         # constant upsample index grid for the coarse background rasters
@@ -291,61 +310,66 @@ class FieldModel:
 
     # ------------------------------------------------------------------ plume
 
-    def _sigmas(self, x, cls):
-        ay = _SIGY[cls]
-        sy = ay * x / np.sqrt(1.0 + 1e-4 * x)
-        if cls == "A":
-            sz = 0.20 * x
-        elif cls == "B":
-            sz = 0.12 * x
-        elif cls == "C":
-            sz = 0.08 * x / np.sqrt(1.0 + 2e-4 * x)
-        elif cls == "D":
-            sz = 0.06 * x / np.sqrt(1.0 + 1.5e-3 * x)
-        elif cls == "E":
-            sz = 0.03 * x / (1.0 + 3e-4 * x)
-        else:
-            sz = 0.016 * x / (1.0 + 3e-4 * x)
-        return np.maximum(sy, 1.0), np.maximum(sz, 1.0)
-
     def _plume(self, out, px, py, height_m, kind, w, wob, scale):
-        """Add one source's dimensionless dispersion field into `out` (in place)."""
+        """Add one source's dimensionless dispersion field into `out` (in place).
+
+        TWO WINDOWS USED TO BE ONE, AND BOTH WERE WRONG (P3-A, P3-B).
+
+        The cone was evaluated on a fixed 4,200 m x 1,450 m box rotated onto
+        the transport axis, for every hour of the campaign. Two consequences,
+        neither visible from inside this function:
+
+        - **1,007 of 1,307 road segments lie beyond 4,200 m from Ridgeline**,
+          so the simulated truth was identically zero across three quarters of
+          the monitored network. Every far-field "measured excess" any analysis
+          reported out there was a false positive by construction.
+        - The box was sized for nothing in particular. Under a summer afternoon
+          the plume is spent by 400 m; under stable night air it is still
+          material at the raster edge.
+
+        The fix is to stop sizing a window. Measured against
+        `dispersion.TRUTH_FLOOR` — the floor at which a plume contributes about
+        0.02 ppb of NO2, two orders of magnitude below where `DRAW_FLOOR` sits
+        — the plume is material across the WHOLE 11.8 km raster in every
+        stability class, so there is no window to get right. Full-raster
+        evaluation costs 1.24 ms per call against 0.23 ms windowed, about +46 s
+        on a 113 s build, and it retires the entire class of bug.
+
+        The near field is a separate source and now gets its own box. It is an
+        isotropic campus-scale term, not part of the cone, and it inherited the
+        cone's rotated bounding box — which has ZERO upwind extent when
+        transport is cardinal (0/90/180/270) and 1,450 m when it is diagonal.
+        The comment said the term exists "so an upwind fenceline node is not
+        blind"; on a due-north wind it was exactly blind, and how much a monitor
+        saw depended on the compass as an artefact. A symmetric box of
+        3 * NEAR_SIGMA_M captures it to e^-4.5 and costs almost nothing.
+        """
         if scale <= 0.0:
             return
         u10 = max(0.5, w.speed_ms)
         cls = w.stability
-        u = max(0.6, u10 * (max(height_m, 4.0) / 10.0) ** _WIND_EXP[cls])
+        u = stack_wind(u10, height_m, cls)
         # buoyant rise + a stack-height floor for ground-level sources
-        h_eff = max(2.5, height_m + RISE.get(kind, 0.0) / u)
+        h_eff = effective_height(height_m, kind, u)
         # plume meander: slow wobble of the axis, and extra lateral spread when calm
         theta = math.radians(w.transport_deg + wob)
         ux, uy = math.sin(theta), math.cos(theta)
-        meander = 1.0 + 1.7 / max(0.8, u10)
+        meander = meander_factor(u10)
 
-        # sub-window: the lobe reaches ~4.5 km downwind and ~1.8 km across
-        L, Wd = 4200.0, 1450.0
-        cx = [0.0, L, L, 0.0]
-        cy = [-Wd, -Wd, Wd, Wd]
-        xs = [px + ux * a - uy * b for a, b in zip(cx, cy)]
-        ys = [py + uy * a + ux * b for a, b in zip(cx, cy)]
-        c0 = max(0, int((min(xs) - self.x0) / self.cell))
-        c1 = min(self.grid_n, int((max(xs) - self.x0) / self.cell) + 2)
-        r0 = max(0, int((min(ys) - self.y0) / self.cell))
-        r1 = min(self.grid_n, int((max(ys) - self.y0) / self.cell) + 2)
-        if c1 <= c0 or r1 <= r0:
-            return
-        dx = self.X[r0:r1, c0:c1] - px
-        dy = self.Y[r0:r1, c0:c1] - py
+        # ── the cone, over the whole raster ──────────────────────────────────
+        dx = self.X - px
+        dy = self.Y - py
         along = dx * ux + dy * uy
         cross = -dx * uy + dy * ux
-        r2 = dx * dx + dy * dy
 
         pos = np.maximum(along, 6.0) + SIGMA_X0
-        sy, sz = self._sigmas(pos, cls)
+        sy, sz = sigmas(pos, cls)
         sy = sy * meander
         vert = 2.0 * np.exp(-(h_eff**2) / (2.0 * sz**2)) / (SQRT2PI * sz)
         # boundary-layer trapping: once sigma_z outgrows the mixed layer the plume
-        # is uniform through it, which is the floor rather than the Gaussian tail
+        # is uniform through it, which is the floor rather than the Gaussian tail.
+        # This could not fire inside the old 4,200 m window under any stability
+        # class the weather generator produces; over the full raster it can.
         trapped = np.where(sz > 0.8 * w.pbl_m, 1.0 / w.pbl_m, 0.0)
         vert = np.maximum(vert, trapped)
         conc = (
@@ -354,9 +378,21 @@ class FieldModel:
             / (SQRT2PI * sy * u)
         )
         conc = np.where(along > 0.0, conc, 0.0)
-        # isotropic near field so an upwind fenceline node is not blind
+        out += scale * conc
+
+        # ── the campus near field, on its own symmetric box ──────────────────
+        nb = 3.0 * NEAR_SIGMA_M
+        c0 = max(0, int((px - nb - self.x0) / self.cell))
+        c1 = min(self.grid_n, int((px + nb - self.x0) / self.cell) + 2)
+        r0 = max(0, int((py - nb - self.y0) / self.cell))
+        r1 = min(self.grid_n, int((py + nb - self.y0) / self.cell) + 2)
+        if c1 <= c0 or r1 <= r0:
+            return
+        ndx = self.X[r0:r1, c0:c1] - px
+        ndy = self.Y[r0:r1, c0:c1] - py
+        r2 = ndx * ndx + ndy * ndy
         near = NEAR_Q * np.exp(-r2 / (2.0 * NEAR_SIGMA_M**2)) / (0.7 + 0.5 * u10)
-        out[r0:r1, c0:c1] += scale * (conc + near)
+        out[r0:r1, c0:c1] += scale * near
 
     # ------------------------------------------------------------------ hourly
 

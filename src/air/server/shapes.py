@@ -180,8 +180,69 @@ def enforcement_action(r: Row) -> dict[str, Any]:
 
 # ── community ─────────────────────────────────────────────────────────────────
 
-def concern(r: Row, author: dict | None = None, responses: list | None = None) -> dict[str, Any]:
+# Cached per campaign: (lon, lat) for every road-segment midpoint, and a flat
+# array to snap against. Geometry never changes within a build.
+_SNAP_CACHE: dict[str, tuple[list[float], list[float]]] = {}
+
+
+def _snap_to_road(conn, campaign_id: str | None, lon: float | None, lat: float | None):
+    """Move a report to the nearest road-segment midpoint.
+
+    WHY: `concern.lon/lat` are house-precision, and `is_anonymous` hides only
+    the author's NAME. Draw any named-emitter shape over house-precision pins —
+    which is exactly what phase 6 puts on the community map — and the map
+    becomes a record of which households accused which company. That is a
+    compound de-anonymisation and a defamation surface in one layer, and it
+    does not need anyone to act in bad faith: a screenshot is enough.
+
+    The road segment is this product's own atom — every measurement, every
+    statistic and the hero visual are already per-segment — so snapping loses
+    nothing analytically. It is about ten lines and it is the one place the
+    community design was genuinely exposed.
+
+    Applied at SERIALISATION, not at write: the raw coordinate stays in the
+    database for the regulator's own tooling, and every reader of the community
+    API gets the snapped one.
+    """
+    if lon is None or lat is None or campaign_id is None:
+        return lon, lat
+    cached = _SNAP_CACHE.get(campaign_id)
+    if cached is None:
+        pts = conn.execute(
+            "SELECT mid_lon, mid_lat FROM road_segment WHERE campaign_id = ?", (campaign_id,)
+        ).fetchall()
+        if not pts:
+            return lon, lat
+        cached = ([p[0] for p in pts], [p[1] for p in pts])
+        _SNAP_CACHE[campaign_id] = cached
+    lons, lats = cached
+    # Equirectangular is ample: we are picking a nearest neighbour a few
+    # hundred metres away, not measuring one.
+    import math as _math
+
+    kx = _math.cos(_math.radians(lat))
+    best_i, best_d = 0, float("inf")
+    for i, (x, y) in enumerate(zip(lons, lats, strict=True)):
+        dx = (x - lon) * kx
+        dy = y - lat
+        d = dx * dx + dy * dy
+        if d < best_d:
+            best_i, best_d = i, d
+    return round(lons[best_i], 5), round(lats[best_i], 5)
+
+
+def concern(
+    r: Row,
+    author: dict | None = None,
+    responses: list | None = None,
+    conn=None,
+) -> dict[str, Any]:
     anon = bool(r["is_anonymous"])
+    lon, lat = r["lon"], r["lat"]
+    if conn is not None:
+        lon, lat = _snap_to_road(
+            conn, r["campaign_id"] if "campaign_id" in r.keys() else None, lon, lat
+        )
     return {
         "id": r["id"],
         "author": None if anon else author,
@@ -189,8 +250,12 @@ def concern(r: Row, author: dict | None = None, responses: list | None = None) -
         "severity": r["severity"],
         "title": r["title"],
         "body": r["body"],
-        "lon": r["lon"],
-        "lat": r["lat"],
+        "lon": lon,
+        "lat": lat,
+        # Snapped to the nearest road-segment midpoint when the serialiser was
+        # given a connection. House-precision coordinates never leave the
+        # database — see `_snap_to_road`.
+        "location_precision": "road_segment" if conn is not None else "raw",
         "address_hint": r["address_hint"],
         "district": r["district"],
         "occurred_at": r["occurred_at"],
@@ -476,6 +541,11 @@ def dispersion_model(r: Row, contours: list | None = None) -> dict[str, Any]:
         # consultant's arbitrary binning lines up with our observed rose.
         "assumed_wind": windfield.normalise_rose(jload(r["assumed_wind_json"], [])),
         "notes": r["notes"],
+        # 'permit' = the study the operator filed, a legal object. 'aclima' =
+        # the same kernel driven by the wind our fleet measured. Drawn in
+        # different registers per CONTRACT §10b — a filed contour is a model
+        # and gets an outline, never a fill.
+        "model_tier": (r["model_tier"] if "model_tier" in r.keys() else "permit"),
         "contours": contours or [],
     }
 

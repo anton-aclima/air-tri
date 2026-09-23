@@ -86,7 +86,63 @@ def connect(path: Path | str = DB_PATH) -> sqlite3.Connection:
 
 
 def apply_schema(conn: sqlite3.Connection) -> None:
+    """Run schema.sql, then check it actually took.
+
+    Every statement in schema.sql is `CREATE TABLE IF NOT EXISTS`, so adding a
+    COLUMN to an existing table is a silent no-op against a database that
+    already has it. The build then runs for as long as it takes to reach the
+    first insert into that table and dies with
+
+        sqlite3.OperationalError: table drive has no column named sampling_mode
+
+    which names the symptom and not the cause, and looks like a code bug rather
+    than a stale file. There are no migrations here on purpose — the database
+    is generated, so the fix is always to delete it — but the error should say
+    so.
+    """
     conn.executescript(SCHEMA_PATH.read_text())
+    missing = _schema_drift(conn)
+    if missing:
+        raise SystemExit(
+            "this database predates the current schema and SQLite will not add "
+            "columns to an existing table:\n"
+            + "".join(f"    {t}.{c}\n" for t, c in missing)
+            + "\nThe database is generated, so there are no migrations. Delete it "
+            "and build again:\n"
+            "    rm -f data/air.db data/air.db-wal data/air.db-shm\n"
+            "    python3 -m air.datagen.build build --seed 20260827 "
+            "--now 2026-08-28T13:54:00\n"
+        )
+
+
+def _schema_drift(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """Columns schema.sql declares that the live database does not have."""
+    import re
+
+    sql = SCHEMA_PATH.read_text()
+    live = {
+        r[0]: {c[1] for c in conn.execute(f"PRAGMA table_info({r[0]})")}
+        for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    out: list[tuple[str, str]] = []
+    for block in re.finditer(
+        r"CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\((.*?)\n\);", sql, re.S
+    ):
+        table, body = block.group(1), block.group(2)
+        if table not in live:
+            continue
+        for line in body.splitlines():
+            line = line.strip()
+            if not line or line.startswith("--"):
+                continue
+            name = line.split()[0]
+            if name.upper() in {
+                "PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT", "REFERENCES",
+            }:
+                continue
+            if name not in live[table]:
+                out.append((table, name))
+    return out
 
 
 def wipe(conn: sqlite3.Connection, tables: Iterable[str]) -> None:

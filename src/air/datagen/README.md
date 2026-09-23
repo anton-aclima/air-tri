@@ -73,6 +73,12 @@ weather.py ──► field.py ────────────────�
    for initial spread, and an isotropic campus-scale near field (`NEAR_Q`,
    `NEAR_SIGMA_M`) because a 1.1 km² site is an *area* source, not a point.
    Evaluated on a downwind sub-window, not the whole raster — that is the speed win.
+   **The dispersion coefficients, `SIGMA_X0`, `NEAR_Q`, `NEAR_SIGMA_M` and the
+   buoyant-rise table now live in `src/air/dispersion.py`, not here.** They moved
+   so the server can draw the operator's cone from the same arithmetic that
+   writes this truth field; before that the two disagreed about reach by a
+   factor of forty under stable air. `air.dispersion` imports nothing from
+   `air.datagen` or `air.server`, so there is no cycle and no second copy.
 3. **Line sources** — traffic splatted from the real network weighted by OSM class,
    with a rush-hour double peak, a separate heavy-duty raster for BC, and a
    tight/wide blur blend driven by wind speed and stability.
@@ -117,8 +123,8 @@ background fBm and synoptic weather, and across months through `LOAD_RAMP`
 | `HAZE_EPISODES` | 2 episodes | `(centre_day, sigma_days, multiplier)` regional smoke. Drives PM2.5 24-h exceedances. |
 | `K_PT_*` | — | Point-source coupling per measure. Raise for hotter sites. |
 | `K_TR_*` | — | Traffic line-source coupling per measure. |
-| `NEAR_Q`, `NEAR_SIGMA_M` | 1.0e-4, 640 m | Campus-scale near field. **The main lever on how big the hotspot around a site is.** |
-| `SIGMA_X0` | 115 m | Virtual-source offset. Larger = fatter near-field lobe. |
+| `NEAR_Q`, `NEAR_SIGMA_M` | 1.0e-4, 640 m | Campus-scale near field. **The main lever on how big the hotspot around a site is.** In `air/dispersion.py`. |
+| `SIGMA_X0` | 115 m | Virtual-source offset. Larger = fatter near-field lobe. In `air/dispersion.py`. |
 | `MICRO` | per measure | Micro-scale noise amplitude. |
 | `O3_TITRATION` | 1.90 | ppb O3 destroyed per ppb NO2 excess. >1 because the titrating agent is NO. |
 | `NO2_PHOTOLYSIS` | 0.26 | Afternoon NO2 suppression at peak sun. |

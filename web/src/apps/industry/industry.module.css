@@ -587,3 +587,24 @@
 .mapCol > :first-child { flex: 1 1 auto; min-height: 0; }
 /* The detail pane is capped so a long report can never squeeze the map. */
 .mapCol > .selected { flex: 0 0 auto; max-block-size: 38%; }
+
+/* ── /industry/evidence — "says who" ────────────────────────────────────────
+   Two distributions on one scale. The fenceline is inked, the comparison set
+   is not: the point of the panel is that a reader can see the difference
+   rather than be told it. The action-level tick sits on both tracks at the
+   same place, so "over the line" is a position, not a claim. */
+.evCompare { display: flex; flex-direction: column; gap: var(--s-2); }
+.evRow { display: grid; grid-template-columns: 9.5rem 1fr 4.5rem; align-items: center; gap: var(--s-2); }
+.evTrack {
+  position: relative; height: 14px; border-radius: 2px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+  overflow: visible;
+}
+/* p90 behind, p50 in front: the tail is context, the median is the reading. */
+.evBarFenceWide { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--sev-warning, var(--accent)) 30%, transparent); }
+.evBarFence { position: absolute; inset: 0 auto 0 0; background: var(--sev-warning, var(--accent)); }
+.evBarCompWide { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--ink-2) 18%, transparent); }
+.evBarComp { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--ink-2) 55%, transparent); }
+.evLine { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--sev-threat, crimson); }
+.evRow > .num { text-align: right; font-size: var(--text-xs); color: var(--ink-2); }
+.evDistricts { display: flex; flex-direction: column; gap: var(--s-1); margin-block: var(--s-2); }

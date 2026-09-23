@@ -162,3 +162,28 @@ export function fitZoom(b: BBox, width: number, height: number, padding = 48): n
   const zy = Math.log2(Math.max(1, height - padding * 2) / (worldW * latFrac));
   return Math.max(1, Math.min(20, Math.min(zx, zy)));
 }
+
+/**
+ * Is a point inside a closed ring? Even-odd ray cast, planar.
+ *
+ * Planar is correct here and not a shortcut: the rings this is asked about are
+ * a few kilometres across at mid-latitudes, and the question is which side of
+ * an edge a road midpoint falls on — not a distance. A great-circle version
+ * would move answers by less than the coordinate rounding already applied.
+ *
+ * Points exactly on an edge are unspecified, as they are for every even-odd
+ * implementation. Callers must not depend on the boundary case: the shapes
+ * this is used with are deliberately soft, and a caller that cares whether a
+ * street is just inside or just outside a modelled plume edge is asking a
+ * question the plume cannot answer.
+ */
+export function pointInRing(ring: Position[], p: Position): boolean {
+  let inside = false;
+  const [x, y] = p;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}

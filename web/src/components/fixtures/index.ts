@@ -601,6 +601,8 @@ export const DISPERSION_MODEL: DispersionModel = {
   name: 'Ridgeline South — NO₂ dispersion study',
   vendor: 'Cardinal Environmental Partners',
   method: 'AERMOD 23132, 5-year MET',
+  // The study the operator filed. Drawn as a dashed outline, never filled.
+  model_tier: 'permit',
   measure: 'no2',
   averaging_hours: 1,
   issued_at: '2025-11-18',
@@ -728,27 +730,49 @@ export const DISPERSION_PLUME: import('@/core/types').DispersionPlume = {
   type: 'FeatureCollection',
   features: [0, 1, 2].map((band) => {
     const c = RIDGELINE.centroid;
-    const reach = 3000 - band * 850;
-    const half = 22 - band * 4;
+    // Stable night air, class F. Three things the fixture has to show, because
+    // they are what the kernel produces and the gallery is where the register
+    // gets designed: the plume STARTS 900 m out (aloft over the fenceline,
+    // clean ground underneath), the bands are contours so they nest outward
+    // from there, and the outermost one is past the 4 km detection envelope
+    // and must render dashed with no fill.
+    const ONSET = 900;
+    const EDGES = [900, 2600, 4200, 6000];
+    const [r0, r1] = [EDGES[band], EDGES[band + 1]];
+    const half = 13 - band * 2;
     const mLon = 111320 * Math.cos((c[1] * Math.PI) / 180);
-    const ring: Position[] = [c];
-    for (let a = -half; a <= half; a += 3) {
+    const at = (r: number, a: number): Position => {
       const rad = ((196 + a) * Math.PI) / 180;
-      ring.push([
-        c[0] + (Math.sin(rad) * reach) / mLon,
-        c[1] + (Math.cos(rad) * reach) / 110540,
-      ]);
-    }
-    ring.push(c);
+      return [c[0] + (Math.sin(rad) * r) / mLon, c[1] + (Math.cos(rad) * r) / 110540];
+    };
+    const ring: Position[] = [];
+    for (let a = -half; a <= half; a += 2) ring.push(at(r1, a));
+    for (let a = half; a >= -half; a -= 2) ring.push(at(r0, a * 0.6));
+    ring.push(ring[0]);
     return {
       type: 'Feature' as const,
       geometry: { type: 'Polygon' as const, coordinates: [ring] },
       properties: {
         site_id: 'site_ridgeline',
         measure: 'no2' as const,
-        level: [53, 38, 21][band],
+        level: [0.53, 0.16, 0.05][band],
         band,
         ts: NOW.toISOString(),
+        n_sources: 13,
+        x_onset_m: ONSET,
+        x_peak_m: 2140,
+        x_reach_m: 6000,
+        reach_m: 6000,
+        truncated: false,
+        lofted: true,
+        n_elevated: 11,
+        elevated_touchdown_m: 860,
+        elevated_peak_m: 2140,
+        beyond_envelope: r1 > 4000,
+        detection_envelope_m: 4000,
+        wind_dir_deg: 16,
+        wind_speed_ms: 1.5,
+        stability: 'F',
       },
     };
   }),

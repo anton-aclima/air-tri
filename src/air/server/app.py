@@ -21,6 +21,7 @@ from air.server.routers import (
     alerts,
     bootstrap,
     concerns,
+    coverage,
     events,
     feed,
     fleet,
@@ -29,6 +30,7 @@ from air.server.routers import (
     segments,
     sites,
     stats,
+    touchdown,
     wind,
 )
 
@@ -46,6 +48,8 @@ ROUTERS = (
     fleet.router,
     wind.router,
     stats.router,
+    touchdown.router,
+    coverage.router,
     advisor.router,
     admin.router,
     events.router,

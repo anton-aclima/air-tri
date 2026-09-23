@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from air.server import cache, domain, geo, sim, timeutil
+from air.server import brief, cache, domain, geo, sim, timeutil
 from air.server.db import get_db, one, resolve_campaign, rows, writer
 from air.server.models import DrivePlanIn, ReseedIn, SimulateIn
 
@@ -81,6 +81,29 @@ def reseed(
     return {"ok": True, "seed": payload.seed, "datagen": str(out) if out is not None else None}
 
 
+@router.get("/admin/brief")
+def mission_brief(
+    date: str | None = None,
+    at: str | None = None,
+    site_id: str | None = None,
+    campaign_id: str | None = None,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """The Mission Brief: the whole 07:00 screen in one request.
+
+    Read-only over the datagen-built plan. `date` (YYYY-MM-DD) or `at` (the
+    demo cursor) picks the day; neither means the last day with data.
+    `site_id` overrides the target the brief would otherwise choose.
+    """
+    cid = resolve_campaign(conn, campaign_id)
+    if site_id and one(conn, "SELECT 1 FROM industry_site WHERE id=?", (site_id,)) is None:
+        raise HTTPException(404, f"unknown site {site_id}")
+    try:
+        return brief.build(conn, cid, at=at, date=date, site=site_id)
+    except brief.BadDate as e:
+        raise HTTPException(422, str(e)) from None
+
+
 @router.post("/admin/campaigns/{cid}/drive-plan")
 def regenerate_drive_plan(
     cid: str, payload: DrivePlanIn, conn: sqlite3.Connection = Depends(get_db)
@@ -91,6 +114,11 @@ def regenerate_drive_plan(
     cheap stand-in for the Chinese-postman routing datagen does: it keeps each
     day's route spatially coherent, which is what the admin map needs to look
     right, and it is deterministic given `seed`.
+
+    It is NOT the solver that produced the campaign's data — that is
+    `datagen.driveplan`'s route-inspection circuit — and routes written here
+    drove nothing. `GET /admin/brief` therefore reads the plan through
+    `drive.plan_id`, never through the `active` flag this endpoint moves.
     """
     camp = one(conn, "SELECT * FROM campaign WHERE id=?", (cid,))
     if camp is None:

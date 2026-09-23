@@ -73,6 +73,31 @@ MIN_PASSES_HOUR = 4
 # passes) is not worse here than for any other measure.
 
 
+def uniform_only(pass_cols, pass_rows):
+    """Drop passes that were driven BECAUSE something was expected there.
+
+    Every statistic in this module is either community-facing (the headline
+    risk score) or a comparison between streets (the regulator's ranking, the
+    worst/best lists). Both are only meaningful over passes chosen without
+    reference to what they would find. Targeted driving biases a per-segment
+    median upward by up to +57%, and by 2.66x on the worst near-source case
+    from four passes — so without this filter the product's headline becomes a
+    function of the dispatcher rather than of the air.
+
+    **Currently inert**: the planner emits nothing but `uniform`, and will keep
+    doing so until the Mission Brief (phase 9) starts dispatching. It is
+    installed now because the guard has to exist before the thing it guards
+    against, and because a rebuild was already happening.
+
+    Tolerates a `pass_cols` without the column, so an older database still
+    aggregates.
+    """
+    if "sampling_mode" not in pass_cols:
+        return pass_rows
+    k = list(pass_cols).index("sampling_mode")
+    return [r for r in pass_rows if r[k] == "uniform"]
+
+
 def risk_from_scale(value: float, scale) -> int:
     """Piecewise-linear concentration -> 0..100 risk. The reference implementation.
 
@@ -179,7 +204,8 @@ def _assert_sense_near_linear(vals: np.ndarray, si: dict):
 
 
 def build_segment_stats(segments, pass_cols, pass_rows, campaign_id: str):
-    """Returns (columns, rows) for `segment_stat`."""
+    """Returns (columns, rows) for `segment_stat`. Uniform passes only."""
+    pass_rows = uniform_only(pass_cols, pass_rows)
     if not pass_rows:
         return (), []
     ci = {c: i for i, c in enumerate(pass_cols)}
@@ -277,6 +303,8 @@ def _for_groups(order: np.ndarray, key: np.ndarray, fn):
 
 
 def campaign_summary(pass_cols, pass_rows) -> dict:
+    """Campaign-wide distribution per measure. Uniform passes only."""
+    pass_rows = uniform_only(pass_cols, pass_rows)
     ci = {c: i for i, c in enumerate(pass_cols)}
     out: dict[str, dict] = {}
     for m in ORDER:
@@ -296,6 +324,8 @@ def campaign_summary(pass_cols, pass_rows) -> dict:
 
 
 def district_rollup(segments, pass_cols, pass_rows) -> dict:
+    """Median NO2 per district — a comparison BETWEEN places, so uniform only."""
+    pass_rows = uniform_only(pass_cols, pass_rows)
     ci = {c: i for i, c in enumerate(pass_cols)}
     by = defaultdict(list)
     dist = {s.id: s.district for s in segments}

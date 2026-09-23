@@ -11,14 +11,81 @@
 cd web && npx tsc -b --force
 
 cd web && npx oxlint src        # the repo's linter
-python3 -m air.datagen.build build --seed 20260827   # rebuild data/air.db
+
+# Python tests. `uv run` because pytest is in the dev dependency group, which
+# `uv sync --no-dev` deliberately keeps out of the deployed image.
+uv run pytest
+
+# Rebuild data/air.db. `--now` is NOT optional if you intend to compare any
+# number to a number written down earlier. Without it the generator anchors the
+# campaign to wall-clock time, so every rebuild shifts the whole 90 days and no
+# measurement is reproducible. 2026-08-28T13:54:00 is what `setting`
+# ('datagen.now') holds in the checked-in database.
+python3 -m air.datagen.build build --seed 20260827 --now 2026-08-28T13:54:00
 ```
+
+**Adding a column to `schema.sql` does nothing to an existing database.** Every
+statement there is `CREATE TABLE IF NOT EXISTS`, so SQLite silently skips the
+table and the build dies later with `table drive has no column named
+sampling_mode` — a symptom that looks like a code bug. There are no migrations
+on purpose (the database is generated), so the fix is always to delete it:
+
+```sh
+rm -f data/air.db data/air.db-wal data/air.db-shm
+```
+
+`apply_schema` now detects the drift up front and says exactly that.
+
+**The deployed image deliberately does NOT pin `--now`** (the `air.datagen.build` line in the Dockerfile), so a
+container's data ends on its own build date and the fleet layer is alive the
+moment it boots. That is right for the demo and it means **prod numbers and
+local numbers are not comparable** — never check one against the other.
 
 **Never pipe a command whose exit code you intend to read.** `cmd | head -20`
 and `cmd | tail -40` both exit with *head/tail's* status, not the command's.
 This masked two separate failures in one session: a typecheck that checked
 nothing, and a failed Cloud Run deploy that reported success. Redirect to a file
 and read it, or run unpiped and check `$?`.
+
+## Tests
+
+`tests/` is pytest, run with `uv run pytest`. Two things to know:
+
+- **DB-backed tests carry `@pytest.mark.needs_db`** and skip when `data/air.db`
+  is absent (it is gitignored). Pure-geometry tests run on a fresh clone.
+- **Every route lives under `/api/v1`** and the SPA catch-all serves HTML for
+  everything else — so a wrong path returns **200 with an HTML body**, not a
+  404. Use the `api` and `json_ok` fixtures; `json_ok` checks the content type
+  for exactly this reason.
+
+There is one `xfail(strict=True)`: non-negotiable #5 (community fleet delay) is
+applied to the payload label but not to the data. See the marker for the
+diagnosis. `strict=True` means fixing it reports as a failure here, which is
+the reminder to remove the marker.
+
+## The touchdown estimator
+
+`scripts/probe_touchdown.py` is throwaway analysis that produced a decision.
+The decision is pinned by `tests/fixtures/touchdown_frozen.json` and the
+reasoning is the sweep table in `docs/PLAN-plume.md` (phase 2). **Do not
+regenerate the fixture to make a red test green** — that throws away the only
+record of why the estimator looks like this.
+
+```sh
+uv run python scripts/probe_touchdown.py sweep     # 64 configs x 3 sites x 2 measures
+uv run python scripts/probe_touchdown.py frozen    # what the chosen config returns
+uv run python scripts/probe_touchdown.py null      # the noise floor, from 14 fake bearings
+uv run python scripts/probe_touchdown.py samples   # conditioned sample sizes
+```
+
+Two rules from that phase bind everything downstream:
+
+- **Nothing past 4,200 m is reportable** until P3-A lands. Beyond it `field.py`
+  clips the truth field to zero, and an estimator run there passed both
+  rotation tests on a plume that does not exist.
+- **The Boxtown beat may be depended on; its number may not.** The place holds
+  across four seeds (77–94% of downwind passes); the magnitude moves +2.9 to
+  +5.3 ppb. Generate every figure from the payload at runtime.
 
 ## Servers
 

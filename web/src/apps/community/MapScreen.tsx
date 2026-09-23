@@ -23,6 +23,8 @@ import {
 } from '@/apps/community/lib'
 import { DelayNote, FootNote, RiskPill, SimNote } from '@/apps/community/parts'
 import { Picked } from '@/apps/community/Picked'
+import { Plume, latestClusterOf } from '@/apps/community/Plume'
+import type { PlumeMode } from '@/apps/community/Plume'
 import type { MapPick } from '@/apps/community/Picked'
 import { Badge, Button, Chip, Empty, Toggle } from '@/app/ui'
 import {
@@ -35,8 +37,10 @@ import {
   MeasurePicker,
   SegmentLayer,
   SiteLayer,
+  SoftPlumeLayer,
   makeColorScale,
   pickedSite,
+  pointInRing,
   usePulse,
 } from '@/components'
 import { relativeTime } from '@/core/format'
@@ -46,6 +50,7 @@ import {
   useBootstrapSites,
   useConcernClusters,
   useConcerns,
+  useDispersion,
   useFleet,
   useFlags,
   useMeasures,
@@ -56,6 +61,9 @@ import type { ConcernKind, MeasureCode, Position } from '@/core/types'
 const NEAR_RADIUS_M = 1600
 
 export function MapScreen() {
+  // Climatology is the default and the only mode that draws nothing. See
+  // `Plume` for why the live cloud is a tap behind rather than the front door.
+  const [plumeMode, setPlumeMode] = useState<PlumeMode>('usually')
   const time = useTime()
   const now = resolveNow(time)
   const places = usePlaces()
@@ -65,6 +73,18 @@ export function MapScreen() {
   const concerns = useConcerns({ limit: 200 }).data ?? []
   const clusters = useConcernClusters().data ?? []
   const fleet = useFleet().data ?? []
+  // Only fetched when a cloud mode is on. `usually` is the default and draws
+  // nothing, so a resident who never taps never requests a modelled shape.
+  //
+  // In `when` mode the fetch is pinned to the hour the cluster of reports
+  // landed — the same cluster the card names. Without that the card said
+  // "where the air was going when your neighbours reported" over a map drawing
+  // the plume for right now.
+  const frozenAt = plumeMode === 'when' ? (latestClusterOf(clusters)?.last_at ?? undefined) : undefined
+  const dispersion = useDispersion(
+    frozenAt ? { at: frozenAt } : {},
+    { enabled: plumeMode !== 'usually' && (plumeMode !== 'when' || !!frozenAt) },
+  )
   /**
    * Industrial sites, shown to residents.
    *
@@ -139,6 +159,40 @@ export function MapScreen() {
 
   const shown = rows.map((r) => r.c)
 
+  /*
+    P6-E — "what we measured under the cloud", and how it degrades.
+
+    The count is only meaningful if enough of the neighbourhood was driven in
+    the window: hour-window coverage runs 90 to 407 of 1,307 segments, so this
+    can be computed from a handful of streets and read as though the whole area
+    had been checked. `Plume` holds the floor and shows the honest sentence
+    instead of a small number — the failure to avoid is not a wrong count, it
+    is a right count that sounds like coverage.
+
+    Memoised on the plume payload and the segment list rather than recomputed
+    per render: this is point-in-polygon over ~1,300 midpoints, and the time
+    cursor ticks.
+  */
+  const measuredStreets = useMemo(() => {
+    const feats = dispersion.data?.features ?? []
+    const segs = segments?.features ?? []
+    if (!feats.length || !segs.length) return null
+    // The OUTER band only. The bands nest, so testing all three would count
+    // the same street up to three times.
+    const outer = Math.max(...feats.map((f) => f.properties.band ?? 0))
+    const rings = feats
+      .filter((f) => (f.properties.band ?? 0) === outer)
+      .map((f) => f.geometry.coordinates[0] as unknown as Position[])
+    let n = 0
+    for (const seg of segs) {
+      const line = seg.geometry.coordinates
+      const mid = line[Math.floor(line.length / 2)]
+      if (!mid) continue
+      if (rings.some((r) => pointInRing(r, mid as Position))) n += 1
+    }
+    return n
+  }, [dispersion.data, segments])
+
   return (
     <div className={[s.page, s.pageWide].join(' ')}>
       <SimNote />
@@ -187,6 +241,17 @@ export function MapScreen() {
               return choose(null)
             }}
             layers={(t) => [
+              /* UNDER EVERYTHING, and only in the two cloud modes. `usually`
+                 draws nothing at all, which is the point of it being the
+                 default. The cloud is a guess and the coloured streets are
+                 measurements; a guess is never drawn on top of a measurement. */
+              ...(plumeMode === 'usually'
+                ? []
+                : SoftPlumeLayer({
+                    data: dispersion.data,
+                    theme: t,
+                    zoom: mapView?.zoom ?? 12.4,
+                  })),
               ...SegmentLayer({
                 data: segments,
                 theme: t,
@@ -266,6 +331,21 @@ export function MapScreen() {
             segments={segments?.features ?? []}
             sites={sites}
             measureName={measure ? plainName(measure, 'community') : 'the air'}
+          />
+
+          {/*
+            THE FRONT DOOR, directly under whatever is picked and above the
+            filters. Climatology first: one stable sentence per place, no shape
+            drawn over anyone. The live cloud is a tab inside this card, not a
+            layer that arrives unasked.
+          */}
+          <Plume
+            sites={sites}
+            clusters={clusters}
+            mode={plumeMode}
+            onMode={setPlumeMode}
+            measuredStreets={measuredStreets}
+            now={now}
           />
 
           <section className={s.railCard}>

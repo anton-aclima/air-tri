@@ -155,10 +155,24 @@ are all tweakable. This is a prototype; it is not expected to be a complete work
   high, the UI says so. Fake confidence is off-brand, because the entire premise is that
   Aclima is the trustworthy measurement.
 - **The "aclimator" — Aclima's rounded-triangle mark — is binding as a form.** Its **colour
-  is not**; the user is willing to bend it to fit the surface it sits on.
-- **No aclimator asset is currently in the repo.** `web/public/favicon.svg` is a stand-in: a
-  sharp diamond with three orbiting dots, not the aclimator. The real mark must be supplied
-  by the user before any surface can carry it correctly. Do not redraw it from memory.
+  is not**; the user is willing to bend it to fit the surface it sits on. Never redraw the
+  mark from memory; use the supplied asset.
+- **The asset is `web/public/2022_Aclima_Logo.webp`** — the 2022 horizontal lockup: the
+  rounded-triangle mark (an outlined triangle with a triangular knockout) beside a lowercase
+  `aclima` wordmark with a trailing dot. Real constraints it carries:
+  - **It is the dark-background variant.** Only two colours appear in it: the mark at
+    `#13B4E3` and the wordmark at `#EEF7FD` (near-white). **On a light surface the wordmark
+    disappears** — which rules it out as-is for the community skin's warm paper ground.
+  - **It is raster, 501 × 193**, not vector. It cannot scale past its native size cleanly and
+    its parts cannot be recoloured by editing the file.
+  - **Recolouring is still available via alpha.** The lockup is defined entirely by its alpha
+    channel, so `mask-image` plus a token `background-color` repaints the whole lockup any
+    colour without touching the file. That is the sanctioned way to exercise the permission
+    to bend its colour.
+  - A vector (SVG) version and a light-ground wordmark variant are **not on hand**. Ask for
+    them rather than reconstructing either.
+- `web/public/favicon.svg` is **not** the aclimator — it is a hand-drawn stand-in (a sharp
+  diamond with three orbiting dots) predating the real asset. Treat it as unresolved.
 - Nothing else from aclima.earth is binding. The visual identity in
   `web/src/design/tokens.css` is this project's own and is free to evolve on its own logic.
 - The four fictional actors above are established canon within the demo and are reused
@@ -183,11 +197,12 @@ are all tweakable. This is a prototype; it is not expected to be a complete work
 
 **Explicitly absent — never fabricate:**
 
-- No real customer names, testimonials, case studies, press, logos, or pricing. Aclima's
+- No real customer names, customer logos, testimonials, case studies, press, or pricing. Aclima's
   real largest client was CARB (2025–26 California SMMI campaign, 62 underserved
   communities), which is background context, **not** a claim to put on a surface.
 - No real measurements. Every number in the UI is simulated and must be marked as such.
-- No aclimator logo file (see Brand Commitments).
+- No vector aclimator and no light-ground wordmark variant (see Brand Commitments); the
+  one lockup on hand is raster and dark-ground only.
 
 **Optional, external, not required to run:** a CARTO subscription and BigQuery access to
 Aclima's real hyperlocal data (`bq-aclima-lab`, key in `.env`) — the organization is a

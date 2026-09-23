@@ -44,3 +44,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .DS_Store
+
+# Dev-only. pytest is in the `dev` dependency group and the image runs
+# `uv sync --no-dev`, so these could not run there anyway.
+tests/

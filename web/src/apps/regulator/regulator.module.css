@@ -557,3 +557,36 @@
 }
 .reportActions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
+
+/* ── /regulator/coverage ─────────────────────────────────────────────────── */
+.covBody { display: flex; flex-direction: column; gap: var(--s-4); }
+.covRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.covRow:last-child { border-bottom: 0; }
+.covName { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); }
+.covNum { font-size: var(--text-xs); color: var(--ink-2); text-align: right; white-space: nowrap; }
+.covAnchor { font-size: var(--text-xs); color: var(--ink-3); min-width: 0; }
+.covTrack {
+  position: relative; height: 8px; border-radius: 4px;
+  background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden;
+}
+.covBar { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; }
+.covBarThreat { position: absolute; inset: 0 auto 0 0; background: var(--sev-high, var(--accent)); border-radius: 4px; }
+.covDivider { margin: var(--s-3) 0 var(--s-1); padding-top: var(--s-2); border-top: 1px dashed var(--line); }
+.covCompare { display: flex; flex-direction: column; }
+.covPage { grid-template-rows: auto minmax(0, 1fr); }
+.covBody {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
+  gap: var(--s-2);
+  align-content: start;
+}
+@media (max-width: 1200px) { .covBody { grid-template-columns: minmax(0, 1fr); } }

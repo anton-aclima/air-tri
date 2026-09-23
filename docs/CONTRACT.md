@@ -262,7 +262,7 @@ salesperson can produce the tension on cue.
 
 ---
 
-## 8b. Wind — the visual, and "verify your consultant"  (design.md line 93)
+## 8b. Wind — the visual, and "verify your consultant"  (ORIGIN_PROMPT.md line 93)
 
 ### The visual reference: earth.nullschool.net
 
@@ -322,3 +322,86 @@ is that we are the trustworthy measurement, so fake confidence is off-brand.
 5. Community fleet positions are delayed ≥3 h. Regulator and admin see live.
 6. Everything a demo-giver might want to tweak (thresholds, ramps, fleet size, passes,
    delay, risk breakpoints) is editable in the admin interface or `measure_def`.
+
+---
+
+## 10. Model vs. measurement — the honesty rules
+
+The programme in `docs/PLAN-plume.md` puts a *modelled* plume next to a *measured*
+one in all four interfaces. That is the product's best story and its sharpest
+hazard: the modelled shape is bigger, smoother and more confident-looking than
+the measurement, and a reader will assume the impressive layer is the real one.
+
+Everything below is a hard rule, not a caption. **Captions get edited away in two
+sprints.** These are enforced by the data flow, the encoding channel, and the
+never-say list — in that order of reliability.
+
+This section is inherited the way non-negotiable 4 is: an agent working on one
+interface holds all of it, not the part that touches their screen.
+
+### 10a. The never-say list
+
+Never, in any interface, in any copy, in any generated summary:
+
+1. Never call a modelled value **measured**, **observed**, **detected**, **found**,
+   or **recorded**. A model is `modelled`, `assumed`, `predicted` or `filed`.
+2. Never state a **touchdown**, an **excess** or an **exceedance** at a location the
+   fleet has not driven. "We do not know" is a shippable answer; it is in fact
+   the answer that sells the fleet.
+3. Never attribute a concentration, a smell or a health effect **to a named site**
+   on proximity alone. Attribution requires the wind to have carried from it,
+   and it must survive the placebo gate (10c).
+4. Never print a confidence interval, a p-value or a sample size for a stratum
+   that failed the placebo gate. Return `insufficient_data` and say so.
+5. Never present the Pasquill class coercion (`stability_coerced_from`) as an
+   explanation for plume size. It is a guard against impossible *inputs*, and
+   the states it guards against do not occur in this dataset.
+6. Community language additionally drops every one of the above words that is
+   an acronym, a unit or chemistry (non-negotiable 3 still applies on top).
+
+### 10b. The encoding rule — epistemic status is a rendering channel
+
+Three shapes end up on one map. They must be distinguishable **before any label
+is read**, because a translucent blob over a translucent blob is mud and the
+reader resolves mud in favour of whichever layer looks most authoritative.
+
+| what it is | how it is drawn |
+| --- | --- |
+| filed / permit model | dashed outline, **no fill** |
+| Aclima model | solid hairline outline + centreline axis with a reach tick, **no fill** |
+| measurement | the **only** filled or inked thing on the map — road segments, per non-negotiable 2 |
+| anything beyond the detection envelope | dashed, no fill, plus the legend line **"beyond measurement range — model only"** |
+| anything outside the driven-coverage mask | dimmed or hatched, and excluded from every agreement metric |
+
+A model plume from Ridgeline at 10 km covers 96.7% of the road grid. Without the
+register change, enlarging the plume turns every model-vs-measurement picture
+into a picture of the campaign boundary.
+
+### 10c. The placebo gate
+
+Any claim of the form "the air is worse downwind of this site" must be
+re-computed with the transport bearing rotated +90°, +180° and +270°. If the
+placebo magnitude comes within 2× of the true-bearing magnitude, **the stratum is
+not reportable** and the API returns `insufficient_data`.
+
+This is not paranoia. Measured in this dataset: a fabricated bearing returned
+**+32.99 ppb** against **−12.27 ppb** at the true bearing, in the same stratum.
+An estimator that produces tight, multi-ppb detections for wind directions that
+never occurred is measuring road-class composition and diurnal traffic, not a
+plume.
+
+### 10d. Ground-truth containment, stated as data flow
+
+The dispersion kernel (`air.dispersion`) is imported by both the generator and
+the server. That is deliberate — one kernel is the only arrangement in which the
+drawn cone and the simulated truth cannot drift apart — and it means an import
+ban is the wrong control. State it as data flow instead:
+
+> **No value derived from evaluating a dispersion kernel at a receptor may be
+> labelled measured, served under a touchdown path, or drawn in the measured
+> register — whichever package computed it.**
+
+Corollaries: `air.dispersion` imports neither `air.datagen` nor `air.server`
+(there is a test); `/sites/{id}/touchdown` reads only `segment_pass`,
+`mobile_wind_obs`, `wind`, `monitor_reading` and `concern`; and a measured
+payload never carries a field the kernel produced.

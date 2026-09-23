@@ -559,6 +559,16 @@ export interface DispersionModel {
   /** The rose the consultant assumed. `freq` is a PERCENTAGE, 0-100. */
   assumed_wind: { dir_deg: number; freq: number; mean_speed_ms: number }[];
   notes: string | null;
+  /**
+   * Whose model this is. `permit` is the study the operator filed — a legal
+   * object that says what the site was permitted on, not what the air did.
+   * `aclima` is the same kernel driven by the wind our fleet measured.
+   *
+   * One axis, and only this one: the word "tier" was used for four different
+   * things during design (model provenance, forecast horizon, entitlement,
+   * confidence). A forecast horizon gets its own column when phase 8 needs it.
+   */
+  model_tier: 'permit' | 'aclima';
   contours: { band: number; level: number; geometry: GeoGeometry }[];
 }
 
@@ -595,10 +605,475 @@ export interface ModelVerification {
   n_obs: number;
 }
 
+/**
+ * `GET /wind/dispersion` — the MODELLED plume, one polygon per (site, band).
+ *
+ * Everything here is a model. Nothing here has been observed, and per CONTRACT
+ * §10b it is drawn as an outline, never as the filled thing on the map.
+ * `beyond_envelope` is the register switch: past the detection envelope the
+ * band renders dashed with no fill and the legend says so.
+ */
+export interface DispersionProps {
+  site_id: string;
+  measure: MeasureCode;
+  /** Contour value as a fraction of this site's peak ground concentration, 0–1. */
+  level: number;
+  /** 0 = brightest. Bands are contours of the profile, not radial slices. */
+  band: number;
+  ts: string;
+  n_sources: number;
+
+  /** Metres downwind of the site, along the transport axis. */
+  x_onset_m: number;
+  x_peak_m: number;
+  x_reach_m: number;
+  /** Alias of `x_reach_m`, kept because callers ask "how far does it go". */
+  reach_m: number;
+  /** `x_reach_m` is a clip at the kernel's maximum, not a real crossing. */
+  truncated: boolean;
+
+  /**
+   * The elevated-source story, separate from the site numbers above because it
+   * answers a different question. A site's combined profile peaks at the fence
+   * whenever it has any ground-level release, so "where does the stack's plume
+   * come down" has to be asked of the stacks alone.
+   *
+   * `lofted: false` with `n_elevated: 0` is the ordinary daytime answer — the
+   * plume mixes to the ground at the fence — not a missing value.
+   */
+  lofted: boolean;
+  n_elevated: number;
+  elevated_touchdown_m: number | null;
+  elevated_peak_m: number | null;
+
+  /** Past here nothing has been measured: dash it, do not fill it. */
+  beyond_envelope: boolean;
+  detection_envelope_m: number;
+
+  wind_dir_deg: number;
+  wind_speed_ms: number;
+  stability: string;
+  /**
+   * Present only when the reported Pasquill class was outside its own
+   * wind-speed range and the kernel stepped it toward neutral. Never happens
+   * on this campaign's own weather — it is a guard for forecasts and for a
+   * hand-set slider. NOT an explanation of how big the plume is.
+   */
+  stability_coerced_from?: string;
+  stability_note?: string;
+}
+
 export type DispersionPlume = FeatureCollection<
   { type: 'Polygon'; coordinates: Position[][] },
-  { site_id: string; measure: MeasureCode; level: number; band: number; ts: string }
+  DispersionProps
 >;
+
+// ───────────────────────────────────────────────────────────── coverage
+
+/**
+ * `GET /coverage/*` — **the regulator's question**: does the fixed network
+ * stand where the plume goes?
+ *
+ * Everything under these types is MODELLED. "In a plume" means inside a cone
+ * from the dispersion kernel driven by the campaign's wind record; nobody
+ * measured the air at these instruments and compared it to anything. `basis`
+ * carries that sentence so a screen cannot print the rate without it.
+ *
+ * The measured counterpart is `CoverageMask` — where a car has actually been.
+ * Do not draw them in the same register.
+ */
+export interface InstrumentCoverage {
+  monitor_id: string;
+  name: string;
+  owner_type: string;
+  grade: string | null;
+  status: string;
+  lon: number;
+  lat: number;
+  measures: MeasureCode[];
+  n_hours: number;
+  hours_in_plume: number;
+  /** Share of all campaign hours, 0–1. */
+  share: number;
+  hours_in_plume_stable: number;
+  share_stable: number;
+  /** site_id → hours this site's plume reached it. */
+  by_site: Record<string, number>;
+}
+
+/**
+ * What four fixed points do well, and what they cannot do. The fleet's LOSING
+ * number, in the same payload as everything it wins on, so a screen cannot
+ * print only the comparison we win.
+ *
+ * Every field is computed. An earlier draft of the screen carried "8,598
+ * records" and "5.7% vs 1.4%" copied from a design document; measured, the
+ * records are 21,500 and the shares are 8.4% and 4.8%. The finding survived,
+ * the margin did not.
+ */
+export interface Concession {
+  n_reference_instruments: number;
+  n_segments: number;
+  n_reference_readings: number;
+  n_fleet_passes: number;
+  reference_in_plume: number;
+  fleet_in_plume: number;
+  /** Share of its own record each took while a plume was overhead, 0–1. */
+  reference_share: number;
+  fleet_share: number;
+}
+
+export interface Interception {
+  campaign_id: string;
+  n_hours: number;
+  basis: string;
+  concession: Concession;
+  instruments: InstrumentCoverage[];
+  reference_summary: {
+    n: number;
+    n_ever_in_plume: number;
+    /** Towers in a plume under 2% of hours. */
+    n_rarely: number;
+    best_share: number;
+    worst_share: number;
+  };
+}
+
+export interface SegmentResidency {
+  segment_id: string;
+  name: string | null;
+  district: string | null;
+  lon: number;
+  lat: number;
+  length_m: number;
+  /** Counted per (hour, site) — two sites crossing in one hour is two. */
+  plume_hours: number;
+  /** Of those, the ones with no instrument standing in the SAME site's plume. */
+  unobserved_hours: number;
+  unobserved_share: number;
+}
+
+export interface Residency {
+  campaign_id: string;
+  basis: string;
+  plume_hours: number;
+  unobserved_hours: number;
+  unobserved_share: number;
+  segments: SegmentResidency[];
+}
+
+export interface Siting {
+  campaign_id: string;
+  basis: string;
+  /**
+   * Ships in the payload on purpose. Recommending where a public agency sites
+   * an instrument is the closest this product comes to regulatory advice, so
+   * the disclaimer travels with the rows rather than living in a caption a
+   * screen can drop.
+   */
+  framing: string;
+  min_plume_hours: number;
+  candidates: SegmentResidency[];
+}
+
+/** Per-CHANNEL anchoring state. A single "calibrated" badge on a node is false
+ *  for most of what that node measures. */
+export interface CalibrationChannel {
+  code: MeasureCode;
+  plain_name: string;
+  family: string;
+  anchored: boolean;
+  n_reference_anchors: number;
+  anchors: { monitor_id: string; name: string; grade: string; last_calibrated: string | null }[];
+  last_anchored_at: string | null;
+  age_days: number | null;
+  /** Set only when nothing in the region can anchor this channel. */
+  note: string | null;
+}
+
+export interface Calibration {
+  campaign_id: string;
+  as_of: string | null;
+  n_measures: number;
+  n_anchored: number;
+  channels: CalibrationChannel[];
+}
+
+// ──────────────────────────────────────────────────────────── climatology
+
+/**
+ * `GET /wind/climatology` — how often the wind carries from a site over a
+ * neighbourhood. **The community app's front door.**
+ *
+ * Answers that and nothing else. It is NOT evidence that anything was emitted,
+ * and it is not a statement about anyone's air — that is `Touchdown`, and it
+ * has a much weaker answer. The sentence that says so lives in `PLUME_COPY`.
+ *
+ * Deliberately reach-independent: it asks only whether the wind POINTED at a
+ * district, never whether a plume got there, so it does not move when the
+ * dispersion kernel does. That is why it is the front door and the live cloud
+ * is one tap behind — a resident who checks at 8am and 6pm sees the same thing.
+ */
+export interface DistrictWind {
+  district: string;
+  /** From the site's emission-weighted centroid to the district's road centroid. */
+  bearing_deg: number;
+  distance_m: number;
+  road_km: number;
+  n_hours: number;
+  hours_downwind: number;
+  /** Share of hours the wind pointed here, 0–1. Reach-independent. */
+  share: number;
+  hours_stable: number;
+  hours_downwind_stable: number;
+  /** The same, restricted to the still nights when a plume stays together. */
+  share_stable: number;
+}
+
+export interface WindClimatology {
+  campaign_id: string;
+  from: string;
+  to: string;
+  n_hours: number;
+  /** The campaign's hourly met record — NOT our fleet's anemometry. */
+  source: 'met_record';
+  rose: { dir_deg: number; freq: number; mean_speed_ms: number }[];
+  sites: { site_id: string; name: string; districts: DistrictWind[] }[];
+  sector: { n_sigma: number; min_half_deg: number; max_half_deg: number };
+}
+
+// ─────────────────────────────────────────────────────────────── envelope
+
+/**
+ * `GET /sites/{id}/envelope` — **the industry tier's spine**: how hard this
+ * site can run, measured, per stability regime.
+ *
+ * Replaces `IndustrySite.headroom_pct`, which is a constant (79 / 61 / 44)
+ * hardcoded in the generator, connected to nothing, and impossible for an
+ * operator to check or improve.
+ *
+ * What binds is not the permit number — against that alone Ridgeline could run
+ * about five times nameplate. What binds is its own fenceline on stable
+ * nights, measured against class-matched roads at least 2 km from every site.
+ * And it opens again by morning, which is what makes it manageable.
+ */
+export type EnvelopeState =
+  /** The typical stable episode already needs a cut to hold the line. */
+  | 'binding'
+  /** Clearly above comparable roads, no line crossed at the typical episode. */
+  | 'elevated'
+  /** Not separable from an arbitrary patch of road — see `decoy_null`. */
+  | 'indistinct'
+  /** Not enough conditioned episodes to say. */
+  | 'insufficient';
+
+export interface EnvelopeThreshold {
+  action_level_id: string;
+  label: string;
+  threshold: number;
+  unit: string;
+  severity: Severity;
+  source: string;
+  /** Share of fenceline passes in this regime at or over the line, 0–1. */
+  share_over: number;
+  /**
+   * How much of THIS SITE's own contribution would have to go to hold the
+   * line, as a percentage of that contribution. The number an operator acts
+   * on, and the only form that works for a site with no megawatt rating.
+   */
+  cut_pct_typical: number | null;
+  cut_pct_bad_night: number | null;
+  /**
+   * The same thing in megawatts. **Modelled**, not measured: the excess and
+   * the levels are measurements, but converting them to MW assumes this site's
+   * contribution scales with its load. Label it wherever it is shown —
+   * `Envelope.headroom_is_modelled` carries the sentence.
+   */
+  headroom_mw_typical: number | null;
+  headroom_mw_bad_night: number | null;
+}
+
+export interface EnvelopeRegime {
+  regime: 'unstable' | 'neutral' | 'stable';
+  /** Pasquill classes this regime pools. */
+  classes: string;
+  n_episodes: number;
+  n_fenceline: number;
+  n_comparison: number;
+  /** Fenceline minus class-matched comparison roads, paired by night. */
+  excess: number | null;
+  ci_lo: number | null;
+  ci_hi: number | null;
+  level_p50: number | null;
+  level_p90: number | null;
+  level_max: number | null;
+  /**
+   * The same statistics for the comparison set, class-matched to the
+   * fenceline's own road-class mix. Both sides are served so a panel can show
+   * two distributions rather than a difference the reader has to take on trust.
+   */
+  comparison_p50: number | null;
+  comparison_p90: number | null;
+  comparison_max: number | null;
+  /** Share of all campaign hours in this regime, 0–1. */
+  share_of_hours: number;
+  hours_of_day: number[];
+  state: EnvelopeState;
+  thresholds: EnvelopeThreshold[];
+}
+
+export interface Envelope {
+  site_id: string;
+  measure: MeasureCode;
+  unit: string;
+  load_mw: number | null;
+  decoy_floor: number | null;
+  fenceline_m: number;
+  n_fenceline_segments: number;
+  fenceline_roads: string[];
+  /** So a map can ink the roads the claim rests on, per non-negotiable 2. */
+  fenceline_segment_ids: string[];
+  comparison_segment_ids: string[];
+  regimes: EnvelopeRegime[];
+  /**
+   * The gate, served with the answer. 120 arbitrary road clusters at least
+   * 2.5 km from any site, run through the identical computation. An excess
+   * inside this is not a finding about the site.
+   */
+  decoy_null: { n: number; mean?: number; sd?: number | null; abs_max?: number; p95_abs?: number };
+  states: EnvelopeState[];
+  headroom_is_modelled: string;
+}
+
+// ────────────────────────────────────────────────────────────── touchdown
+
+/**
+ * `GET /sites/{id}/touchdown` — the MEASURED answer to "where did the fleet
+ * find this site's plume, and where do we simply not know".
+ *
+ * The counterpart to `DispersionPlume`, which is the MODEL. CONTRACT §10b: the
+ * measurement is the only filled or inked thing on the map; the model is an
+ * outline. Do not draw these in the same register.
+ */
+export type TouchdownState =
+  /** Excess above the calibrated floor, and a fabricated bearing does not match it. */
+  | 'elevated_downwind'
+  /** An estimate exists, but a fabricated bearing matches it — or could not be computed. */
+  | 'contested'
+  /** Measured, and inside the noise this estimator makes on wind that never blew. */
+  | 'no_detection'
+  /** Driven, but not enough conditioned passes on both sides to say anything. */
+  | 'insufficient_passes'
+  /** In range, never driven downwind of this site in this regime. */
+  | 'not_measured';
+
+/**
+ * One road segment's contribution. **Evidence, never a verdict.**
+ *
+ * Measured in phase 2: zero of 1,307 segments accumulate 12 conditioned passes
+ * on both sides, and only 7 reach 5. So a per-segment `state` says how much we
+ * know about that road — not what happened. The verdict is `Touchdown['site']`.
+ */
+export interface TouchdownSegment {
+  segment_id: string;
+  name: string | null;
+  district: string | null;
+  n_downwind: number;
+  n_control: number;
+  /** `self` = the segment supplied its own controls; null = it has none. */
+  control_kind: 'self' | 'class' | null;
+  excess: number | null;
+  ci_lo: number | null;
+  ci_hi: number | null;
+  /**
+   * Share of this segment's downwind passes on which it was downwind of THIS
+   * site and no other. Below 1 means the segment cannot separate two sites,
+   * and any sentence naming one of them has to say so.
+   */
+  exclusive_share: number;
+  placebo_ratio: number | null;
+  state: TouchdownState;
+  distance_m: number;
+  bearing_deg: number;
+}
+
+/** The site-level pooled result — the only thing here that is a verdict. */
+export interface TouchdownSite {
+  site_id: string;
+  measure: MeasureCode;
+  regime: string;
+  excess: number | null;
+  ci_lo: number | null;
+  ci_hi: number | null;
+  n_hours: number;
+  n_downwind: number;
+  n_control: number;
+  /** Largest excess over the three rotated-bearing placebos. */
+  placebo_max: number | null;
+  /** |placebo| / |excess|. At or above 0.5 the stratum is `contested`. */
+  placebo_ratio: number | null;
+  /** Measured noise floor for this measure. Null means it has none — see `state`. */
+  detect_floor: number | null;
+  state: TouchdownState;
+  n_supported_segments: number;
+  n_distinct_roads: number;
+  coverage_pct: number;
+  source_lon: number;
+  source_lat: number;
+  r_lo_m: number;
+  r_hi_m: number;
+}
+
+/**
+ * One (sector, ring) cell. **Never smooth these into a hull** — interpolating
+ * across sectors nobody drove turns "we have not been there" into a shape that
+ * looks like a finding. `no_control` is its own state for the same reason: a
+ * bin with downwind passes and nothing to compare them against is not a zero.
+ */
+export interface TouchdownPolarBin {
+  sector_deg: number;
+  ring_lo_m: number;
+  ring_hi_m: number;
+  n_downwind: number;
+  n_control: number;
+  excess: number | null;
+  state: TouchdownState | 'no_control';
+}
+
+export interface Touchdown {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    /** LineString, never Polygon. A polygon here would convert unmeasured ground into apparent measurement. */
+    geometry: { type: 'LineString'; coordinates: Position[] };
+    properties: TouchdownSegment;
+  }[];
+  site: TouchdownSite;
+  polar: TouchdownPolarBin[];
+  districts: { district: string; n_downwind: number; share: number }[];
+  states: TouchdownState[];
+}
+
+/**
+ * `GET /campaigns/{id}/coverage` — where a car has actually been.
+ *
+ * The bound on every claim drawn over it. Any interface drawing a model plume
+ * dims or hatches it outside this mask, and no agreement metric is computed
+ * outside it. `cell_m` is the cell's SIDE, not a radius.
+ */
+export interface CoverageMask {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    geometry: { type: 'Polygon'; coordinates: Position[][] };
+    properties: { ix: number; iy: number };
+  }[];
+  cell_m: number;
+  n_cells: number;
+  n_cells_total: number;
+  covered_pct: number;
+  bbox: [number, number, number, number];
+}
 
 // ───────────────────────────────────────────────────────────── aggregates
 
@@ -695,3 +1170,176 @@ export interface Bootstrap {
 
 export type SimScenario =
   | 'generator_test' | 'concern_wave' | 'wind_shift' | 'methane_leak' | 'all_clear';
+
+// ═══════════════════════════════════════════════════════ the mission brief
+
+/**
+ * `GET /admin/brief` — the whole 07:00 screen in one request. Read-only over
+ * the datagen-built plan. The call, swath, strata, outlook and ledger are
+ * MODELLED (the derived forecast, drawn as outlines); the debrief and the
+ * sample size are MEASURED. See `src/air/server/brief.py`.
+ */
+export type BriefStratum = 'downwind' | 'upwind' | 'background'
+
+export type BriefVerdict = 'local' | 'advected' | 'no_detection' | 'contested' | 'unpaired'
+
+export interface BriefCall {
+  sentence: string
+  band: 'morning' | 'midday' | 'evening' | 'night' | null
+  site_id: string
+  site: string
+  axis_deg: number | null
+  compass: string | null
+  district: string | null
+  stability: string | null
+  hours: number
+  from: string | null
+  to: string | null
+  confidence: {
+    lead_h: number
+    dir_sd_deg: number
+    spread_deg: number
+    tier: 'persistence' | 'blend' | 'climatology'
+  } | null
+}
+
+export interface BriefFrame {
+  lead_h: number
+  valid_at: string
+  axis_deg: number
+  half_angle_deg: number
+  x_onset_m: number
+  x_reach_m: number
+  stability: string
+  dir_sd_deg: number
+  beyond_crossover: boolean
+  ring: Position[] | null
+  band: string
+}
+
+export interface BriefRoute {
+  route_id: string
+  vehicle_id: string | null
+  day: number
+  shift: string
+  paths: Record<BriefStratum, Position[][]>
+}
+
+export interface BriefRoad { road: string; km: number }
+
+export interface BriefAssignment {
+  route_id: string
+  day: number
+  date: string
+  vehicle: string | null
+  call_sign: string | null
+  operator: string | null
+  shift: string
+  start: string
+  status: string
+  km: number
+  downwind_km: number
+  upwind_km: number
+  background_km: number
+  downwind_roads: BriefRoad[]
+  upwind_roads: BriefRoad[]
+  /** Imperative. The control leg is the first thing dropped when running late. */
+  control_line: string
+  control_ok: boolean
+}
+
+export interface BriefStat {
+  n: number
+  hours: number
+  mean: number | null
+  ci_lo: number | null
+  ci_hi: number | null
+}
+
+export interface BriefDiff { mean: number; ci_lo: number; ci_hi: number }
+
+export interface BriefDebrief {
+  site_id: string
+  date: string
+  verdict: BriefVerdict
+  missing: ('downwind' | 'upwind')[]
+  /** Both sides driven in at least one common hour. */
+  concurrent: boolean
+  /** Null when `contested` — CONTRACT 10a.4 serves no interval or n then. */
+  bars: Record<BriefStratum, BriefStat> | null
+  downwind_minus_upwind: BriefDiff | null
+  downwind_minus_background: BriefDiff | null
+  upwind_minus_background: BriefDiff | null
+  paired_hours: number | null
+  placebo_ratio: number | null
+  detect_floor: number
+  measure: string
+}
+
+export interface BriefOutlookDay {
+  day: number
+  date: string
+  status: 'assigned' | 'watch'
+  hours: number
+  lead_from_h: number | null
+  lead_to_h: number | null
+  axis_deg: number | null
+  compass: string | null
+  dir_sd_deg: number | null
+  persistence_weight: number | null
+  beyond_crossover: boolean
+  stable_hours: number
+  corridor_road_km_hours: number
+  district: string | null
+  ticks: { lead_h: number; axis_deg: number | null }[]
+}
+
+export interface BriefLedger {
+  vehicles: number
+  vehicle_hours: number
+  km_driven: number
+  network_km: number
+  network_pct: number
+  downwind_km: number
+  upwind_km: number
+  corridor_road_km_hours: number
+  control_share: number | null
+  min_control_share: number
+  control_check: 'pass' | 'fail' | null
+}
+
+export interface BriefSampleSize {
+  driven_hours: number
+  downwind_hours: number
+  upwind_hours: number
+  paired_hours: number
+  paired_rate: number
+  sectors_covered: number
+  sectors_total: number
+  stable_near: { radius_m: number; passes: number; segments: number; roads: number }
+}
+
+export interface MissionBrief {
+  campaign_id: string
+  date: string
+  issued_at: string | null
+  plan_id: string | null
+  read_only: true
+  site_id: string
+  site: { site_id: string; name: string; short: string; lon: number; lat: number }
+  sites_ranked: { site_id: string; short: string; corridor_road_km_hours: number }[]
+  call: BriefCall | null
+  swath: BriefFrame[]
+  routes: BriefRoute[]
+  assignments: BriefAssignment[]
+  debrief: {
+    date: string
+    sites: BriefDebrief[]
+    touchdown: { segment_id: string; path: Position[]; n: number; anomaly: number }[]
+  }
+  outlook: BriefOutlookDay[]
+  ledger: BriefLedger
+  sample_size: BriefSampleSize
+  crossover_h: number
+  basis: string
+}

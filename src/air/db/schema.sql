@@ -119,7 +119,10 @@ CREATE TABLE IF NOT EXISTS segment_pass (
   ts          TEXT NOT NULL,
   no2 REAL, pm25 REAL, bc REAL, o3 REAL, co REAL, co2 REAL, ch4 REAL,
   methane_leak REAL, diesel REAL, nondiesel REAL,
-  speed_kph   REAL
+  speed_kph   REAL,
+  -- WHY THE CAR WAS HERE. Inherited from `drive.sampling_mode`; see there.
+  sampling_mode TEXT NOT NULL DEFAULT 'uniform'
+    CHECK (sampling_mode IN ('uniform','targeted','control'))
 );
 CREATE INDEX IF NOT EXISTS ix_pass_segment ON segment_pass(segment_id, ts);
 CREATE INDEX IF NOT EXISTS ix_pass_time    ON segment_pass(campaign_id, ts);
@@ -421,7 +424,26 @@ CREATE TABLE IF NOT EXISTS drive (
   status      TEXT NOT NULL CHECK (status IN ('planned','in_progress','complete','aborted')),
   distance_m  REAL,
   segments_covered INTEGER,
-  geometry_json TEXT
+  geometry_json TEXT,
+  -- WHY THIS DRIVE HAPPENED, recorded once, at dispatch.
+  --
+  --   uniform   routine coverage: the planner's own route, no thumb on it
+  --   targeted  sent because something was expected there
+  --   control   sent to be a comparison for a targeted run
+  --
+  -- Without this column the product's headline becomes a function of the
+  -- dispatcher. Targeted driving biases per-segment medians upward by up to
+  -- +57%, and 2.66x on the worst near-source case from four passes, and those
+  -- medians feed the community risk score and the regulator's street ranking.
+  -- Community-facing and cross-street statistics are computed from `uniform`
+  -- passes only (see `datagen/stats.py`).
+  --
+  -- This is a property of the DRIVE, not of the pass: which stratum a pass
+  -- falls into is geometry and stays computed at analysis time. Why a car was
+  -- sent somewhere is a fact about the dispatch, known once, and not
+  -- recoverable afterwards.
+  sampling_mode TEXT NOT NULL DEFAULT 'uniform'
+    CHECK (sampling_mode IN ('uniform','targeted','control'))
 );
 
 -- Sampled GPS track used for fleet playback / "live" vehicle dots.
@@ -524,7 +546,20 @@ CREATE TABLE IF NOT EXISTS dispersion_model (
   issued_at    TEXT,
   -- The wind rose the consultant assumed: [{dir_deg, freq, mean_speed_ms}, ...]
   assumed_wind_json TEXT NOT NULL,
-  notes        TEXT
+  notes        TEXT,
+  -- WHOSE MODEL THIS IS.
+  --
+  --   permit   the study the operator filed. A legal object: it says what the
+  --            site was permitted on, not what the air did.
+  --   aclima   the same kernel driven by the wind our fleet actually measured.
+  --
+  -- One axis, and only this one. The word "tier" was used for four different
+  -- things across the design work — model provenance, forecast horizon,
+  -- entitlement, and confidence — and two of them were drafted as conflicting
+  -- CHECK constraints on this table. `forecast_tier` is a SEPARATE column when
+  -- phase 8 needs it; these two must never share a value name.
+  model_tier   TEXT NOT NULL DEFAULT 'permit'
+    CHECK (model_tier IN ('permit','aclima'))
 );
 
 CREATE TABLE IF NOT EXISTS dispersion_model_contour (

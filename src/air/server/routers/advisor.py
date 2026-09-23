@@ -27,6 +27,7 @@ from air.server import (
     advisor_rules,
     config,
     domain,
+    envelope,
     geo,
     loaders,
     timeutil,
@@ -257,11 +258,50 @@ def build_context(conn: sqlite3.Connection, payload: AdvisorIn) -> dict[str, Any
             verification["model_vendor"] = models[0]["vendor"]
             verification["model_method"] = models[0]["method"]
 
+    # The MEASURED operating envelope, for the regime the air is in right now.
+    # This is the industry tier's spine and it replaced `site.headroom_pct`, a
+    # constant in the generator that the advisor used to quote as if it were a
+    # finding. Best-effort: the advisor must answer even if the envelope cannot
+    # be estimated for this site, and saying nothing is the honest fallback.
+    envelope_ctx: dict[str, Any] | None = None
+    if site:
+        try:
+            wind_now = domain.current_wind(conn, cid) or {}
+            cls = (wind_now.get("stability") or "D").upper()
+            regime = next(
+                (name for name, classes in envelope.REGIMES.items() if cls in classes), "neutral"
+            )
+            levels = [
+                dict(r)
+                for r in rows(
+                    conn,
+                    "SELECT id,label,measure,threshold,unit,severity,source FROM action_level "
+                    "WHERE measure=? AND enabled=1 ORDER BY threshold",
+                    (measure,),
+                )
+            ]
+            if levels and measure in envelope.DECOY_FLOOR:
+                env = envelope.estimate(
+                    conn, envelope.load(conn, cid, measure), site["id"], measure,
+                    levels[0]["unit"], site.get("it_load_mw"), levels,
+                )
+                r = next((x for x in env.regimes if x.regime == regime), None)
+                if r and r.excess is not None and r.thresholds:
+                    watch = min(r.thresholds, key=lambda t: t.threshold)
+                    envelope_ctx = {
+                        "regime": regime, "excess": r.excess, "unit": env.unit,
+                        "episodes": r.n_episodes, "state": r.state,
+                        "threshold": watch.threshold, "cut_pct": watch.cut_pct_typical,
+                    }
+        except (KeyError, sqlite3.Error):
+            envelope_ctx = None
+
     return {
         "campaign_id": cid,
         "question": payload.question,
         "alert": alert,
         "site": site,
+        "envelope": envelope_ctx,
         "wind": domain.current_wind(conn, cid),
         "observed_rose": observed_rose,
         "measured_local_wind": measured_local,
@@ -305,9 +345,25 @@ def _prompt(ctx: dict[str, Any]) -> str:
         lines.append(
             f"- {site['name']} ({site['kind']}, {site['status']}), "
             f"{site.get('capacity_mw')} MW capacity / {site.get('it_load_mw')} MW IT load, "
-            f"{site.get('generator_count')}× {site.get('generator_fuel')}\n"
-            f"- headroom used: {site.get('headroom_pct')}% of the community-safe envelope"
+            f"{site.get('generator_count')}× {site.get('generator_fuel')}"
         )
+        # The operating envelope, MEASURED. This replaced `site.headroom_pct`,
+        # which was a constant in the generator: quoting it to a model that then
+        # quotes it back to the operator is how a made-up number acquires
+        # authority. If the envelope could not be estimated, nothing is said.
+        env = ctx.get("envelope")
+        if env:
+            lines.append(
+                f"- operating envelope, measured on our own fenceline against class-matched "
+                f"roads >2 km from any site: {env['excess']:+.1f} {env['unit']} in "
+                f"{env['regime']} air over {env['episodes']} episodes"
+                + (
+                    f"; holding the {env['threshold']} {env['unit']} level would need about "
+                    f"{env['cut_pct']:.0f}% of our own contribution to go"
+                    if env.get("cut_pct")
+                    else "; no action level crossed"
+                )
+            )
         lines.append("- emission points (bearing/range from our centroid):")
         for p in site.get("emission_points", []):
             lines.append(

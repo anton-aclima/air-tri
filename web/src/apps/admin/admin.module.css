@@ -812,3 +812,126 @@
   background: var(--accent);
   opacity: 0.5;
 }
+
+/* ─────────────────────────────────────────────── sheet 08 · mission brief ── */
+.rowsBrief { grid-template-rows: auto auto minmax(340px, 1.35fr) minmax(0, 1fr); }
+.rowsBrief .briefBottom > * { min-height: 0; }
+.briefBottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
+  gap: var(--s-2);
+  min-height: 0;
+}
+/* Narrow: the brief is the one admin sheet that scrolls — six blocks do not
+   fit one column without it, and a clipped control line is worse than a
+   scrollbar. The map keeps a real height instead of a leftover one. */
+@media (max-width: 1240px) {
+  .briefBottom { grid-template-columns: minmax(0, 1fr); }
+  .rowsBrief { grid-template-rows: none; grid-auto-rows: max-content; overflow-y: auto; }
+  .rowsBrief .mapCard { height: 440px; }
+}
+
+.call { display: grid; gap: var(--s-2); padding: var(--s-2) var(--s-3) var(--s-3); }
+.callSentence {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: 1.25;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.callMeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+
+.legendLine { display: inline-block; width: 18px; border-radius: 1px; flex: none; }
+.legendOutline {
+  display: inline-block; width: 18px; height: 9px; flex: none;
+  border: 1px solid var(--ink-2); border-radius: 1px;
+}
+
+/* assignments */
+.assign {
+  display: grid;
+  gap: 5px;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+.assignTop { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-2); align-items: baseline; }
+.assignVehicle { font-family: var(--font-mono); color: var(--ink); }
+.assignKm { display: flex; flex-wrap: wrap; gap: var(--s-3); color: var(--ink-2); font-size: var(--text-2xs); }
+.kmBar {
+  display: flex; height: 4px; border-radius: 1px; overflow: hidden;
+  background: var(--surface-2);
+}
+.kmBar > span { height: 100%; }
+.controlLine {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s-2); align-items: baseline;
+  color: var(--ink-2); line-height: 1.4;
+}
+.controlLineWarn {
+  color: var(--ink);
+  padding: 4px 6px;
+  border-left: 2px solid var(--sev-warning);
+  background: color-mix(in srgb, var(--sev-warning) 8%, transparent);
+}
+
+/* debrief */
+.debrief { display: grid; gap: var(--s-3); padding: var(--s-2) var(--s-3) var(--s-3); }
+.debriefRow { display: grid; gap: 4px; }
+.debriefHead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.debriefSite { font-size: var(--text-sm); color: var(--ink); }
+.verdict {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  color: var(--ink-2);
+}
+.verdict_local { color: var(--sev-warning); border-color: var(--sev-warning); }
+.verdict_advected { color: var(--accent); border-color: var(--accent); }
+.verdict_unpaired { color: var(--ink-3); border-style: dashed; }
+.verdict_contested { color: var(--ink-3); border-style: dashed; }
+.bars { display: grid; gap: 2px; }
+.barRow { display: grid; grid-template-columns: 70px minmax(0, 1fr) 118px; gap: var(--s-2); align-items: center; }
+.barLabel { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
+.barTrack { position: relative; height: 10px; background: var(--surface-2); border-radius: 1px; }
+.barZero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-strong); }
+.barFill { position: absolute; top: 2px; bottom: 2px; border-radius: 1px; }
+.barCi {
+  position: absolute; top: 50%; height: 0;
+  border-top: 1px solid var(--ink);
+}
+.barCi::before, .barCi::after {
+  content: ''; position: absolute; top: -4px; height: 7px; width: 1px; background: var(--ink);
+}
+.barCi::before { left: 0; }
+.barCi::after { right: 0; }
+.barNum { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--ink); white-space: nowrap; text-align: right; }
+
+/* five-day strip */
+.outlook { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.dayCell {
+  display: grid; gap: 3px; justify-items: center; align-content: start; text-align: center;
+  padding: var(--s-2) 4px var(--s-3);
+  background: var(--surface);
+}
+.dayWatch { background: var(--bg-sunk); }
+.dayWatch .dayDir, .dayWatch .dayName { color: var(--ink-2); }
+.dayTop { display: grid; gap: 3px; justify-items: center; }
+.dayName { font-size: var(--text-xs); color: var(--ink); }
+.dayDir { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink); }
+.compass { display: block; }
+.compassRing { fill: none; stroke: var(--line-strong); stroke-width: 1; }
+.compassArc { fill: color-mix(in srgb, var(--accent-2) 22%, transparent); stroke: var(--accent-2); stroke-width: 0.75; }
+.compassArcFaint { fill: none; stroke: var(--ink-3); stroke-width: 0.75; stroke-dasharray: 2 2; }
+.compassNeedle { stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; }
+
+/* the argument */
+.argument {
+  display: grid; gap: 4px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-xs);
+}

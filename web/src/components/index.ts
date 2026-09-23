@@ -27,7 +27,7 @@ export { niceStep, niceCeil, niceTicks, SEVERITY_GLYPH, METRIC_HELP, CONCERN_LAB
 export {
   haversine, bearingBetween, destination, circleRing, wedge, toPolygons,
   geometryPositions, alongPath, pathMetrics, metersPerPixel, fitZoom,
-  bboxOfPositions, bboxCenter, expandBBox, bboxRing, lerpPosition,
+  bboxOfPositions, bboxCenter, expandBBox, bboxRing, lerpPosition, pointInRing,
 } from './lib/geo';
 export { usePhase, usePulse, useNow, useReducedMotion, prefersReducedMotion, useFleetAnimation } from './lib/anim';
 export type { AnimatedFleetPosition } from './lib/anim';
@@ -55,7 +55,9 @@ export { ConcernLayer, concernStatusToken } from './map/layers/ConcernLayer';
 export type { ConcernLayerProps } from './map/layers/ConcernLayer';
 export { FleetLayer } from './map/layers/FleetLayer';
 export type { FleetLayerProps } from './map/layers/FleetLayer';
-export { DispersionLayer } from './map/layers/WindLayer';
+export { BEYOND_ENVELOPE_NOTE, DispersionLayer, hasBeyondEnvelope } from './map/layers/WindLayer';
+export { SoftPlumeLayer } from './map/layers/SoftPlumeLayer';
+export type { SoftPlumeLayerProps } from './map/layers/SoftPlumeLayer';
 export type { DispersionLayerProps } from './map/layers/WindLayer';
 export { BoundaryLayer } from './map/layers/BoundaryLayer';
 export type { BoundaryLayerProps } from './map/layers/BoundaryLayer';

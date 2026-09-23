@@ -5,11 +5,13 @@
  * can see what the scope is reasoning about, not so they can do analysis.
  */
 
-import { fmtDistance, fmtNum, fmtPct } from '@/core/format'
-import { useMonitors, useModelVerification } from '@/core/queries'
+import { fmtDistance, fmtNum } from '@/core/format'
+import { useEnvelope, useMonitors, useModelVerification } from '@/core/queries'
 import { haversine } from '@/components'
 
-import { Caps, Panel, Readout, Tag, envelopeOf, styles as s, useSiteLock } from './lib'
+import {
+  Caps, Panel, Readout, Tag, envelopeRead, styles as s, useCampaignWindow, useSiteLock,
+} from './lib'
 
 const KIND_GLYPH: Record<string, string> = {
   generator: '▮', backup: '▯', cooling_tower: '◍', substation: '⊞',
@@ -19,13 +21,22 @@ const KIND_GLYPH: Record<string, string> = {
 export function SiteConfig() {
   const site = useSiteLock()
   const monitorsQ = useMonitors({ site_id: site?.id }, { enabled: !!site })
-  const verifyQ = useModelVerification(site?.id)
+  // The campaign, not the last 30 days — see `useCampaignWindow`.
+  const verifyWin = useCampaignWindow()
+  const verifyQ = useModelVerification(site?.id, verifyWin ?? {}, {
+    enabled: !!site?.id && !!verifyWin,
+  })
+  // Reported for stable air: that is the regime that binds, and the one an
+  // operator plans around. `envelopeRead` explains why this is no longer
+  // `site.headroom_pct`. Above the early return, with the rest of the hooks —
+  // `useSiteLock` can resolve to undefined on the first render.
+  const envQ = useEnvelope(site?.id)
+  const env = envelopeRead(envQ.data, 'stable')
 
   if (!site) {
     return <div className={`${s.page} ${s.sitePage}`}><div className={s.err}>No site.</div></div>
   }
 
-  const env = envelopeOf(site)
   const active = site.emission_points.filter((e) => e.active).length
 
   return (
@@ -40,9 +51,9 @@ export function SiteConfig() {
           <Readout label="IT load" value={fmtNum(site.it_load_mw, 0)} unit="MW" />
           <Readout label="Emission points" value={`${active}/${site.emission_points.length}`} />
           <Readout
-            label="Headroom"
-            value={env ? fmtPct(env.freePct, 0, false) : '—'}
-            tone={env?.tight ? 'threat' : 'accent'}
+            label="Envelope · stable air"
+            value={env ? env.headline : '—'}
+            tone={env?.binding ? 'threat' : 'accent'}
             big
           />
         </div>
@@ -62,28 +73,34 @@ export function SiteConfig() {
         </Panel>
 
         <div className={s.scrollStack}>
-          <Panel title="Safe operating envelope">
+          <Panel
+            title="Safe operating envelope"
+            aside={env ? <Caps>{env.episodes} episodes</Caps> : null}
+          >
             <div className={s.envelope}>
               <div className={s.envRow}>
-                <span className={`${s.envNum} num${env?.tight ? ` ${s.envNumTight}` : ''}`}>
-                  {env ? fmtPct(env.freePct, 0, false) : '—'}
+                <span className={`${s.envNum} num${env?.binding ? ` ${s.envNumTight}` : ''}`}>
+                  {env ? env.headline : '—'}
                 </span>
-                <Caps ink>left</Caps>
+                <Caps ink>in stable air</Caps>
                 <span className={s.spacer} />
                 <span className="num" style={{ color: 'var(--ink-2)', fontSize: 'var(--text-xs)' }}>
-                  {env ? `${fmtPct(env.usedPct, 0, false)} used` : ''}
+                  {env?.loadMw != null ? `${fmtNum(env.loadMw, 0)} MW now` : ''}
                 </span>
               </div>
+              {/* The bar is now how much of the site's own contribution has to
+                  go, not a notional share of a constant. Empty is good. */}
               <div className={s.envBar}>
-                <div className={s.envUsed} style={{ width: `${env?.usedPct ?? 0}%` }} />
+                <div className={s.envUsed} style={{ width: `${env?.cutPct ?? 0}%` }} />
                 <div className={s.envTicks} />
-                <div className={s.envEdge} style={{ left: `${env?.usedPct ?? 0}%` }} />
+                <div className={s.envEdge} style={{ left: `${env?.cutPct ?? 0}%` }} />
               </div>
               <span className={s.bannerSub}>
-                {env?.freeMw != null
-                  ? `≈ ${fmtNum(env.freeMw, 0)} MW of additional load still inside the envelope. The envelope is what the community and the regulator will tolerate, measured — not a permit line.`
-                  : 'Envelope not characterised.'}
+                {env ? env.detail : 'Envelope not characterised.'}
               </span>
+              {envQ.data ? (
+                <span className={s.bannerSub}>{envQ.data.headroom_is_modelled}</span>
+              ) : null}
             </div>
           </Panel>
 

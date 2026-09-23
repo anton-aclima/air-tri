@@ -122,6 +122,7 @@ export const ROLES: Record<Role, RoleMeta> = {
       { to: '/industry/alerts', label: 'Alerts', code: 'ALRT', icon: 'contacts', hint: 'Everything active, on a timeline' },
       { to: '/industry/community', label: 'Community', code: 'COMM', icon: 'people', hint: 'What your neighbours are reporting' },
       { to: '/industry/outreach', label: 'Outreach', code: 'OUTR', icon: 'megaphone', hint: 'Post, respond, propose mitigation' },
+      { to: '/industry/evidence', label: 'Evidence', code: 'EVID', icon: 'analysis', hint: 'The measurements your envelope rests on' },
       { to: '/industry/site', label: 'Site', code: 'SITE', icon: 'factory', hint: 'Your campus and emission points' },
     ],
   },
@@ -143,6 +144,10 @@ export const ROLES: Record<Role, RoleMeta> = {
     nav: [
       { to: '/admin', label: 'Overview', code: 'OVR', icon: 'grid', hint: 'Campaign KPIs' },
       { to: '/admin/campaign', label: 'Campaign', code: 'CMPGN', icon: 'campaign', hint: 'Boundary, window, targets' },
+      // Sheet 08, placed third: it is read every morning, so it sits where the
+      // hand goes. The other sheets keep their numbers until nothing else is
+      // in flight (PLAN-plume decision 20).
+      { to: '/admin/brief', label: 'Mission brief', code: 'BRIEF', icon: 'wind', hint: '07:00 — the call, the routes, yesterday' },
       { to: '/admin/driveplan', label: 'Drive plan', code: 'PLAN', icon: 'route', hint: 'Routes, passes, coverage' },
       { to: '/admin/fleet', label: 'Fleet', code: 'FLEET', icon: 'fleet', hint: 'Vehicles and live positions' },
       { to: '/admin/data', label: 'Data', code: 'DATA', icon: 'database', hint: 'Measures, ramps, breakpoints' },

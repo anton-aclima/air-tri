@@ -49,8 +49,16 @@ import type {
   MeasureCode,
   MeasureDef,
   Mitigation,
+  MissionBrief,
   MobileWindObs,
   ModelVerification,
+  Calibration,
+  Interception,
+  Residency,
+  Siting,
+  CoverageMask,
+  Envelope,
+  Touchdown,
   Monitor,
   MonitorReadings,
   Org,
@@ -63,6 +71,7 @@ import type {
   User,
   Vehicle,
   WindField,
+  WindClimatology,
   WindPoint,
 } from '@/core/types'
 import { fleetDelayFor, timeParam, timeRange, useSession } from '@/core/session'
@@ -90,6 +99,18 @@ export const STALE = {
   drivePlan: 5 * 60_000,
   wind: 5 * 60_000,
   dispersion: 60_000,
+  // The touchdown estimator reads every pass in the campaign and pairs them by
+  // hour; it only moves when a rebuild does. The mask moves even less.
+  // Climatology is the whole campaign's met record. It moves on a rebuild.
+  // Modelled surfaces over the whole record. They move on a rebuild.
+  coverageAnalysis: 30 * 60_000,
+  climatology: 30 * 60_000,
+  // One day's brief. It changes when the demo cursor crosses midnight, and the
+  // query key carries the date, so nothing needs to go stale in between.
+  brief: 30 * 60_000,
+  envelope: 10 * 60_000,
+  touchdown: 10 * 60_000,
+  coverage: 30 * 60_000,
   mobileWind: 2 * 60_000,
   windField: 2 * 60_000,
   dispersionModels: 10 * 60_000,
@@ -141,6 +162,39 @@ export const qk = {
     models: (id: string) => ['sites', id, 'dispersion-models'] as const,
     verification: (id: string, params: api.ModelVerificationParams) =>
       ['sites', id, 'model-verification', params] as const,
+  },
+
+  coverageAnalysis: {
+    all: ['coverage-analysis'] as const,
+    interception: ['coverage-analysis', 'interception'] as const,
+    residency: ['coverage-analysis', 'residency'] as const,
+    siting: (n: number) => ['coverage-analysis', 'siting', n] as const,
+    calibration: ['coverage-analysis', 'calibration'] as const,
+  },
+
+  brief: {
+    all: ['brief'] as const,
+    of: (date: string | null, siteId: string | null) => ['brief', date, siteId] as const,
+  },
+
+  climatology: {
+    all: ['climatology'] as const,
+    of: (siteId: string | null) => ['climatology', siteId] as const,
+  },
+
+  envelope: {
+    all: ['envelope'] as const,
+    site: (id: string, measure: string) => ['envelope', id, measure] as const,
+  },
+
+  touchdown: {
+    all: ['touchdown'] as const,
+    site: (id: string, params: api.TouchdownParams) => ['touchdown', id, params] as const,
+  },
+
+  coverage: {
+    all: ['coverage'] as const,
+    mask: (campaignId: string, cellM: number) => ['coverage', campaignId, cellM] as const,
   },
 
   posts: {
@@ -729,6 +783,150 @@ export function useModelVerification(
   )
 }
 
+// ══════════════════════════════════════════════════════════════ coverage
+
+/**
+ * **The regulator's question.** Where the fixed network stands relative to the
+ * modelled plume — and, in `useResidency`, the plume-hours nothing was
+ * standing in.
+ *
+ * Read `data.basis` before printing any of these numbers: they are modelled,
+ * not measured, and the sentence that says so ships in the payload.
+ */
+export function useInterception(opts?: QueryOpts<Interception>) {
+  return useApiQuery(qk.coverageAnalysis.interception, api.getInterception, STALE.coverageAnalysis, opts)
+}
+
+export function useResidency(opts?: QueryOpts<Residency>) {
+  return useApiQuery(qk.coverageAnalysis.residency, api.getResidency, STALE.coverageAnalysis, opts)
+}
+
+/** NOT a recommendation — render `data.framing` alongside the rows. */
+export function useSiting(limit = 10, opts?: QueryOpts<Siting>) {
+  return useApiQuery(
+    qk.coverageAnalysis.siting(limit),
+    (signal) => api.getSiting(limit, signal),
+    STALE.coverageAnalysis,
+    opts,
+  )
+}
+
+export function useCalibration(opts?: QueryOpts<Calibration>) {
+  return useApiQuery(qk.coverageAnalysis.calibration, api.getCalibration, STALE.coverageAnalysis, opts)
+}
+
+// ═════════════════════════════════════════════════════════ mission brief
+
+/**
+ * **The fleet lead's 07:00 read.** Keyed on the demo cursor's DATE, not its
+ * instant — a playing cursor ticks every second, and the brief only changes
+ * when the day does. Moving the cursor back a day re-issues the forecast, so
+ * the five-day strip visibly redraws: the plan changed because the wind did.
+ */
+export function useMissionBrief(
+  siteId?: string | null,
+  opts?: QueryOpts<MissionBrief>,
+): UseQueryResult<MissionBrief, Error> {
+  const cursor = useSession((s) => s.time.cursor)
+  const date = cursor ? cursor.slice(0, 10) : null
+  return useApiQuery(
+    qk.brief.of(date, siteId ?? null),
+    (signal) => api.getMissionBrief({
+      ...(date ? { date } : {}), ...(siteId ? { site_id: siteId } : {}),
+    }, signal),
+    STALE.brief,
+    opts,
+  )
+}
+
+// ════════════════════════════════════════════════════════════ climatology
+
+/**
+ * **The community app's front door.** How often the wind carried from each
+ * site over each neighbourhood, over the whole campaign.
+ *
+ * Stable — open the map at 8am and 6pm and it says the same thing — and
+ * reach-independent, so it does not move when the dispersion kernel does.
+ * Every sentence built from it belongs in `PLUME_COPY`, including the one
+ * about what it does not say.
+ */
+export function useClimatology(
+  siteId?: string | null,
+  opts?: QueryOpts<WindClimatology>,
+): UseQueryResult<WindClimatology, Error> {
+  return useApiQuery(
+    qk.climatology.of(siteId ?? null),
+    (signal) => api.getClimatology(siteId ? { site_id: siteId } : {}, signal),
+    STALE.climatology,
+    opts,
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════ envelope
+
+/**
+ * **The industry tier's spine.** How hard this site can run, measured, per
+ * stability regime — not `site.headroom_pct`, which is a constant.
+ *
+ * Read the `stable` regime for the number that binds: it is the one that
+ * closes at night and opens by morning. `state: 'indistinct'` means the site's
+ * fenceline is not separable from an arbitrary patch of road, which is a
+ * finding and should be shown as one.
+ */
+export function useEnvelope(
+  siteId: string | null | undefined,
+  measure: MeasureCode = 'no2',
+  opts?: QueryOpts<Envelope>,
+): UseQueryResult<Envelope, Error> {
+  return useApiQuery(
+    qk.envelope.site(siteId ?? '', measure),
+    (signal) => api.getEnvelope(siteId as string, { measure }, signal),
+    STALE.envelope,
+    { enabled: !!siteId, ...opts },
+  )
+}
+
+// ══════════════════════════════════════════════════════════════ touchdown
+
+/**
+ * The MEASURED plume for one site — the counterpart to `useDispersion`, which
+ * is the model. CONTRACT §10b: these two are drawn in different registers and
+ * the measurement is the only inked thing.
+ *
+ * Read `data.site.state` for the verdict. The per-feature `state` on each road
+ * segment is EVIDENCE — how much we know about that road — and never a finding
+ * of its own; zero of 1,307 segments carry enough conditioned passes to be one.
+ */
+export function useTouchdown(
+  siteId: string | null | undefined,
+  params: api.TouchdownParams = {},
+  opts?: QueryOpts<Touchdown>,
+): UseQueryResult<Touchdown, Error> {
+  return useApiQuery(
+    qk.touchdown.site(siteId ?? '', params),
+    (signal) => api.getTouchdown(siteId as string, params, signal),
+    STALE.touchdown,
+    { enabled: !!siteId, ...opts },
+  )
+}
+
+/**
+ * Where a car has actually been. Dim or hatch any modelled shape outside it,
+ * and compute no agreement metric outside it. `cell_m` is the cell SIDE.
+ */
+export function useCoverage(
+  campaignId = 'current',
+  cellM = 150,
+  opts?: QueryOpts<CoverageMask>,
+): UseQueryResult<CoverageMask, Error> {
+  return useApiQuery(
+    qk.coverage.mask(campaignId, cellM),
+    (signal) => api.getCoverage(campaignId, { cell_m: cellM }, signal),
+    STALE.coverage,
+    opts,
+  )
+}
+
 // ═════════════════════════════════════════════════════════════════════ stats
 
 /** Headline risk scores, trend, worst/best streets. Community-facing. */
@@ -789,6 +987,8 @@ export const INVALIDATE = {
     qk.bootstrap, qk.segments.all, qk.monitors.all, qk.concerns.all, qk.clusters.all,
     qk.sites.all, qk.posts.all, qk.advisories.all, qk.alerts.all, qk.actionLevels.all,
     qk.feed.all, qk.fleet.all, qk.drivePlan.all, qk.wind.all, qk.stats.all, qk.activity.all,
+    qk.touchdown.all, qk.coverage.all, qk.envelope.all, qk.climatology.all,
+    qk.coverageAnalysis.all,
   ],
 } as const
 

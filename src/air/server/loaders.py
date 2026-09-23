@@ -161,8 +161,11 @@ def load_concerns(
         for u in rows(conn, f"SELECT * FROM app_user WHERE id IN ({amarks})", tuple(author_ids)):
             authors[u["id"]] = shapes.author_stub(u)
 
+    # `conn` is passed so the serialiser can snap coordinates to the road grid.
+    # Every reader of the API comes through here, which is the point: there is
+    # no path that serves a house-precision report coordinate.
     return [
-        shapes.concern(c, authors.get(c["author_id"]), responses.get(c["id"], []))
+        shapes.concern(c, authors.get(c["author_id"]), responses.get(c["id"], []), conn=conn)
         for c in found
     ]
 

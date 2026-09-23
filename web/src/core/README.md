@@ -117,6 +117,10 @@ useWindField({ cell_m? })                        // binned OBSERVED wind → par
 useDispersionModels(siteId)                      // the consultant's deliverables
 useModelVerification(siteId, { model_id?, from?, to? })  // assumed vs observed rose
 
+useTouchdown(siteId, { measure?, from?, to?, regime? })  // MEASURED plume. Verdict = data.site.state;
+                                                        // per-feature state is EVIDENCE, never a finding
+useCoverage(campaignId?, cellM?)                         // where a car has actually been. cell_m is a SIDE
+
 useCommunityStats({ window? })  useCampaignStats()  useActivity({ since?, limit? })
 ```
 

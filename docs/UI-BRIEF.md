@@ -2,7 +2,7 @@
 
 **Read this instead of CONTRACT.md, server/README.md and datagen/README.md.** It carries
 everything shared that a UI agent needs. The only other thing to read is the ONE section
-of `docs/design.md` for your role, plus `web/src/core/README.md` (the hooks) and
+of `docs/ORIGIN_PROMPT.md` for your role, plus `web/src/core/README.md` (the hooks) and
 `web/src/components/README.md` (the components). That's three files, not six.
 
 ---

@@ -3,7 +3,7 @@
  *
  * Every admin screen is a *sheet* in one drawing set: a title block across the
  * top, numbered sheets underneath, measured readouts in the margins. The pieces
- * here exist so all seven screens read as pages of the same drawing rather than
+ * here exist so all eight screens read as pages of the same drawing rather than
  * seven dashboards that happen to share a skin.
  */
 
@@ -34,6 +34,8 @@ export const SHEET = {
   data: { no: '05', code: 'DATA', title: 'Measurement language' },
   oversight: { no: '06', code: 'OVRST', title: 'Oversight' },
   director: { no: '07', code: 'DRCT', title: 'Demo director' },
+  // 08 but third in the nav. Renumbering is deferred, not forgotten.
+  brief: { no: '08', code: 'BRIEF', title: 'Mission brief' },
 } as const
 
 export type SheetKey = keyof typeof SHEET

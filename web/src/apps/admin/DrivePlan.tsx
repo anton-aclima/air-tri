@@ -1,12 +1,18 @@
 /**
  * SHEET 03 — /admin/driveplan · Routes, passes, coverage.
  *
- * The plan and the data are not two artifacts. One solver takes the boundary
- * and the fleet size and produces a circuit over every street; that same
- * circuit is what generated the 90 days of simulated measurement already in the
- * database, and it is what will drive the cars in live mode. Sheet 03 has to
- * show that duality, not assert it — so the two outputs sit either side of one
- * solver box with their real counts under them.
+ * The plan and the data are not two artifacts. The datagen build takes the
+ * boundary and the fleet size and produces a circuit over every street; that
+ * same circuit is what generated the 90 days of simulated measurement already
+ * in the database. Sheet 03 has to show that duality, not assert it — so the
+ * two outputs sit either side of one solver box with their real counts under
+ * them.
+ *
+ * What the panel must NOT claim: that the regenerate lever on this sheet runs
+ * that solver. It does not. `POST /admin/campaigns/{id}/drive-plan` is a
+ * serpentine stand-in whose routes drove nothing, so panel 03-E names the
+ * build, not a named algorithm, and says so. The Mission Brief (sheet 08)
+ * reads the plan that produced the data for the same reason.
  *
  * The generator panel predicts what the backend will do *before* the lever is
  * pulled, using the backend's own constants. That is the drafting feel: you
@@ -369,8 +375,8 @@ export function DrivePlan() {
       {/* ── the duality: one solver, two outputs ─────────────────────── */}
       <Sheet
         code="03-E"
-        title="One algorithm · the plan and the data are the same object"
-        aside={<Caps ink>route-inspection (Rural Postman)</Caps>}
+        title="One build · the plan and the data are the same object"
+        aside={<Caps ink>as built by datagen</Caps>}
       >
         <div className={s.duality}>
           <div className={s.dualSplit}>
@@ -390,10 +396,10 @@ export function DrivePlan() {
           <div className={s.dualArrow}>→</div>
           <div className={`${s.dualNode} ${s.dualNodeCore}`}>
             <span className={s.dualLabel}>solver</span>
-            <span className={s.dualValue}>Rural Postman circuit</span>
+            <span className={s.dualValue}>datagen route builder</span>
             <span className={s.noteDim}>
-              length-balanced k-means partition · component join · greedy odd-node matching ·
-              Hierholzer circuit · shift-truncated with a per-cluster cursor
+              The regenerate lever above is a serpentine stand-in, not this build — its
+              routes produced none of the data on the right.
             </span>
           </div>
           <div className={s.dualArrow}>→</div>

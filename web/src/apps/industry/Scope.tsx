@@ -25,7 +25,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 
 import {
-  AlertTimeline, BaseMap, DispersionLayer, MapOverlay, MapWindField,
+  AlertTimeline, BEYOND_ENVELOPE_NOTE, BaseMap, DispersionLayer, MapOverlay, MapWindField,
+  hasBeyondEnvelope,
   MonitorLayer, RadarScope, SegmentLayer, SiteLayer, makeColorScale, measureDomain,
   pickedSite,
 } from '@/components'
@@ -34,7 +35,7 @@ import { Button } from '@/app/ui'
 import { compassPoint, fmtBearing, fmtCompact, fmtDistance, fmtNum, fmtPct, relativeShort } from '@/core/format'
 import { SEVERITY_LABEL, severityVar, shortName, unitFor } from '@/core/measures'
 import {
-  useActiveMeasure, useAlerts, useConcernClusters, useConcerns, useDispersion,
+  useActiveMeasure, useAlerts, useConcernClusters, useConcerns, useDispersion, useEnvelope,
   useDispersionModels, useMeasures, useModelVerification, useMonitors, useSegments,
   useWind, useWindField,
 } from '@/core/queries'
@@ -45,9 +46,9 @@ import { Selected } from './Selected'
 import type { MapPick } from './Selected'
 import {
   Caps, Gauge, Panel, Readout, Tag, bboxAround, contactLine, countBySeverity, downwindOf,
-  envelopeOf, foldContacts, radarOverlay, severityCountLine, shortTitle, styles as s,
-  bearingFrom, permitFootprintLayer, placeReports, reportsOverlay, toContacts, useNowTick, useSiteLock,
-  useStableWindow,
+  envelopeRead, foldContacts, radarOverlay, severityCountLine, shortTitle, styles as s,
+  bearingFrom, permitFootprintLayer, placeReports, regimeOf, reportsOverlay, toContacts, useNowTick, useSiteLock,
+  useCampaignWindow, useStableWindow,
 } from './lib'
 
 const LIVE_STATUSES = new Set(['active', 'acknowledged'])
@@ -63,7 +64,12 @@ export function Scope() {
   const alertsQ = useAlerts({ site_id: site?.id }, { enabled: !!site })
   const windQ = useWindField({ cell_m: 400, ...fieldWin })
   const modelsQ = useDispersionModels(site?.id)
-  const verifyQ = useModelVerification(site?.id)
+  // The campaign, not the last 30 days — see `useCampaignWindow`. The default
+  // window has slid off the end of the data and answers `consistent`.
+  const verifyWin = useCampaignWindow()
+  const verifyQ = useModelVerification(site?.id, verifyWin ?? {}, {
+    enabled: !!site?.id && !!verifyWin,
+  })
   // Two weeks, not 24 h. `win` is anchored to the wall clock, and the moment it
   // runs past the end of the generated data the query comes back empty — which
   // silently took out the plume track and the downwind readout with it. The
@@ -133,7 +139,16 @@ export function Scope() {
       ? 'CAUTION'
       : contacts.length ? 'ADVISORY' : 'NORMAL'
   const alarm = level === 'WARNING' || level === 'CAUTION'
-  const envelope = envelopeOf(site)
+  /**
+   * THE NUMBER THIS INTERFACE EXISTS FOR. Measured, and reported for the air
+   * that is actually out there right now — not `site.headroom_pct`, which was
+   * a constant and therefore the same on a still night as on a windy
+   * afternoon. See `envelopeRead`.
+   */
+  const envQ = useEnvelope(site?.id)
+  const regime = regimeOf(wind?.stability)
+  const envelope = envelopeRead(envQ.data, regime)
+  const envStable = envelopeRead(envQ.data, 'stable')
 
   const radarContacts: RadarContact[] = useMemo(
     () => contacts.map((c) => ({
@@ -287,6 +302,39 @@ export function Scope() {
     [measureDef, segsQ.data],
   )
 
+  /**
+   * What the plume is actually saying, in one line under the map.
+   *
+   * Three facts the old cone could not express and this one has to state, or
+   * the reader supplies their own wrong answer:
+   *
+   *  - Reach is weather. It moves by a factor of five between a summer
+   *    afternoon and a still night, so a bare cone with no number invites
+   *    "that is what my plume looks like" rather than "that is tonight".
+   *  - A lofted plume is over the fenceline, not on it. The clean ground next
+   *    to a stack is a real result and it is the shape of the hole in the
+   *    middle of the drawing.
+   *  - Past the detection envelope nothing has been measured. CONTRACT §10b
+   *    requires the words, not just the dashes — `BEYOND_ENVELOPE_NOTE` is
+   *    exported so all four interfaces print the same sentence.
+   */
+  const plumeRead = useMemo(() => {
+    const p = plumeQ.data?.features?.[0]?.properties
+    if (!p) return null
+    const bits: string[] = [
+      `class ${p.stability} at ${fmtNum(p.wind_speed_ms, 1)} m/s`,
+      `reaches ${fmtDistance(p.x_reach_m)}${p.truncated ? '+' : ''}`,
+    ]
+    if (p.lofted && p.elevated_touchdown_m != null) {
+      bits.push(
+        `${p.n_elevated} source${p.n_elevated === 1 ? '' : 's'} aloft — touching down ${fmtDistance(p.elevated_touchdown_m)} out`,
+      )
+    }
+    if (p.stability_note) bits.push(p.stability_note)
+    if (hasBeyondEnvelope(plumeQ.data)) bits.push(`dashed: ${BEYOND_ENVELOPE_NOTE}`)
+    return bits.join(' · ')
+  }, [plumeQ.data])
+
   const mfdLayers = useCallback((theme: Theme) => [
     ...(showGrid ? SegmentLayer({
       data: segsQ.data, theme, dualEncode: 'width', minPasses: 3,
@@ -393,9 +441,9 @@ export function Scope() {
             value={worst ? fmtDistance(worst.distance, 1) : '—'}
           />
           <Readout
-            label="Envelope left"
-            value={envelope ? fmtPct(envelope.freePct, 0, false) : '—'}
-            tone={envelope?.tight ? 'threat' : 'accent'}
+            label={envelope ? `Envelope · ${regime}` : 'Envelope'}
+            value={envelope ? envelope.headline : '—'}
+            tone={envelope?.binding ? 'threat' : 'accent'}
             big
           />
         </div>
@@ -549,9 +597,10 @@ export function Scope() {
                   <Caps>
                     {showPermit ? 'permit — the study\u2019s long-run average, all wind directions' : ''}
                     {showPermit && showPlume ? ' · ' : ''}
-                    {showPlume ? `plume — this hour, one cone per running stack${plumeSpecies ? ` · ${plumeSpecies}, not the picked channel` : ''}` : ''}
+                    {showPlume ? `plume — this hour, modelled${plumeSpecies ? ` · ${plumeSpecies}, not the picked channel` : ''}` : ''}
                   </Caps>
                 )}
+                {showPlume && plumeRead ? <Caps>{plumeRead}</Caps> : null}
               </div>
             </MapOverlay>
           </BaseMap>
@@ -577,14 +626,21 @@ export function Scope() {
         <div className={s.instruments}>
           <Panel title="Margin">
             <div className={s.gauges}>
+              {/* Not "envelope used" out of a notional 100. The gauge is how
+                  much of THIS SITE's own contribution the air has room for
+                  tonight — 0% means run as you are, 100% means none of it. */}
               <Gauge
-                label="Envelope used"
-                value={envelope?.usedPct ?? null}
+                label="Cut needed tonight"
+                value={envStable?.cutPct ?? null}
                 max={100}
-                redline={85}
-                over={Boolean(envelope?.tight)}
-                readout={envelope ? fmtPct(envelope.usedPct, 0, false) : '—'}
-                sub="of safe"
+                redline={20}
+                over={Boolean(envStable?.binding)}
+                readout={
+                  envStable == null || envStable.cutPct == null
+                    ? (envStable?.state === 'insufficient' ? 'n/a' : '0%')
+                    : `${fmtNum(envStable.cutPct, 0)}%`
+                }
+                sub="in stable air"
               />
               <Gauge
                 label="Worst vs limit"
@@ -596,11 +652,21 @@ export function Scope() {
                 sub={nearestWhere}
               />
             </div>
+            {/* Both readings, because the whole point is that they differ:
+                the air out there now, and the air on the nights that bind. */}
             <div className={s.gaugeFoot}>
-              {envelope?.freeMw != null
-                ? `≈ ${fmtNum(envelope.freeMw, 0)} MW of additional load still inside the community-and-regulator-safe envelope at today's ${fmtNum(site.it_load_mw, 0)} MW IT load.`
-                : 'Envelope not yet characterised for this site.'}
+              {envelope ? `Now · ${envelope.detail}` : 'Envelope not yet characterised for this site.'}
             </div>
+            {envStable && envStable.regime !== envelope?.regime ? (
+              <div className={s.gaugeFoot}>
+                {`Stable air · ${envStable.detail} That is ${fmtPct(envStable.shareOfHours * 100, 0, false)} of hours.`}
+              </div>
+            ) : null}
+            {envQ.data ? (
+              <div className={s.gaugeFoot}>
+                <Caps>{envQ.data.headroom_is_modelled}</Caps>
+              </div>
+            ) : null}
           </Panel>
 
           {/* the operator's real question: who is downwind of me right now */}

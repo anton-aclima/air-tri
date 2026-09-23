@@ -51,8 +51,14 @@ def segment_passes(world, segments, field, drive_days, campaign_id: str):
     """Yield `segment_pass` row tuples, sampling the field per hour."""
     cols = (
         "campaign_id", "segment_id", "drive_id", "vehicle_id", "ts",
-        *MODALITIES, *INDICATORS, "speed_kph",
+        *MODALITIES, *INDICATORS, "speed_kph", "sampling_mode",
     )
+    # Inherited from the drive, not re-derived. Which stratum a pass falls into
+    # is geometry and stays computed at analysis time; why the car was sent is
+    # a fact about the dispatch that is known once and unrecoverable after.
+    mode_of = {
+        p.drive_id: d.sampling_mode for d in drive_days for p in d.passes
+    }
     start = world.start
     now = world.now
     rng = np.random.default_rng(world.seed + 4242)
@@ -105,6 +111,7 @@ def segment_passes(world, segments, field, drive_days, campaign_id: str):
                     e.ts.isoformat(timespec="seconds"),
                     *vv,
                     e.speed_kph,
+                    mode_of.get(e.drive_id, "uniform"),
                 )
             )
     return cols, rows
@@ -185,6 +192,7 @@ def drive_rows(world, drive_days, plan_id: str, campaign_id: str):
                 "geometry_json": json.dumps(
                     [[round(x, 6), round(y, 6)] for x, y in _thin(d.geometry, 8)]
                 ),
+                "sampling_mode": d.sampling_mode,
             }
         )
         if d.status == "planned":

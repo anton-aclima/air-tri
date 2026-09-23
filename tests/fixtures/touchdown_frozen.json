@@ -1,0 +1,87 @@
+{
+  "_why": "P2-D. The frozen estimator configuration and what it returns on the pinned build. Regenerating this to make a failing test pass defeats the point: the sweep that chose these values is in docs/PLAN-plume.md.",
+  "config": {
+    "control_inner_m": 1500.0,
+    "wedge": "sigma",
+    "fixed_half_deg": 30.0,
+    "n_sigma": 2.0,
+    "control_exclude_mult": 2.0,
+    "match_road_class": true,
+    "baseline": "segment",
+    "exclude_colocated": true,
+    "colocated_m": 800.0,
+    "min_downwind_per_hour": 3,
+    "min_control_per_hour": 8,
+    "min_hours": 8,
+    "r_lo_m": 1500.0,
+    "r_hi_m": 4000.0,
+    "regime": "EF"
+  },
+  "detect_floor": {
+    "no2": 3.28,
+    "pm25": 3.6
+  },
+  "truth_window_m": null,
+  "estimates": {
+    "site-ridgeline/no2": {
+      "excess": 5.037,
+      "ci_lo": 3.7394,
+      "ci_hi": 6.3346,
+      "n_hours": 14,
+      "n_downwind": 209,
+      "n_control": 855,
+      "placebo_max": -0.045,
+      "state": "elevated_downwind"
+    },
+    "site-ridgeline/pm25": {
+      "excess": 0.9685,
+      "ci_lo": 0.1379,
+      "ci_hi": 1.7991,
+      "n_hours": 14,
+      "n_downwind": 209,
+      "n_control": 852,
+      "placebo_max": -0.7292,
+      "state": "no_detection"
+    },
+    "site-deltaforge/no2": {
+      "excess": 1.7784,
+      "ci_lo": 0.6527,
+      "ci_hi": 2.9041,
+      "n_hours": 9,
+      "n_downwind": 91,
+      "n_control": 634,
+      "placebo_max": -1.305,
+      "state": "no_detection"
+    },
+    "site-deltaforge/pm25": {
+      "excess": 0.9385,
+      "ci_lo": -0.458,
+      "ci_hi": 2.335,
+      "n_hours": 9,
+      "n_downwind": 91,
+      "n_control": 629,
+      "placebo_max": 0.5318,
+      "state": "no_detection"
+    },
+    "site-riverport/no2": {
+      "excess": 3.7543,
+      "ci_lo": 1.2058,
+      "ci_hi": 6.3029,
+      "n_hours": 16,
+      "n_downwind": 197,
+      "n_control": 1481,
+      "placebo_max": -1.0743,
+      "state": "elevated_downwind"
+    },
+    "site-riverport/pm25": {
+      "excess": 0.7742,
+      "ci_lo": -0.2363,
+      "ci_hi": 1.7847,
+      "n_hours": 16,
+      "n_downwind": 196,
+      "n_control": 1481,
+      "placebo_max": -0.6076,
+      "state": "no_detection"
+    }
+  }
+}

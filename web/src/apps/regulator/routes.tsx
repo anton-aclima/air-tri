@@ -12,6 +12,7 @@ import { rootRoute } from '@/app/route-root'
 
 import { AlertsQueue } from './Alerts'
 import { Analysis } from './Analysis'
+import { Coverage } from './Coverage'
 import { MapScreen } from './MapScreen'
 import { Thresholds } from './Thresholds'
 import { Watchfloor } from './Watchfloor'
@@ -27,7 +28,9 @@ const map = createRoute({ getParentRoute: () => layout, path: 'map', component: 
 const alerts = createRoute({ getParentRoute: () => layout, path: 'alerts', component: AlertsQueue })
 const thresholds = createRoute({ getParentRoute: () => layout, path: 'thresholds', component: Thresholds })
 const analysis = createRoute({ getParentRoute: () => layout, path: 'analysis', component: Analysis })
+// Do my instruments stand where the plume goes?
+const coverage = createRoute({ getParentRoute: () => layout, path: 'coverage', component: Coverage })
 
 export const regulatorRoutes = layout.addChildren([
-  watchfloor, map, alerts, thresholds, analysis,
+  watchfloor, map, alerts, thresholds, analysis, coverage,
 ])

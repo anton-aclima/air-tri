@@ -39,7 +39,7 @@ import type { Alert, Concern, SegmentProps } from '@/core/types'
 
 import {
   Caps, Panel, Readout, Sev, Tag, shortTitle, styles as s, upFor, useAdvisor, useNowTick,
-  useSiteLock,
+  useCampaignWindow, useSiteLock,
   useStableWindow,
 } from './lib'
 
@@ -423,7 +423,11 @@ function Triangulation({ alert, siteId }: { alert: Alert; siteId: string | null 
 /* ─────────────────────────────────────────────── verify your consultant */
 
 function ModelCheck({ siteId }: { siteId: string | null }) {
-  const verifyQ = useModelVerification(siteId)
+  // The campaign, not the last 30 days — see `useCampaignWindow`.
+  const verifyWin = useCampaignWindow()
+  const verifyQ = useModelVerification(siteId, verifyWin ?? {}, {
+    enabled: !!siteId && !!verifyWin,
+  })
   const v = verifyQ.data
   return (
     <>

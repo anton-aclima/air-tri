@@ -64,8 +64,11 @@ COPY data/cache/ ./data/cache/
 #
 # `data/air.db` is gitignored and regenerated here instead of copied, so no
 # 100 MB blob travels through the build context. Given the seed and the OSM
-# cache above, the generator is deterministic. Costs ~110 s of build time
-# natively, ~390 s under Docker Desktop's VM on macOS.
+# cache above, the generator is deterministic. Costs ~177 s of build time
+# natively, roughly 600 s under Docker Desktop's VM on macOS. It was ~110 s
+# until P3-A stopped evaluating the plume on a sub-window: the truth field now
+# covers the whole raster, which is 1.6x the work and the reason three quarters
+# of the road network stopped reading identically zero.
 #
 # `--now` is deliberately left to default to build time. The generator anchors
 # the last shift to it, so the fleet layer is alive the moment the image is
@@ -73,6 +76,11 @@ COPY data/cache/ ./data/cache/
 # after its build has a "now" past the end of its own data. The app detects
 # this (`flags.generated_at`) and offers "Pin to end of data" in the SIMULATED
 # DATA panel — but the real fix is to redeploy, which is cheap. See docs/DEPLOY.md.
+#
+# The other cost, and the reason CLAUDE.md pins `--now` for local rebuilds:
+# a deployed container's numbers are anchored to ITS build date and a laptop's
+# to `--now`, so the two databases are different worlds. Never compare a
+# measurement taken here against one taken there.
 RUN python -m air.datagen.build build --seed 20260827 --quiet
 
 # The server writes: acking an alert, filing a concern, editing a threshold.

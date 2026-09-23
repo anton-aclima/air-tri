@@ -283,3 +283,101 @@ export function adviceFor(risk: number | null | undefined): string {
   if (risk < 85) return 'Keep windows closed and limit time outdoors if you can.'
   return 'Stay indoors with windows closed if that is possible for you.'
 }
+
+// ─────────────────────────────────────────────────── the wind, in plain words
+
+/**
+ * EVERY SENTENCE THIS APP SAYS ABOUT THE WIND AND THE PLUME, IN ONE OBJECT.
+ *
+ * Not a style choice. The community interface is the one place in this product
+ * where a wrong sentence is a defamation surface rather than a bug: a named
+ * company, a named neighbourhood, and a resident with a screenshot. CONTRACT
+ * §10a is a list of things never to say, and a list is only reviewable if the
+ * things it governs are in one screen. Grepping JSX for them is not review.
+ *
+ * The same trick `statusPlain` already uses to keep "industry can never close
+ * a report" in exactly one place.
+ *
+ * Three rules hold across all of it:
+ *
+ *  1. **The wind is the subject, never the company.** "The wind carried from
+ *     Ridgeline over your streets" — not "Ridgeline polluted your streets".
+ *     The first is a fact about the weather; the second is an accusation this
+ *     product cannot support and has no business making.
+ *  2. **No units, no acronyms, no chemistry** (non-negotiable 3).
+ *  3. **Every number is generated from the payload**, never written down.
+ *     Measured across four seeds, the same quantity moves by a factor of two.
+ */
+export const PLUME_COPY = {
+  /** The front door. `share` is 0–1, from `DistrictWind.share`. */
+  usually: {
+    title: 'Which way the wind usually blows',
+    lead: (place: string) =>
+      `Over the last three months, here is how often the wind blew from each of these places toward ${place}.`,
+    /** Deliberately coarse. A resident does not need three significant figures. */
+    often: (share: number): string => {
+      if (!Number.isFinite(share) || share <= 0) return 'almost never'
+      if (share < 0.02) return 'hardly ever'
+      if (share < 0.06) return 'about one hour in twenty'
+      if (share < 0.12) return 'about one hour in ten'
+      if (share < 0.2) return 'about one hour in six'
+      if (share < 0.3) return 'about one hour in four'
+      if (share < 0.42) return 'about one hour in three'
+      if (share < 0.6) return 'about half the time'
+      return 'most of the time'
+    },
+    /** What the front door does NOT say. Shown, not hidden behind a tap. */
+    caveat:
+      'This is about the wind, not about what anyone put into it. A place being upwind of you does not mean it sent anything your way — it means that if it did, this is where the air was going.',
+    source: (hours: number) =>
+      `From ${hours.toLocaleString()} hours of weather records across the whole three months.`,
+  },
+
+  /** The live cloud, one tap behind. */
+  now: {
+    title: 'Where the air is going right now',
+    lead: 'A rough picture of where the air from each place is heading this hour.',
+    /**
+     * Non-dismissible. This block is the price of drawing the cloud at all —
+     * if it can be closed, the cloud outlives it on someone's screen.
+     */
+    notSaying: [
+      'This is a guess from the wind, not a measurement. Nobody has measured the air inside this shape.',
+      'It has no edge. The real air does not stop where the colour fades, and being just outside it does not mean you are clear.',
+      'It does not say anything was released. It shows where air from that place would go if something were.',
+    ],
+    /** What we DID measure, under the cloud. Degrades to honesty, not to a number. */
+    measured: (streets: number) =>
+      `We measured ${streets} ${streets === 1 ? 'street' : 'streets'} under this shape in the last hour.`,
+    tooThin:
+      'We have not driven enough of your streets at this hour to say what the air was actually like under it.',
+  },
+
+  /** Frozen on the hour a group of neighbours reported. */
+  when: {
+    title: 'When your neighbours reported',
+    lead: (when: string) =>
+      `Where the air was going ${when}, when several people nearby reported something.`,
+    noCluster: 'No group of reports close enough together in time to line up with the wind yet.',
+  },
+
+  /**
+   * The two sentences a report gets. The NULL branch matters most: 137 of 204
+   * reports have no site attached, and an app willing to say "we could not
+   * connect this to anywhere on the map" is one you believe when it says the
+   * opposite.
+   */
+  concern: {
+    attributed: (site: string) =>
+      `When this was reported, the wind was blowing from ${site} toward here. That is why it is named — it is where the air came from, not a finding that ${site} caused it.`,
+    unattributed:
+      'We could not connect this to any of the industrial places on the map. The wind was not coming from any of them at the time, or we did not have enough wind readings that hour to tell.',
+  },
+
+  /** The three states named once, for the key. */
+  epistemic: {
+    measured: 'Measured — our cars drove this and recorded it.',
+    modelled: 'A guess from the wind — nobody measured inside this shape.',
+    unknown: 'Not measured — we have not driven here enough to say.',
+  },
+} as const

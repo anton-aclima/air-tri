@@ -8,12 +8,13 @@ own report in the community feed. Neither can resolve the concern.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from air.server import cache, domain, loaders, shapes, timeutil, windfield
-from air.server.db import get_db, one, resolve_campaign, scalar, writer
+from air.server import cache, domain, envelope, loaders, shapes, timeutil, windfield
+from air.server.db import get_db, one, resolve_campaign, rows, scalar, writer
 from air.server.models import MitigationIn, PostIn
 
 router = APIRouter(tags=["industry"])
@@ -202,6 +203,87 @@ def site_dispersion_models(
     if one(conn, "SELECT 1 FROM industry_site WHERE id=?", (site_id,)) is None:
         raise HTTPException(404, f"unknown site {site_id}")
     return loaders.load_dispersion_models(conn, site_id=site_id)
+
+
+@router.get("/sites/{site_id}/envelope")
+def site_envelope(
+    site_id: str,
+    measure: str = "no2",
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """How hard this site can run, measured — the industry tier's spine.
+
+    Replaces `industry_site.headroom_pct`, which is a constant hardcoded in
+    `world.py` (79 / 61 / 44), means nothing, and cannot be improved. What comes
+    back instead is the site's own fenceline measured against class-matched
+    roads at least 2 km from every site, per stability regime, with the share of
+    passes over each action level and what it would cost in megawatts to hold
+    the line.
+
+    Read `air.server.envelope` for what binds and why it is not the permit
+    number. The short version: against the regulatory line alone this site
+    could run about five times nameplate; what actually binds is the fenceline
+    on stable nights, and that opens again by morning.
+    """
+    site = one(conn, "SELECT * FROM industry_site WHERE id=?", (site_id,))
+    if site is None:
+        raise HTTPException(404, f"unknown site {site_id}")
+    if measure not in envelope.DECOY_FLOOR:
+        raise HTTPException(
+            400,
+            detail={
+                "error": "measure_not_calibrated",
+                "message": (
+                    f"{measure!r} has no decoy-null calibration, so an excess computed for "
+                    "it could not be told apart from an arbitrary patch of road."
+                ),
+                "supported": sorted(envelope.DECOY_FLOOR),
+            },
+        )
+    key = ("envelope", site_id, measure, cache.version())
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+
+    levels = [
+        dict(r)
+        for r in rows(
+            conn,
+            "SELECT id, label, measure, threshold, unit, severity, source FROM action_level "
+            "WHERE measure=? AND enabled=1 ORDER BY threshold",
+            (measure,),
+        )
+    ]
+    unit = levels[0]["unit"] if levels else ""
+    passes = envelope.load(conn, site["campaign_id"], measure)
+    try:
+        env = envelope.estimate(
+            conn, passes, site_id, measure, unit, site["it_load_mw"], levels
+        )
+    except KeyError:
+        raise HTTPException(
+            404,
+            detail={
+                "error": "no_active_sources",
+                "message": f"site {site_id} has no active emission points to measure around",
+            },
+        ) from None
+
+    payload = asdict(env)
+    # The gate, served alongside the answer rather than applied silently: a
+    # fenceline excess that 40 arbitrary patches of road also produce is not a
+    # finding about this site.
+    payload["decoy_null"] = envelope.cached_null(
+        conn, site["campaign_id"], measure, envelope.REGIMES["stable"]
+    )
+    payload["states"] = list(envelope.STATES)
+    payload["headroom_is_modelled"] = (
+        "The excess and the levels are measured. The megawatt figures extrapolate "
+        "them on the assumption that this site's contribution scales with its load "
+        "— which is what the dispersion kernel and the generator duty curve imply, "
+        "and is not something the fleet observed."
+    )
+    return cache.put(key, payload)
 
 
 @router.get("/sites/{site_id}/model-verification")
