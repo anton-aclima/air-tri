@@ -28,6 +28,7 @@ import type { PlumeMode } from '@/apps/community/Plume'
 import type { MapPick } from '@/apps/community/Picked'
 import { Badge, Button, Chip, Empty, Toggle } from '@/app/ui'
 import {
+  BUBBLE_SPLIT_ZOOM,
   BaseMap,
   ConcernLayer,
   FleetLayer,
@@ -37,12 +38,15 @@ import {
   MeasurePicker,
   SegmentLayer,
   SiteLayer,
+  REPORT_WINDOW_DAYS,
   SoftPlumeLayer,
   makeColorScale,
   pickedSite,
   pointInRing,
   usePulse,
+  windowReports,
 } from '@/components'
+import type { ConcernBubble, ReportWindowDays } from '@/components'
 import { relativeTime } from '@/core/format'
 import { PICKABLE, plainName } from '@/core/measures'
 import {
@@ -70,8 +74,18 @@ export function MapScreen() {
   const pulse = usePulse(2400)
 
   const segments = useCommunitySegments().data
-  const concerns = useConcerns({ limit: 200 }).data ?? []
-  const clusters = useConcernClusters().data ?? []
+  // 400, not 200: the campaign holds 204 reports, and "All 90 days" has to
+  // mean all of them.
+  const allConcerns = useConcerns({ limit: 400 }).data
+  const allClusters = useConcernClusters().data
+  const cursor = useSession((st) => st.time.cursor)
+  const [reportDays, setReportDays] = useState<ReportWindowDays>(REPORT_WINDOW_DAYS)
+  const windowed = useMemo(
+    () => windowReports(allConcerns ?? [], allClusters ?? [], reportDays, cursor),
+    [allConcerns, allClusters, reportDays, cursor],
+  )
+  const concerns = windowed.concerns
+  const clusters = windowed.clusters
   const fleet = useFleet().data ?? []
   // Only fetched when a cloud mode is on. `usually` is the default and draws
   // nothing, so a resident who never taps never requests a modelled shape.
@@ -157,7 +171,8 @@ export function MapScreen() {
       .sort((a, b) => (nearOnly ? a.d - b.d : +new Date(b.c.occurred_at) - +new Date(a.c.occurred_at)))
   }, [concerns, places.home, nearOnly, kindFilter])
 
-  const shown = rows.map((r) => r.c)
+  // Memoised: ConcernLayer caches its folding on this array's identity.
+  const shown = useMemo(() => rows.map((r) => r.c), [rows])
 
   /*
     P6-E — "what we measured under the cloud", and how it degrades.
@@ -222,6 +237,14 @@ export function MapScreen() {
               const layer = info.layer?.id ?? ''
               const obj = info.object as { id?: string; properties?: { id?: string } } | null
               if (!obj) return choose(null)
+              if (layer.startsWith('concerns-bubble')) {
+                // A bubble is not a report — it is "zoom in here".
+                const b = info.object as ConcernBubble
+                return setMapView({
+                  longitude: b.position[0], latitude: b.position[1],
+                  zoom: Math.max(mapView?.zoom ?? 0, BUBBLE_SPLIT_ZOOM),
+                })
+              }
               if (layer.startsWith('concerns-cluster')) {
                 return choose(obj.id ? { kind: 'cluster', id: obj.id } : null)
               }
@@ -289,6 +312,7 @@ export function MapScreen() {
                 clusters,
                 theme: t,
                 pulse,
+                zoom: mapView?.zoom ?? 12.1,
                 selectedId: pick?.kind === 'concern' ? pick.id : null,
               }),
             ]}
@@ -350,6 +374,18 @@ export function MapScreen() {
 
           <section className={s.railCard}>
             <h2 className={s.railTitle}>Filter the pins</h2>
+            <div className={s.filters} style={{ marginBottom: 'var(--s-2)' }}>
+              <Chip
+                small
+                active={reportDays === REPORT_WINDOW_DAYS}
+                onClick={() => setReportDays(REPORT_WINDOW_DAYS)}
+              >
+                Last {REPORT_WINDOW_DAYS} days
+              </Chip>
+              <Chip small active={reportDays == null} onClick={() => setReportDays(null)}>
+                Everything since the start · {windowed.total}
+              </Chip>
+            </div>
             <div className={s.filters}>
               <Chip active={!kindFilter} onClick={() => setKindFilter(null)} small>
                 Everything

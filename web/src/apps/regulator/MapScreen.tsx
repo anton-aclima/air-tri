@@ -19,8 +19,10 @@ import {
   BaseMap, BoundaryLayer, ConcernLayer, FleetLayer, LayerToggles, MapLegend, MapOverlay,
   MapScale, MapWindField, MeasurePicker, MetricPicker, MonitorLayer, NorthCompass,
   SegmentLayer, SiteLayer, makeColorScale, robustDomain, useFleetAnimation, usePulse,
+  BUBBLE_SPLIT_ZOOM, REPORT_WINDOW_DAYS, windowReports,
 } from '@/components'
-import { Button } from '@/app/ui'
+import type { ConcernBubble, ReportWindowDays } from '@/components'
+import { Button, Segmented } from '@/app/ui'
 import { fmtCompact, fmtNum, fmtWind, relativeShort } from '@/core/format'
 import { INDEX_DOMAIN, PICKABLE } from '@/core/measures'
 import {
@@ -45,8 +47,18 @@ export function MapScreen() {
   const towers = towersQ.data ?? []
   const allMonitors = useMonitors().data ?? []
   const sites = useSites().data ?? []
-  const concerns = useConcerns({ limit: 200 }).data ?? []
-  const clusters = useConcernClusters().data ?? []
+  // The whole record is fetched (the campaign holds 204, more than the old
+  // 200 limit); the map and the panel draw the window. See components/lib/reports.
+  const allConcerns = useConcerns({ limit: 400 }).data
+  const allClusters = useConcernClusters().data
+  const cursor = useSession((x) => x.time.cursor)
+  const [reportDays, setReportDays] = useState<ReportWindowDays>(REPORT_WINDOW_DAYS)
+  const windowed = useMemo(
+    () => windowReports(allConcerns ?? [], allClusters ?? [], reportDays, cursor),
+    [allConcerns, allClusters, reportDays, cursor],
+  )
+  const concerns = windowed.concerns
+  const clusters = windowed.clusters
   const alerts = useAlerts({}).data
   const live = useMemo(() => liveAlerts(alerts), [alerts])
 
@@ -242,6 +254,11 @@ export function MapScreen() {
                     theme: t,
                     pulse,
                     labels: false,
+                    zoom: mapView?.zoom,
+                    onBubbleClick: (info) => {
+                      const b = info.object as ConcernBubble | undefined
+                      if (b) flyTo(b.position, Math.max(mapView?.zoom ?? 0, BUBBLE_SPLIT_ZOOM))
+                    },
                     selectedId: pickedConcern,
                     onClick: (info) => {
                       const c = info.object as Concern | undefined
@@ -369,11 +386,24 @@ export function MapScreen() {
               to the towers rather than a legend entry. */}
           <Panel
             title="Resident reports"
-            aside={<Caps>{clusters.length} clusters · {concerns.length} reports</Caps>}
+            aside={
+              <Segmented
+                value={reportDays == null ? 'all' : 'recent'}
+                options={[
+                  { value: 'recent', label: `Last ${REPORT_WINDOW_DAYS} d` },
+                  { value: 'all', label: `All · ${windowed.total}` },
+                ]}
+                onValueChange={(v) => setReportDays(v === 'all' ? null : REPORT_WINDOW_DAYS)}
+              />
+            }
           >
             <div className={s.rows}>
               {clusters.length === 0 ? (
-                <span className={s.muted}>No clusters have formed in this campaign.</span>
+                <span className={s.muted}>
+                  {reportDays == null
+                    ? 'No clusters have formed in this campaign.'
+                    : `No cluster in the last ${REPORT_WINDOW_DAYS} days — ${concerns.length} single reports. "All" shows the record.`}
+                </span>
               ) : clusters.map((cl) => {
                 const on = pickedCluster === cl.id
                 const alert = liveAlerts(alerts).find((a) => a.source_id === cl.id)

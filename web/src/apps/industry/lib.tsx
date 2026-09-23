@@ -12,7 +12,7 @@ import type { ReactNode } from 'react'
 import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import type { LayersList } from 'deck.gl'
 
-import { ALERT_KIND_CODE, ALERT_KIND_LABEL, SEVERITY_GLYPH } from '@/components'
+import { ALERT_KIND_CODE, ALERT_KIND_LABEL, SEVERITY_GLYPH, metersPerPixel } from '@/components'
 import type { Theme } from '@/components'
 import { API_BASE } from '@/core/api'
 import { fmtBearing, fmtDistance, fmtDuration, fmtNum } from '@/core/format'
@@ -944,10 +944,12 @@ export function reportsOverlay(opts: {
   theme: Theme
   reports: PlacedReport[]
   clusters: ConcernCluster[]
+  /** Map zoom. Overlapping cluster labels keep only the biggest below 14. */
+  zoom?: number
   selectedId?: string | null
   onSelect?: (id: string | null) => void
 }): LayersList {
-  const { theme, reports, clusters, selectedId, onSelect } = opts
+  const { theme, reports, clusters, zoom, selectedId, onSelect } = opts
   if (!reports.length && !clusters.length) return []
   const layers: LayersList = []
 
@@ -961,9 +963,18 @@ export function reportsOverlay(opts: {
       getWidth: 1.2,
       getColor: theme.color('actor-community', 0.7),
     }))
+    // Three halos at the campus printed "6 REPORTS" three times over. Below
+    // zoom 14 a label that would land within ~60 px of a bigger one is dropped.
+    const reachM = zoom != null && zoom < 14 ? 60 * metersPerPixel(clusters[0].centroid[1], zoom) : 0
+    const labelled: ConcernCluster[] = []
+    for (const cl of [...clusters].sort((a, b) => b.count - a.count)) {
+      if (!labelled.some((k) => bearingFrom(k.centroid, cl.centroid[0], cl.centroid[1]).distanceM < reachM)) {
+        labelled.push(cl)
+      }
+    }
     layers.push(new TextLayer<ConcernCluster>({
       id: 'mfd-report-cluster-labels',
-      data: clusters,
+      data: labelled,
       pickable: false,
       getPosition: (cl) => cl.centroid,
       getText: (cl) => `${cl.count} REPORTS`,

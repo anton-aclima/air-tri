@@ -28,7 +28,7 @@ import {
   AlertTimeline, BEYOND_ENVELOPE_NOTE, BaseMap, DispersionLayer, MapOverlay, MapWindField,
   hasBeyondEnvelope,
   MonitorLayer, RadarScope, SegmentLayer, SiteLayer, makeColorScale, measureDomain,
-  pickedSite,
+  pickedSite, REPORT_WINDOW_DAYS, windowReports,
 } from '@/components'
 import type { MapView, RadarContact, SegmentFeature, Theme } from '@/components'
 import { Button } from '@/app/ui'
@@ -115,6 +115,12 @@ export function Scope() {
   const plumeQ = useDispersion({ site_id: site?.id })
   const concernsQ = useConcerns({ limit: 400 })
   const clustersQ = useConcernClusters()
+  // The last fortnight by default, as on every map (components/lib/reports).
+  const cursor = useSession((st) => st.time.cursor)
+  const windowed = useMemo(
+    () => windowReports(concernsQ.data ?? [], clustersQ.data ?? [], REPORT_WINDOW_DAYS, cursor),
+    [concernsQ.data, clustersQ.data, cursor],
+  )
 
   const live = useMemo(
     () => (alertsQ.data ?? []).filter((a: Alert) => LIVE_STATUSES.has(a.status)),
@@ -226,15 +232,15 @@ export function Scope() {
 
   // Reports near this campus, split by whether the wind actually points at them.
   const reports = useMemo(
-    () => (site ? placeReports(site.centroid, concernsQ.data ?? [], transportDeg) : []),
-    [site, concernsQ.data, transportDeg],
+    () => (site ? placeReports(site.centroid, windowed.concerns, transportDeg) : []),
+    [site, windowed.concerns, transportDeg],
   )
   const nearClusters = useMemo(() => {
     if (!site) return []
-    return (clustersQ.data ?? []).filter(
+    return windowed.clusters.filter(
       (cl) => bearingFrom(site.centroid, cl.centroid[0], cl.centroid[1]).distanceM <= 6000,
     )
-  }, [clustersQ.data, site])
+  }, [windowed.clusters, site])
   const downwindReports = reports.filter((r) => r.downwind).length
   const pickedId = pick?.id ?? null
 
@@ -363,6 +369,7 @@ export function Scope() {
       theme,
       reports,
       clusters: nearClusters,
+      zoom: view.zoom,
       selectedId: pick?.kind === 'report' ? pick.id : null,
       onSelect: (id) => setPick(id ? { kind: 'report', id } : null),
     }) : []),
@@ -377,7 +384,7 @@ export function Scope() {
   ], [
     showGrid, showPlume, showPermit, showReports, segsQ.data, plumeQ.data, model, fenceline,
     reference, site, focus, contacts, pick, transportDeg, exposed, reports, nearClusters,
-    measureDef, dotMeasure, gridScale,
+    measureDef, dotMeasure, gridScale, view.zoom,
   ])
 
   if (!site) {

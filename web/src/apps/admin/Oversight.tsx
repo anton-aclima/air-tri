@@ -16,9 +16,10 @@ import { useMemo, useState } from 'react'
 
 import {
   BaseMap, BoundaryLayer, ConcernLayer, LayerToggles, MapOverlay, MapScale,
-  MonitorLayer, SegmentLayer, SiteLayer, usePulse,
+  MonitorLayer, SegmentLayer, SiteLayer, usePulse, BUBBLE_SPLIT_ZOOM,
 } from '@/components'
 import { CONCERN_LABEL } from '@/components'
+import type { ConcernBubble, MapView } from '@/components'
 import { fmtNum, fmtTime, relativeShort } from '@/core/format'
 import { useLiveEvents } from '@/core/live'
 import { severityVar } from '@/core/measures'
@@ -67,6 +68,10 @@ export function Oversight() {
 
   const [focus, setFocus] = useState<string | null>(null)
   const [show, setShow] = useState({ grid: true, concerns: true, sites: true, monitors: true })
+  // Lifted only so the report layer knows the zoom (it folds at city zoom) and
+  // a bubble tap can fly in. Null until the first move: the map starts from
+  // `initialView`, which needs the campaign to have loaded.
+  const [view, setView] = useState<MapView | null>(null)
   const [actorFilter, setActorFilter] = useState<Role | null>(null)
 
   const cluster = useMemo(
@@ -249,6 +254,8 @@ export function Oversight() {
             <BaseMap
               label="All actors"
               initialView={campaignView(campaign, -0.3)}
+              view={view ?? undefined}
+              onViewChange={setView}
               layers={(theme) => [
                 ...BoundaryLayer({ data: boundary.data, theme, maskStrength: 0.3 }),
                 ...(show.grid
@@ -275,6 +282,15 @@ export function Oversight() {
                       theme,
                       pulse,
                       labels: true,
+                      // The whole record, on purpose — this sheet is "every
+                      // concern". It folds by zoom instead of windowing.
+                      zoom: view?.zoom ?? campaignView(campaign, -0.3).zoom,
+                      onBubbleClick: (info) => {
+                        const b = info.object as ConcernBubble | undefined
+                        if (!b) return
+                        const base = view ?? { ...campaignView(campaign, -0.3), pitch: 0, bearing: 0 }
+                        setView({ ...base, longitude: b.position[0], latitude: b.position[1], zoom: Math.max(base.zoom, BUBBLE_SPLIT_ZOOM) })
+                      },
                       selectedId: cluster?.id ?? null,
                       onClusterClick: (info) => {
                         const obj = info.object as { id?: string } | null

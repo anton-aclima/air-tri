@@ -1290,12 +1290,19 @@ work. It is the first thing a viewer sees, so it should be the first thing that
 sprint fixes — clustering, zoom-dependent thinning, or filtering to the
 resident's own district by default.
 
+*Done 2026-09-23 — filter + cluster, one rule on every map.* `components/lib/reports.ts`
+windows reports to the last 14 days (40 of 204), anchored to the demo cursor or
+the newest report — never the wall clock, which is past the end of the data.
+"All" is one tap away on community and regulator. `ConcernLayer` folds reports
+into count bubbles below zoom 14 (a tap flies in to 14.6), stops drawing the
+members of a drawn cluster halo separately, keeps only the larger of two
+overlapping halo labels, and shows "+N" badges only from zoom 15. Industry's MFD
+takes the window and the label rule; admin Oversight keeps the whole record and
+folds by zoom.
+
 ### Two things still worth eyes
 
-- **The map is very busy** — 200 report pins with +N badges overlap heavily and
-  largely hide the road grid, which is supposed to be the hero visual
-  (non-negotiable 2). Pre-existing, not phase 6, but it is the first thing a
-  viewer sees.
+- ~~**The map is very busy**~~ — fixed 2026-09-23, see above.
 - **A `getProjection` error in the console** from an earlier session — a Google
   Maps call on a null map instance, a basemap init race. Not from the plume
   work. Unreproduced so far.
