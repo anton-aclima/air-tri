@@ -1,8 +1,18 @@
-"""/alerts — the shared bus, and the RWR geometry.
+"""/alerts — the shared bus, and each alert's place relative to a site.
 
-`GET /alerts?site_id=X` is the industry radar feed. Every alert comes back with
-`bearing_deg` (0-360 true bearing from the site centroid to the alert location)
-and `distance_m`. That derived geometry *is* the radar scope.
+`GET /alerts?site_id=X` is the industry deck's list. Every located alert comes
+back with `bearing_deg` (0-360 true bearing from the site centroid to the alert
+location) and `distance_m`, which the deck prints as "6.3 km NE". (It used to
+paint them on a radar dial; that dial is retired, PLAN-refocus D8.)
+
+`role=industry&site_id=X` also carries the fleet's own detections at that
+site's fence (D13, owner decision 2026-09-23) — see `_fenceline_detections` —
+and is bounded at `INDUSTRY_RADIUS_M` from the site, by geometry alone
+(`loaders.alert_geometry` no longer reads the generator's `alert.site_id`).
+Every alert with a `site_id` comes back addressed to that operator
+(`_for_operator`): a D13 row carries a fleet-measurement sentence instead of
+the recommendation the generator wrote for the regulator, and the stored
+combustion line names the site's own kind of equipment.
 
 `at` serves the list as it stood at a moment (D2): only alerts that had entered
 the record by then, each with `ongoing` judged at it. No `at` is the end of the
@@ -28,11 +38,37 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from air.server import domain, loaders, shapes, timeutil
+from air.server import domain, envelope, geo, loaders, shapes, timeutil
 from air.server.db import get_db, one, resolve_campaign, rows, scalar, writer
 from air.server.models import AckIn
 
 router = APIRouter(tags=["alerts"])
+
+#: How far from its site an industry list reaches, when the caller gives no
+#: `radius_m`. The deck's own `NEAR_M` (industry/Scope.tsx): DRAQA's Riverport
+#: Road monitor is 6.27 km from Ridgeline, and the deck files it under
+#: "Elsewhere". The server used to bound the list by the generator's site tag
+#: instead, so without a radius here every campaign alert would reach every
+#: site's one alert count (F3) once that tag stopped deciding.
+INDUSTRY_RADIUS_M = 7000.0
+
+#: What a D13 row says to the operator it is delivered to. The generator
+#: wrote these for the regulator ("Site a temporary monitor here, or accept
+#: mobile evidence"), and industry was printing that as its own advice. A
+#: measurement on a street, said as one — never a source (F7).
+FLEET_AT_FENCE = (
+    "Aclima's vehicles measured this on a public street beside your fence, over repeated passes. "
+    "It says what the street carried, not where it came from. Compare it with your own fenceline "
+    "sensors for the same hours."
+)
+
+#: The generator's combustion line for NO2: the one on the checked-in build
+#: names a datacentre's equipment whatever the site is (it was printed to a
+#: truck terminal), and the site-neutral one narrative.py writes now.
+_GENERIC_NO2 = (
+    "Check generator and turbine load for this window.",
+    "Check what was burning on site in this window.",
+)
 
 
 @router.get("/alerts")
@@ -50,13 +86,84 @@ def list_alerts(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
     cid = resolve_campaign(conn, campaign_id)
+    # The role filter runs after the LIMIT inside `load_alerts` either way, so
+    # loading unfiltered and filtering here selects exactly the same rows.
+    widen = role == "industry" and bool(site_id)
     found = loaders.load_alerts(
-        conn, cid, role=role, status=status, severity=severity, kind=kind, since=since,
-        until=domain.as_of(conn, cid, at), limit=limit,
+        conn, cid, role=None if widen else role, status=status, severity=severity, kind=kind,
+        since=since, until=domain.as_of(conn, cid, at), limit=limit,
     )
+    if widen:
+        found = _fenceline_detections(conn, found, str(site_id))
+        if radius_m is None:
+            radius_m = INDUSTRY_RADIUS_M
     if site_id:
-        found = loaders.alert_geometry(conn, found, site_id, radius_m)
+        found = _for_operator(conn, loaders.alert_geometry(conn, found, site_id, radius_m), site_id)
     return found
+
+
+def _for_operator(conn: sqlite3.Connection, alerts: list[dict[str, Any]], site_id: str) -> list[dict[str, Any]]:
+    """The alert as addressed to this site's operator. Copies; never writes."""
+    from air.server import advisor_rules
+
+    site = one(conn, "SELECT id, kind FROM industry_site WHERE id=?", (site_id,))
+    out = []
+    for a in alerts:
+        a = dict(a)
+        rec = a.get("recommendation") or ""
+        if a.get("source_type") == "mobile" and "industry" not in (a.get("audience") or []):
+            # A D13 row (see `_fenceline_detections`): delivered, not addressed.
+            a["recommendation"] = FLEET_AT_FENCE
+            a["delivered_as"] = "fleet_at_fence"
+        elif site is not None and (generic := next((g for g in _GENERIC_NO2 if rec.startswith(g)), None)):
+            lever, _why = advisor_rules.lever_for(dict(site), a.get("measure") or "no2")
+            a["recommendation"] = f"Check {lever} for this window." + rec[len(generic):]
+        out.append(a)
+    return out
+
+
+def _fenceline_detections(
+    conn: sqlite3.Connection, alerts: list[dict[str, Any]], site_id: str
+) -> list[dict[str, Any]]:
+    """Industry's list, plus the fleet's detections at this site's own fence.
+
+    D13 (owner, 2026-09-23): send Aclima's mobile detections to industry. The
+    generator addresses every `mobile_detection` to regulator and admin only
+    (narrative.py), so the deck never saw the fleet's finding closest to
+    Ridgeline — "Highest diesel-attributable particulate on the network: Paul
+    R Lowry Road", 470 m from its centroid on its own fenceline road — while
+    another operator's monitor headlined it.
+
+    WHICH ONES, AND WHY NOT A RADIUS. A detection reaches a site's operator
+    when it lies within `envelope.FENCELINE_M` (800 m) of one of the site's
+    active emission points: the envelope's own definition of "this site's
+    fenceline road", so the deck's fenceline highlight and this list cannot
+    disagree about which road is the site's. A plain radius from the centroid
+    was the alternative and it fails on this data: at the deck's 6 km it
+    hands Ridgeline the black-carbon detection on Channel Avenue (5.8 km),
+    which sits 115 m from Delta Forge's stacks — another operator's fence,
+    learned about by a competitor before the operator it concerns.
+
+    `alert.site_id` is NOT used. On mobile rows it is the generator's bearing
+    guess (`_suspect`), and it names Riverport for a methane crossing 2.7 km
+    from Riverport and 1.3 km from Delta Forge (PLAN-refocus §8: the field
+    must not be used for attribution). Placement is by distance alone, and
+    the copy on the deck describes a measurement on a street, never a source.
+    """
+    pts = [
+        (float(r["lon"]), float(r["lat"]))
+        for r in rows(
+            conn, "SELECT lon, lat FROM emission_point WHERE site_id=? AND active=1", (site_id,)
+        )
+    ]
+
+    def at_fence(a: dict[str, Any]) -> bool:
+        if a["source_type"] != "mobile" or a["lon"] is None or a["lat"] is None or not pts:
+            return False
+        near = min(geo.haversine_m(lon, lat, a["lon"], a["lat"]) for lon, lat in pts)
+        return near <= envelope.FENCELINE_M
+
+    return [a for a in alerts if "industry" in a["audience"] or at_fence(a)]
 
 
 @router.get("/alerts/{alert_id}")
@@ -114,8 +221,7 @@ def get_alert(
     ]
     if site_id:
         geom = loaders.alert_geometry(conn, [a], site_id)
-        if geom:
-            a = geom[0]
+        a = _for_operator(conn, geom or [a], site_id)[0]
     return a
 
 

@@ -12,7 +12,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { MeasureCode, Role, SegmentMetric } from '@/core/types';
+import type { MeasureCode, Monitor, Role, SegmentMetric } from '@/core/types';
 import { unitFor } from '@/core/measures';
 
 import { BaseMap, MapOverlay } from './map/BaseMap';
@@ -23,7 +23,7 @@ import { MonitorLayer } from './map/layers/MonitorLayer';
 import { SiteLayer } from './map/layers/SiteLayer';
 import { ConcernLayer } from './map/layers/ConcernLayer';
 import { FleetLayer } from './map/layers/FleetLayer';
-import { DispersionLayer } from './map/layers/WindLayer';
+import { BEYOND_ENVELOPE_NOTE, DispersionLayer, FiledStudyLayer } from './map/layers/WindLayer';
 import { DrivePlanLayer } from './map/layers/DrivePlanLayer';
 import { MapWindField } from './wind/MapWindField';
 import { ModelVerificationPanel } from './wind/ModelVerificationPanel';
@@ -35,6 +35,7 @@ import { NorthCompass } from './map/furniture/NorthCompass';
 import { MapTooltip, MapPopover } from './map/furniture/MapTooltip';
 import { LayerToggles } from './map/furniture/LayerToggles';
 import { SegmentInspector } from './map/furniture/SegmentInspector';
+import { PlumeSwatch } from './map/furniture/PlumeSwatch';
 
 import { TimeSeries } from './charts/TimeSeries';
 import { DiurnalClock } from './charts/DiurnalClock';
@@ -55,11 +56,13 @@ import g from './Gallery.module.css';
 
 const ROLES: Role[] = ['community', 'regulator', 'industry', 'admin'];
 
+// Visual direction, not metaphor (PLAN-refocus F5): each room's metaphor is
+// how it LOOKS, and the metaphor's words stay out of anything a user reads.
 const ROLE_BLURB: Record<Role, string> = {
   community: 'Warm paper, big type, plain words. No units, no acronyms, one obvious button.',
-  regulator: 'Tower defence. Their instruments with coverage rings and sweep, our fleet extending reach, emitters as contacts.',
-  industry: 'Radar warning receiver. Bearing, range, severity, phosphor. Glanceable at three metres.',
-  admin: 'Drafting table. Blueprint grid, numeric readouts, everything visible.',
+  regulator: 'Cool cyan on slate. Reference monitors with their coverage, our fleet between them, the modelled plume as a hairline over measured streets.',
+  industry: 'Phosphor green on near-black, mono numerals, square corners. One map and one line of status: the operating envelope, and what is downwind.',
+  admin: 'Blueprint grid, numeric readouts, everything visible.',
 };
 
 function useQuery() {
@@ -70,9 +73,9 @@ function useQuery() {
 }
 
 export type GallerySection =
-  | 'hero' | 'frame' | 'verify' | 'charts' | 'furniture' | 'driveplan';
+  | 'hero' | 'registers' | 'frame' | 'verify' | 'charts' | 'furniture' | 'driveplan';
 
-const ALL_SECTIONS: GallerySection[] = ['hero', 'frame', 'verify', 'charts', 'furniture', 'driveplan'];
+const ALL_SECTIONS: GallerySection[] = ['hero', 'registers', 'frame', 'verify', 'charts', 'furniture', 'driveplan'];
 
 export interface ComponentGalleryProps {
   /** Overrides the `?role=` query parameter. */
@@ -124,6 +127,62 @@ function Card(p: { label?: string; center?: boolean; children: ReactNode }) {
   );
 }
 
+/**
+ * The three model registers of CONTRACT §10b on one map, over measured
+ * streets: Aclima's model as a hairline with its axis and reach tick, the
+ * same outline dashed past the detection envelope, and the filed study
+ * dotted in its own colour. The test is the contract's — they must be told
+ * apart before the key is read — so the key is small and in a corner.
+ *
+ * Reference monitors by name, without rings, one lit: the industry deck's
+ * "lit only when downwind". Hover a muted one for its label.
+ */
+function RegistersSection() {
+  const [hover, setHover] = useState<string | null>(null);
+  const domain = useMemo(() => segmentDomain(fx.SEGMENTS), []);
+  const reference = useMemo(() => fx.MONITORS.filter((m) => m.grade !== 'lowcost'), []);
+  const c = fx.RIDGELINE.centroid;
+  return (
+    <Section
+      title="Model registers — CONTRACT §10b"
+      note={
+        'Measured streets are the only filled ink. Aclima\'s model is a hairline with a '
+        + 'centreline and a reach tick where measurement range ends; past it the same line is '
+        + 'dashed. The filed study is dotted, in its own colour, so the two outlines never '
+        + 'share a pattern. Nothing here is filled but the streets.'
+      }
+    >
+      <div className={g.mapFrame}>
+        <BaseMap
+          initialView={{ longitude: c[0] - 0.012, latitude: c[1] - 0.03, zoom: 11.9 }}
+          layers={(theme) => [
+            ...SegmentLayer({
+              data: fx.SEGMENTS, theme, metric: 'median', dualEncode: 'width',
+              scale: makeColorScale(theme, { domain }),
+            }),
+            ...FiledStudyLayer({ contours: fx.DISPERSION_MODEL.contours, theme }),
+            ...DispersionLayer({ data: fx.DISPERSION_OUTLINE, theme, style: 'outline' }),
+            ...SiteLayer({ data: fx.SITES, theme, labels: true }),
+            ...MonitorLayer({
+              data: reference, theme, rings: false, labelBy: 'name', sizePx: 20,
+              emphasizeIds: ['mon_draqa_boxtown'], hoveredId: hover,
+              onHover: (info) => setHover((info.object as Monitor | undefined)?.id ?? null),
+            }),
+          ]}
+        >
+          <MapOverlay place="bottom-left">
+            <div className={g.registerKey}>
+              <span className={g.registerRow}><PlumeSwatch register="model" />Today&rsquo;s plume (model)</span>
+              <span className={g.registerRow}><PlumeSwatch register="beyond" />{BEYOND_ENVELOPE_NOTE}</span>
+              <span className={g.registerRow}><PlumeSwatch register="filed" />Filed study</span>
+            </div>
+          </MapOverlay>
+        </BaseMap>
+      </div>
+    </Section>
+  );
+}
+
 function RolePanel(props: {
   role: Role; showMap: boolean; activeRole: Role | 'all'; sections: GallerySection[];
 }) {
@@ -137,6 +196,9 @@ function RolePanel(props: {
   const [layers, setLayers] = useState<Record<string, boolean>>({
     segments: true, boundary: true, monitors: true, sites: true,
     concerns: true, fleet: true, wind: true, plume: role === 'regulator',
+    // Industry's street ramp IS the measured ramp, so its wind is drawn in
+    // neutral ink (MapWindField colorMode 'neutral'); the toggle shows both.
+    windNeutral: role === 'industry',
   });
 
   const def = fx.MEASURES.find((m) => m.code === measure) ?? fx.NO2;
@@ -186,6 +248,7 @@ function RolePanel(props: {
               initialView={{ longitude: fx.CENTER[0], latitude: fx.CENTER[1], zoom: 12.6 }}
               fullBleed={layers.wind ? <MapWindField
                     field={fx.WIND_FIELD}
+                    colorMode={layers.windNeutral ? 'neutral' : 'ramp'}
                     particles={5200}
                     opacity={0.34}
                     speedScale={0.42}
@@ -239,6 +302,7 @@ function RolePanel(props: {
                     { id: 'concerns', label: 'Reports', enabled: layers.concerns, count: fx.CONCERNS.length },
                     { id: 'fleet', label: 'Our fleet', enabled: layers.fleet, count: fx.FLEET.length },
                     { id: 'wind', label: 'Wind field', enabled: layers.wind },
+                    { id: 'windNeutral', label: 'Wind in neutral ink', enabled: layers.windNeutral },
                     { id: 'plume', label: 'Model plume', enabled: layers.plume },
                   ]}
                   onToggle={(id, next) => setLayers((s) => ({ ...s, [id]: next }))}
@@ -284,14 +348,17 @@ function RolePanel(props: {
         </Section>
       )}
 
-      {/* ── THE COMBINED FRAME ───────────────────────────────────────────── */}
+      {/* ── THE MODEL REGISTERS ──────────────────────────────────────────── */}
+      {showMap && on('registers') && <RegistersSection />}
+
+      {/* ── THE COMBINED FRAME (retired from the deck) ───────────────────── */}
       {on('frame') && (
       <Section
-        title="The combined frame — RWR + observed wind + the consultant's model"
+        title="RadarScope — retired from the industry deck"
         note={
-          'Threats by bearing and range, the wind our vehicles actually measured advecting '
-          + 'across the scope, and the dispersion study the operator paid for as a dashed '
-          + 'outline. Where the particles leave the outline, the study was wrong.'
+          'Kept for reference until the backlog removes it (PLAN-refocus D8). The deck now '
+          + 'tells this on the map: the wind our vehicles measured as particles, and the filed '
+          + 'study as a dotted outline the operator can switch on to compare.'
         }
       >
         <div className={g.stage}>

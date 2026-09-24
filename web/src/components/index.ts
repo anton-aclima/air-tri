@@ -23,10 +23,11 @@ export {
   persistenceRung, noDataColor,
 } from './lib/scales';
 export type { ColorScale, RampName, ScaleMode } from './lib/scales';
-export { niceStep, niceCeil, niceTicks, SEVERITY_GLYPH, METRIC_HELP, CONCERN_LABEL, CONCERN_EMOJI, ALERT_KIND_LABEL, ALERT_KIND_CODE } from './lib/vizmeta';
+export { niceStep, niceCeil, niceTicks, SEVERITY_GLYPH, METRIC_HELP, CONCERN_LABEL, CONCERN_EMOJI, ALERT_KIND_LABEL, PLUME_STROKE } from './lib/vizmeta';
+export type { PlumeRegister } from './lib/vizmeta';
 export {
   haversine, bearingBetween, destination, circleRing, wedge, toPolygons,
-  geometryPositions, alongPath, pathMetrics, metersPerPixel, fitZoom,
+  geometryPositions, alongPath, pathMetrics, splitPathAt, metersPerPixel, fitZoom,
   bboxOfPositions, bboxCenter, expandBBox, bboxRing, lerpPosition, pointInRing,
 } from './lib/geo';
 export { usePhase, usePulse, useNow, useReducedMotion, prefersReducedMotion, useFleetAnimation } from './lib/anim';
@@ -57,10 +58,16 @@ export { REPORT_WINDOW_DAYS, windowReports, reportAnchor, useWindowedReports } f
 export type { ReportWindowDays, WindowedReports } from './lib/reports';
 export { FleetLayer } from './map/layers/FleetLayer';
 export type { FleetLayerProps } from './map/layers/FleetLayer';
-export { BEYOND_ENVELOPE_NOTE, DispersionLayer, hasBeyondEnvelope } from './map/layers/WindLayer';
+export {
+  BEYOND_ENVELOPE_NOTE, DispersionLayer, FiledStudyLayer, hasBeyondEnvelope, plumeOutlineGeometry,
+} from './map/layers/WindLayer';
 export { SoftPlumeLayer } from './map/layers/SoftPlumeLayer';
 export type { SoftPlumeLayerProps } from './map/layers/SoftPlumeLayer';
-export type { DispersionLayerProps } from './map/layers/WindLayer';
+export type {
+  DispersionLayerProps, DispersionData, DispersionPlumeOutlined, FiledStudyLayerProps,
+  PlumeAxisFeature, PlumeAxisMark, PlumeAxisProps, PlumeAxisRun, PlumeBandFeature, PlumeFeatureAny,
+  PlumeOutlineFeature, PlumeOutlineGeometry, PlumeOutlineProps, PlumeOutlineRun,
+} from './map/layers/WindLayer';
 export { BoundaryLayer } from './map/layers/BoundaryLayer';
 export type { BoundaryLayerProps } from './map/layers/BoundaryLayer';
 export { DrivePlanLayer, vehicleColorIndex } from './map/layers/DrivePlanLayer';
@@ -90,6 +97,8 @@ export type { MapTooltipProps, MapPopoverProps, TooltipRow } from './map/furnitu
 export { LayerToggles } from './map/furniture/LayerToggles';
 export type { LayerTogglesProps, LayerToggleItem } from './map/furniture/LayerToggles';
 export { SegmentInspector } from './map/furniture/SegmentInspector';
+export { PlumeSwatch } from './map/furniture/PlumeSwatch';
+export type { PlumeSwatchProps } from './map/furniture/PlumeSwatch';
 export type { SegmentInspectorProps } from './map/furniture/SegmentInspector';
 
 // ── charts ─────────────────────────────────────────────────────────────────

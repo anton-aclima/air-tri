@@ -1,17 +1,39 @@
 /**
- * /industry/site — the campus: emission points, the fenceline ring, headroom.
+ * /industry/site — the campus: emission points, the fenceline sensors, the
+ * operating envelope.
  *
  * Deliberately the thinnest screen in this interface. It exists so the operator
- * can see what the scope is reasoning about, not so they can do analysis.
+ * can see what the deck is reasoning about, not so they can do analysis.
+ *
+ * Every megawatt figure the envelope prints carries "(modelled)" where it is
+ * printed: the excess and the levels are measured, the MW extrapolates them
+ * (`Envelope.headroom_is_modelled`), and a big readout without the word was
+ * read as a measured capacity. Never "safe" — it is an operating envelope.
  */
 
-import { fmtDistance, fmtNum } from '@/core/format'
+import { fmtDay, fmtDistance, fmtNum, fmtTime24 } from '@/core/format'
+import { campaignMs } from '@/core/clock'
 import { useEnvelope, useMonitors, useModelVerification } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 import { haversine } from '@/components'
 
 import {
   Caps, Panel, Readout, Tag, envelopeRead, styles as s, useCampaignWindow, useSiteLock,
 } from './lib'
+
+/** A reading older than this at the moment shown is a sensor that was not reporting. */
+const STALE_MS = 2 * 3_600_000
+
+/**
+ * A megawatt headline carries "(modelled)"; a percentage (the measured cut) or
+ * a sentence does not. The word is split off so the readout can set it as a
+ * unit beside the number rather than at display size — whether `envelopeRead`
+ * already appended it or not.
+ */
+function splitModelled(headline: string): { value: string; modelled: boolean } {
+  const bare = headline.replace(/\s*\(modelled\)$/i, '')
+  return { value: bare, modelled: bare !== headline || /\bMW$/.test(bare) }
+}
 
 const KIND_GLYPH: Record<string, string> = {
   generator: '▮', backup: '▯', cooling_tower: '◍', substation: '⊞',
@@ -20,6 +42,7 @@ const KIND_GLYPH: Record<string, string> = {
 
 export function SiteConfig() {
   const site = useSiteLock()
+  const now = useNowCampaign()
   const monitorsQ = useMonitors({ site_id: site?.id }, { enabled: !!site })
   // The campaign, not the last 30 days — see `useCampaignWindow`.
   const verifyWin = useCampaignWindow()
@@ -32,6 +55,7 @@ export function SiteConfig() {
   // `useSiteLock` can resolve to undefined on the first render.
   const envQ = useEnvelope(site?.id)
   const env = envelopeRead(envQ.data, 'stable')
+  const head = env ? splitModelled(env.headline) : null
 
   if (!site) {
     return <div className={`${s.page} ${s.sitePage}`}><div className={s.err}>No site.</div></div>
@@ -52,7 +76,8 @@ export function SiteConfig() {
           <Readout label="Emission points" value={`${active}/${site.emission_points.length}`} />
           <Readout
             label="Envelope · stable air"
-            value={env ? env.headline : '—'}
+            value={head ? head.value : '—'}
+            unit={head?.modelled ? '(modelled)' : undefined}
             tone={env?.binding ? 'threat' : 'accent'}
             big
           />
@@ -74,15 +99,15 @@ export function SiteConfig() {
 
         <div className={s.scrollStack}>
           <Panel
-            title="Safe operating envelope"
+            title="Operating envelope"
             aside={env ? <Caps>{env.episodes} episodes</Caps> : null}
           >
             <div className={s.envelope}>
               <div className={s.envRow}>
-                <span className={`${s.envNum} num${env?.binding ? ` ${s.envNumTight}` : ''}`}>
-                  {env ? env.headline : '—'}
+                <span className={`${s.envNum} num${env?.binding ? ` ${s.envNumTight}` : ''}`} style={{ whiteSpace: 'nowrap' }}>
+                  {head ? head.value : '—'}
                 </span>
-                <Caps ink>in stable air</Caps>
+                <Caps ink>{head?.modelled ? '(modelled) · in stable air' : 'in stable air'}</Caps>
                 <span className={s.spacer} />
                 <span className="num" style={{ color: 'var(--ink-2)', fontSize: 'var(--text-xs)' }}>
                   {env?.loadMw != null ? `${fmtNum(env.loadMw, 0)} MW now` : ''}
@@ -104,16 +129,29 @@ export function SiteConfig() {
             </div>
           </Panel>
 
-          <Panel title="Fenceline ring" aside={<Caps>{(monitorsQ.data ?? []).length} sensors</Caps>}>
+          <Panel title="Fenceline sensors" aside={<Caps>{(monitorsQ.data ?? []).length} sensors</Caps>}>
             {(monitorsQ.data ?? []).map((m) => {
               const d = haversine([m.lon, m.lat], site.centroid)
-              const exceeds = Object.values(m.latest ?? {}).some((l) => l?.exceeds)
+              // Readings at the moment shown only. An offline sensor keeps its
+              // last value as `latest`; that is not a reading now.
+              const fresh = Object.values(m.latest ?? {})
+                .filter((l): l is NonNullable<typeof l> => !!l && campaignMs(now) - campaignMs(l.ts) <= STALE_MS)
+              const exceeds = fresh.some((l) => l.exceeds)
+              const last = Object.values(m.latest ?? {})
+                .reduce<string | null>((a, l) => (l && (!a || l.ts > a) ? l.ts : a), null)
               return (
                 <div key={m.id} className={s.ep}>
-                  <span className={exceeds ? s.epOff : s.epOn} style={exceeds ? { color: 'var(--threat)' } : undefined}>
-                    {exceeds ? '▲' : '◇'}
+                  {/* ▲ over a level now · ◇ reporting, under · · no reading now */}
+                  <span className={exceeds || !fresh.length ? s.epOff : s.epOn} style={exceeds ? { color: 'var(--threat)' } : undefined}>
+                    {exceeds ? '▲' : fresh.length ? '◇' : '·'}
                   </span>
-                  <span className={s.epName}>{m.name}</span>
+                  {/* "Fenceline NW": the panel already says whose. */}
+                  <span className={s.epName} title={!fresh.length && last ? `${m.name} · no reading since ${fmtDay(last)} ${fmtTime24(last)}` : m.name}>
+                    {m.name.replace(/^.*?\bfenceline\s+/i, 'Fenceline ')}
+                    {!fresh.length && last ? (
+                      <span style={{ color: 'var(--ink-3)' }}> · last reading {fmtDay(last)}</span>
+                    ) : null}
+                  </span>
                   <span className={s.contactCode}>{m.measures.join(' ')}</span>
                   <span className={`${s.epNum} num`}>{fmtDistance(d, 1)}</span>
                   <span className={`${s.epNum}`}>{m.status.toUpperCase()}</span>
@@ -127,9 +165,9 @@ export function SiteConfig() {
             <Panel title="Dispersion study on file">
               <div className={s.form}>
                 <div className={s.strip} style={{ padding: 0, borderTop: 0 }}>
-                  <Tag tone={verifyQ.data.verdict === 'understates' ? 'threat' : undefined}>
-                    {verifyQ.data.verdict.replace('_', ' ')}
-                  </Tag>
+                  {/* Neutral, not the threat red: the filed study is a supporting
+                      comparison (D9), not an alarm about the air. */}
+                  <Tag>{verifyQ.data.verdict.replace('_', ' ')}</Tag>
                   <span className={s.bannerSub}>{verifyQ.data.model.vendor}</span>
                 </div>
                 <span className={s.postBody}>{verifyQ.data.summary}</span>

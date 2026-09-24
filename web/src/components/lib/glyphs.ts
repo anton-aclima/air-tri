@@ -123,6 +123,15 @@ const OTHER = uri(`
   <circle cx="23.8" cy="40" r="3.4"/>
 `);
 
+/**
+ * The plume axis's reach tick — an east-west bar, turned across the axis by
+ * `getAngle`. 5 units thick so it lands at ~1.35 px at the 13 px it is drawn:
+ * the same hairline as the outline it marks.
+ */
+const TICK = uri(`
+  <rect x="2" y="21.5" width="44" height="5"/>
+`);
+
 /** Cluster badge — a ring the count is drawn inside. */
 const CLUSTER = uri(`
   <path d="M24 3 A21 21 0 1 1 23.9 3 Z M24 10 A14 14 0 1 0 24.1 10 Z"/>
@@ -131,7 +140,7 @@ const CLUSTER = uri(`
 export const GLYPH = {
   tower: TOWER, mast: MAST, puck: PUCK,
   stack: STACK, cooling: COOLING, genset: GENSET, substation: SUBSTATION, gate: GATE,
-  vehicle: VEHICLE, site: SITE, cluster: CLUSTER,
+  vehicle: VEHICLE, site: SITE, cluster: CLUSTER, tick: TICK,
   smell: SMELL, noise: NOISE, smoke: SMOKE, dust: DUST, health: HEALTH,
   light: LIGHT, traffic: TRAFFIC, vibration: VIBRATION, other: OTHER,
 } as const;

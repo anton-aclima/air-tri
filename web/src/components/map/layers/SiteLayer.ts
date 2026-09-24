@@ -25,6 +25,17 @@ export interface SiteLayerProps {
   labels?: boolean;
   /** Brand emoji beside the label. Default true. */
   branding?: boolean;
+  /**
+   * `'fill'` (default): a brand-coloured wash under a brand-coloured edge.
+   * `'outline'`: a single neutral `--ink-2` edge, no wash, no brand colour —
+   * for maps where CONTRACT §10b makes measurement the only filled or inked
+   * thing. On the industry deck the washed campus was the loudest shape
+   * beside the plume it emits, and then its orange brand edge (Ridgeline's
+   * #C9773A, a long thin polygon) read as one more hot measured street, one
+   * of five things drawn orange (phase 3 review). The footprint stays
+   * clickable either way.
+   */
+  footprint?: 'fill' | 'outline';
   /** 0–1 pulse — active emission points breathe. Feed from `usePulse()`. */
   pulse?: number;
   hoveredId?: string | null;
@@ -85,7 +96,7 @@ const STATUS_ALPHA: Record<string, number> = {
 export function SiteLayer(props: SiteLayerProps): LayersList {
   const {
     id = 'sites', data, theme, emissionPoints = true, labels = true, branding = true,
-    pulse = 0, hoveredId, selectedId, onHover, onClick, visible = true, pickable = true,
+    footprint = 'fill', pulse = 0, hoveredId, selectedId, onHover, onClick, visible = true, pickable = true,
   } = props;
 
   const sites = data ?? [];
@@ -118,25 +129,33 @@ export function SiteLayer(props: SiteLayerProps): LayersList {
       stroked: false,
       filled: true,
       getPolygon: (d) => d.polygon as unknown as Position[],
-      getFillColor: (d) => brand(theme, d.site, (d.site.id === selectedId ? 0.34 : 0.2) * dim(d.site)),
+      // Alpha 0 in 'outline' rather than no layer: deck still picks a
+      // transparent polygon, and the footprint is by far the biggest target.
+      getFillColor: (d) => brand(
+        theme, d.site, footprint === 'outline' ? 0 : (d.site.id === selectedId ? 0.34 : 0.2) * dim(d.site),
+      ),
       onHover,
       onClick,
-      updateTriggers: { getFillColor: [selectedId, theme.css('actor-industry')] },
+      updateTriggers: { getFillColor: [selectedId, theme.css('actor-industry'), footprint] },
     }));
 
     // Two-pass edge: a soft outer wash then a crisp 1.5px line — reads drawn
     // rather than filled, which is what stops a big polygon dominating the grid.
-    layers.push(new PathLayer<Outline>({
-      id: `${id}-edge-soft`,
-      data: outlines,
-      visible,
-      pickable: false,
-      widthUnits: 'pixels',
-      getPath: (d) => d.path as unknown as Position[],
-      getWidth: 6,
-      getColor: (d) => brand(theme, d.site, 0.16 * dim(d.site)),
-      updateTriggers: { getColor: theme.css('actor-industry') },
-    }));
+    // 'outline' drops the wash and the brand colour: one neutral hairline.
+    const neutral = footprint === 'outline';
+    if (!neutral) {
+      layers.push(new PathLayer<Outline>({
+        id: `${id}-edge-soft`,
+        data: outlines,
+        visible,
+        pickable: false,
+        widthUnits: 'pixels',
+        getPath: (d) => d.path as unknown as Position[],
+        getWidth: 6,
+        getColor: (d) => brand(theme, d.site, 0.16 * dim(d.site)),
+        updateTriggers: { getColor: theme.css('actor-industry') },
+      }));
+    }
     layers.push(new PathLayer<Outline>({
       id: `${id}-edge`,
       data: outlines,
@@ -144,11 +163,15 @@ export function SiteLayer(props: SiteLayerProps): LayersList {
       pickable: false,
       widthUnits: 'pixels',
       getPath: (d) => d.path as unknown as Position[],
-      getWidth: (d) => (d.site.id === selectedId || d.site.id === hoveredId ? 2.4 : 1.5),
-      getColor: (d) => brand(theme, d.site, 0.95 * dim(d.site)),
+      getWidth: (d) => (d.site.id === selectedId || d.site.id === hoveredId
+        ? (neutral ? 2 : 2.4)
+        : (neutral ? 1.25 : 1.5)),
+      getColor: (d) => (neutral
+        ? theme.color('ink-2', 0.75 * dim(d.site))
+        : brand(theme, d.site, 0.95 * dim(d.site))),
       updateTriggers: {
-        getWidth: [selectedId, hoveredId],
-        getColor: theme.css('actor-industry'),
+        getWidth: [selectedId, hoveredId, footprint],
+        getColor: [theme.css('actor-industry'), theme.css('ink-2'), footprint],
       },
     }));
   }

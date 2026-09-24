@@ -1,0 +1,422 @@
+{
+ "what": "Advisor replies recorded on the pinned build during the phase 3 review (2026-09-23): the model's (`llm`, claude-opus-5, via POST /advisor then GET /advisor/{id}) and the rules engine's before this phase (`rules_before_phase3`). Each broke a rule the phase 3 honesty review names — attribution without F7, a cut on an ended alert or another operator's monitor, datacentre advice to a works or a terminal. tests/test_advisor_copy.py holds `advisor_copy.screen` to refusing each one, and to accepting the one that F7 allows. Captured as displayed (the scratch run printed each action as label | detail | impact); do not regenerate — a live model will not say the same thing twice.",
+ "datagen_now": "2026-08-28T13:54:00",
+ "replies": [
+  {
+   "alert_id": "al-mobile-diesel-00",
+   "site_id": "site-ridgeline",
+   "source": "llm",
+   "request_id": "adv_321560b837a8",
+   "reply": {
+    "recommendation": "Take diesel backup banks 1 and 2 down to 40% load for the next 8 hours, and shift the load to turbine banks A-F. The diesel alert is a Watch on Paul R Lowry Road, 470 m W of the site, at 6.88 ug/m3 against a 3.0 ug/m3 8-hour level. Measured wind is from the south at 2.0 m/s, light and steady, pushing air north over Boxtown, so the diesel banks on the south side are the ones to touch.",
+    "actions": [
+     {
+      "label": "Cut diesel backup banks 1 and 2 to 40% for 8 hours",
+      "detail": "Banks 1 and 2 sit SSW and SSE at 151 m with 12 m stacks — the lowest release points on the site and directly upwind under the measured south wind. Hold the reduction through the 8-hour averaging window.",
+      "impact": "About 45-55% lower diesel particulate at the west and north fenceline within one to two hours (estimate)."
+     },
+     {
+      "label": "Move the load onto turbine banks A-F",
+      "detail": "Turbines have 21 m stacks and sit NE/ENE, downwind of the fenceline segment in question. Ramp them to cover the diesel shortfall rather than shedding IT load.",
+      "impact": "Keeps 268 MW IT load intact; adds little to the west fenceline under the measured south wind (estimate)."
+     },
+     {
+      "label": "Hold north gate truck movements to daylight blocks",
+      "detail": "Three Boxtown reports mention idling and overnight running near Paul R Lowry Road. Batch deliveries and enforce no-idle in the queue at the north gate.",
+      "impact": "Modest — cuts a near-ground diesel source that mobile measurement picks up strongly at street level."
+     },
+     {
+      "label": "Re-run the Cypress Ridge dispersion study",
+      "detail": "The study weighted Boxtown and White Chapel at 13.5% of hours; our fleet measured 25.1% across 11,281 observations, and it assumed 4.1% WSW against our 9.9%. It understates exposure toward those neighborhoods.",
+      "impact": "Corrects the planning basis for Boxtown-facing operations."
+     }
+    ],
+    "rationale": "Measured wind is from 185° at 2.0 m/s with a tight 25° spread over 17 observations, so air is moving steadily north from the south-side diesel banks toward Boxtown. Light wind and 12 m stacks mean poor lift and little dilution over the 470 m to the alert segment. The turbines are taller and sit on the opposite, downwind side of the campus, so shifting load to them is the cheapest way to cut the diesel signal."
+   }
+  },
+  {
+   "alert_id": "al-no2-0034-012",
+   "site_id": "site-ridgeline",
+   "source": "llm",
+   "request_id": "adv_e462c9aa3eef",
+   "reply": {
+    "recommendation": "Wind is from the south at about 2 m/s (our vehicle anemometers), pushing the plume straight north over the Riverport Road reference monitor, 6.3 km NE of the site, where NO2 hit 60.2 ppb against the 60 ppb 1-hour watch. Throttle turbine banks D, A, B and E by 30% for 4 hours and take diesel backup banks 1 and 2 off line. Expect roughly 25-35% lower NO2 at the north and northeast fenceline within an hour.",
+    "actions": [
+     {
+      "label": "Throttle turbine banks D, A, B, E by 30% for 4 hours",
+      "detail": "These four banks sit NNE to NE of the centroid, directly upwind-to-downwind of the plume path. Shift the IT load they carry to banks C and F where the interconnect allows.",
+      "impact": "About 30% lower NO2 at the north fenceline within one hour (estimate); Riverport Road should fall back under the 60 ppb watch within 2-3 hours."
+     },
+     {
+      "label": "Take diesel backup banks 1 and 2 off line",
+      "detail": "Both banks are active on 12 m stacks south of the centroid. Low stacks in light southerly wind put their plume straight through the campus and out north. Return to standby unless grid support requires them.",
+      "impact": "Roughly another 10-15% off the north and east fenceline readings (estimate)."
+     },
+     {
+      "label": "Hold north gate truck movements to scheduled deliveries only",
+      "detail": "Idling queues at the north gate add ground-level NO2 under light wind. Meter arrivals and enforce no idling for 4 hours.",
+      "impact": "Small but real, a few ppb at the east fenceline (estimate)."
+     },
+     {
+      "label": "Re-run the Cypress Ridge dispersion study",
+      "detail": "Our fleet measured 9.9% of hours with wind from WSW against the study's 4.1%, and 25.1% of hours toward Boxtown and White Chapel against the study's 13.5%. The study understates across 11,281 observations. Commission a re-run on the measured rose.",
+      "impact": null
+     }
+    ],
+    "rationale": "Measured wind is from 185° at about 2 m/s with a tight 25° spread, so the plume travels north and the Riverport Road monitor at 6.3 km NE sits near that path. The north fenceline reading is the highest on site at 121 ppb and falling, which is why the northern turbine banks and the two low-stack diesel banks are the levers that matter. Light wind and class C stability mean less dilution than the consultant's study assumed, so cut source strength rather than wait for the wind to do it."
+   }
+  },
+  {
+   "alert_id": "al-windshift-00",
+   "site_id": "site-ridgeline",
+   "source": "llm",
+   "request_id": "adv_dec285a2f058",
+   "reply": {
+    "recommendation": "Measured wind is from the south (185°, about 2 m/s) and carrying air from the site toward the north, over the north fenceline and on toward Boxtown to the NE. This alert is site-wide, no single location. Shut down Diesel backup banks 1 and 2 and throttle Turbine banks D, A and E (the NNE/NE stacks) by 30% for the next 4 hours.",
+    "actions": [
+     {
+      "label": "Shut down diesel backup banks 1 and 2",
+      "detail": "Both banks are running with 12 m stacks. Drop them to standby and carry the load on the turbines while measured wind stays southerly.",
+      "impact": "About 20-30% lower NO2 at the north and NE fenceline within an hour (estimate)"
+     },
+     {
+      "label": "Throttle turbine banks D, A, E by 30% for 4 hours",
+      "detail": "These sit NNE to NE at 155-231 m, directly upwind of the north fenceline on the current measured flow. Shift load to banks C and F where interconnect allows.",
+      "impact": "About 25-35% lower modelled NO2 at fenceline N and NE over the 4 hours (estimate)"
+     },
+     {
+      "label": "Watch fenceline N and NE against the 60 ppb watch level",
+      "detail": "Fenceline N peaked near 121 ppb and has come down to about 23 ppb; NE and E are on the same downward path. If any station turns back above 60 ppb on the hour average, extend the throttle and deepen to 50%.",
+      "impact": "Keeps the 1-hour watch level from being re-crossed during the southerly episode"
+     },
+     {
+      "label": "Re-run the dispersion study with our measured rose",
+      "detail": "The Cypress Ridge AERMOD report understates the SW and WSW sectors: it weighted 13.5% of hours toward Boxtown and White Chapel, our fleet measured 25.1% across 11,281 observations. Base planning on the measurement and send the study back for re-run.",
+      "impact": null
+     },
+     {
+      "label": "Propose the throttle as a mitigation to the Boxtown reports",
+      "detail": "Smell and noise reports on Paul R Lowry Road, 2.8 km NE, already show mitigation proposed. Log this diesel shutdown and turbine throttle against them; only the air agency or Aclima can close a resident's report.",
+      "impact": null
+     }
+    ],
+    "rationale": "Measured wind over the last 24 h is from the south at about 2 m/s with a tight 25° spread, so air from the site is moving north toward fenceline N and on toward Boxtown to the NE. The diesel banks and the NNE/NE turbine stacks are the points sitting upwind of that path, and the low wind speed with class C air gives little dilution. Our own rose puts far more hours on the SW/WSW sectors than the consultant assumed, so the plume points closer to Boxtown and White Chapel more often than the permit model shows."
+   }
+  },
+  {
+   "alert_id": "al-cluster-07",
+   "site_id": "site-ridgeline",
+   "source": "llm",
+   "request_id": "adv_5b9ca78f267c",
+   "reply": {
+    "recommendation": "Wind measured on our vehicles is from the south (185°) at about 2 m/s, pushing everything north — straight over the report cluster 1.2 km NNW of the site on Paul R Lowry Road. Take diesel backup banks 1 and 2 off load now, and throttle turbine banks D and A by 30% for 6 hours. Expect roughly 25-35% lower NO2 at the north fenceline within an hour.",
+    "actions": [
+     {
+      "label": "Drop diesel backup banks 1 and 2 to zero load",
+      "detail": "Both banks are running at 151 m south of centroid with 12 m stacks — low, upwind, directly in line with the northward flow. Shed them to grid/turbine supply and keep them down while wind stays in the S sector.",
+      "impact": "About 20-30% lower NO2 at the north fenceline within an hour, and the largest single cut to what reaches the NNW cluster (estimate)."
+     },
+     {
+      "label": "Throttle turbine banks D and A by 30% for 6 hours",
+      "detail": "Bank D (NNE, 174 m) and bank A (NE, 231 m) sit closest to the downwind edge. Redistribute load to banks C and F on the east side if IT load allows.",
+      "impact": "Another 10-15% lower NO2 at the north and NNE fenceline monitors (estimate)."
+     },
+     {
+      "label": "Hold north gate truck movements to scheduled windows",
+      "detail": "Residents reported idling queues and night-time noise. Stage deliveries off-shoulder and cut idling at the gate until wind shifts out of the S sector.",
+      "impact": "Small NO2 effect; directly addresses the traffic and noise reports in Boxtown (estimate)."
+     },
+     {
+      "label": "Re-run the Cypress Ridge dispersion study with our measured rose",
+      "detail": "The study weighted WSW winds at 4.1% of hours; our fleet measured 9.9% over 11,281 observations, and Boxtown/White Chapel exposure hours are 25.1% against the study's 13.5%. The study understates. Post the throttle plan as a proposed mitigation on the open community reports — the air agency or Aclima decides their status.",
+      "impact": "No immediate fenceline change; corrects the planning basis for ENE-facing receptors."
+     }
+    ],
+    "rationale": "Measured wind is steady from the south with a tight 25° spread over 17 observations, so the transport path is a narrow corridor toward 7°N — the same line as the cluster 1.2 km NNW. The diesel banks and turbine banks D and A are the active points sitting in that corridor with the lowest stacks and shortest range to the north fenceline, where readings peaked at 121 ppb earlier in the run. Our own rose also shows more WSW hours than the consultant assumed, so the ENE receptors at Boxtown and White Chapel need the study re-run on measured data."
+   }
+  },
+  {
+   "alert_id": "al-mobile-bc-00",
+   "site_id": "site-deltaforge",
+   "source": "llm",
+   "request_id": "adv_399de4c53655",
+   "reply": {
+    "recommendation": "Wind is measured from the south at 5.2 m/s, carrying air from the site toward the north — straight over the black carbon alert 241 m NNW of us on Channel Avenue (Watch, 7.57 ug/m3 against a 5 ug/m3 1-hour level). Cut the standby generator pad to zero and pull Remelt furnace stacks A and B back 30% for the next 6 hours, and hold the scrap yard gate to essential trucks only.",
+    "actions": [
+     {
+      "label": "Shut down standby generator pad now",
+      "detail": "Take the diesel standby pad offline and carry the load on the gas boilers. Its 9 m stack is the lowest-level soot source and sits directly upwind of Channel Avenue.",
+      "impact": "About 30-40% lower black carbon at the north fenceline within an hour (estimate)"
+     },
+     {
+      "label": "Throttle Remelt furnace stacks A and B by 30% for 6 h",
+      "detail": "Reduce charge rate on both remelt furnaces through the afternoon and reassess at 19:00 local. Favour clean, dry scrap on the remaining charges.",
+      "impact": "About 15-25% lower modelled black carbon contribution along the NNW fenceline (estimate)"
+     },
+     {
+      "label": "Restrict scrap yard gate traffic and wet the road",
+      "detail": "Essential deliveries only for the next 6 h, idle-off at the gate, and wet-sweep the gate apron and haul road. This is a 3 m release point 242 m WNW, close to the alert segment.",
+      "impact": "About 20% less re-entrained dust and truck soot near Channel Avenue (estimate)"
+     },
+     {
+      "label": "Re-run the dispersion study with our measured wind",
+      "detail": "Our fleet measured 9.9% of hours with wind from WSW against the 4.1% the Cypress Ridge AERMOD screening assumed, and 25.1% of hours pointing at President's Island versus 13.5% weighted. The study understates exposure toward President's Island; commission a re-run on measured wind. Separately, propose the gate wetting and traffic limits as a mitigation in response to the dust report in President's Island.",
+      "impact": null
+     }
+    ],
+    "rationale": "Measured wind from 186° at 5.2 m/s with a tight 20.7° spread puts the plume travel direction at about 7°, aligned within a few degrees of the alert 241 m NNW of the centroid. The low-level sources — the 9 m standby pad and the 3 m scrap yard gate — dominate near-fenceline black carbon because they get little plume rise compared with the 34 m furnace stacks. No reference monitor in the network measures black carbon, so the mobile pass is the only signal available and it warrants acting on the low stacks first."
+   }
+  },
+  {
+   "alert_id": "al-cluster-05",
+   "site_id": "site-deltaforge",
+   "source": "llm",
+   "request_id": "adv_d608810ac507",
+   "reply": {
+    "recommendation": "Measured wind is from the south at 5.2 m/s, steady (spread about 21° over 47 observations in the last 6 h), so the plume is running north over the scrap yard side — not toward the Channel Avenue alert, which sits ENE 1.25 km from the site centroid. Hold the north-line load down: cut Remelt furnace stack A by 25% and stack B by 15% for the next 6 hours, and keep the standby diesel pad off load. That should put roughly 20-25% less NO2 on the north fenceline while the wind holds.",
+    "actions": [
+     {
+      "label": "Throttle Remelt furnace stack A by 25% for 6 hours",
+      "detail": "Stack A sits NNE 213 m from centroid and is directly on the downwind line with wind from 186°. Shift remelt batches to the cooler end of the schedule for the afternoon.",
+      "impact": "About 20-25% lower NO2 at the north fenceline within one hour (estimate)."
+     },
+     {
+      "label": "Throttle Remelt furnace stack B by 15% for 6 hours",
+      "detail": "Stack B is ESE 46 m out and contributes to the same north-running plume. Trim charge rate rather than cycling the burner.",
+      "impact": "About 10% further reduction on the north and NNE fenceline (estimate)."
+     },
+     {
+      "label": "Keep the standby generator pad off load",
+      "detail": "The 9 m pad stack is SW 81 m out; its low release height puts NO2 into the near-field before it lifts. Run no non-essential load tests until the wind backs off the southerly.",
+      "impact": "Avoids roughly 5-10 ppb of near-field NO2 on the north fenceline (estimate)."
+     },
+     {
+      "label": "Re-run the Title V dispersion screening on measured wind",
+      "detail": "The Cypress Ridge AERMOD screening assumed 4.1% of hours from WSW; our fleet measured 9.9% across 11,281 observations, and President's Island hours were weighted 13.5% against 25.1% measured. The study understates the ENE-carrying cases — give the consultant the measured rose.",
+      "impact": null
+     }
+    ],
+    "rationale": "Measured wind from 186° at 5.2 m/s in neutral-to-unstable class C air carries both remelt stacks' output toward 7°, due north, so the north fenceline is where a cut pays. The Channel Avenue alert lies ENE at 1.25 km and is reached on WSW winds, which our rose shows happen almost 10% of hours — far more than the study assumed — so the throttle also builds margin for the next WSW shift."
+   }
+  },
+  {
+   "alert_id": "al-no2-0034-016",
+   "site_id": "site-riverport",
+   "source": "llm",
+   "request_id": "adv_7ad090b42df6",
+   "reply": {
+    "recommendation": "Warning alert: 104.7 ppb NO2 on the 1-hour standard at the Riverport Road reference monitor, 425 m NW of the site. Our vehicle anemometers have the wind from SSW (196°) at 3.0 m/s, pushing site air toward the NNE — north gate traffic is the nearest thing upwind of that monitor. Cut North truck gate throughput by 50% and drop the reefer genset row to 60% load for the next 4 hours, and re-check the monitor each hour.",
+    "actions": [
+     {
+      "label": "Cut North truck gate throughput 50% for 4 hours",
+      "detail": "Meter arrivals at the north gate and route the balance to the South gate; hold idling trucks to under 3 minutes in the queue.",
+      "impact": "About 25-35% lower NO2 at the north/northwest fenceline within one hour (estimate)."
+     },
+     {
+      "label": "Drop reefer genset row to 60% load for 4 hours",
+      "detail": "Stage reefer pre-cooling so no more than 60% of the genset row runs at once; shift the rest to shore power or after 18:00.",
+      "impact": "About 15-20% lower NO2 contribution downwind of the genset row (estimate)."
+     },
+     {
+      "label": "Idle-limit the yard tractors and fuelling apron for 4 hours",
+      "detail": "Shut down diesel yard tractors between moves and pause non-urgent fuelling on the apron until the hourly reading at Riverport Road falls below 60 ppb.",
+      "impact": "About 10% lower NO2 at the west fenceline (estimate)."
+     },
+     {
+      "label": "Re-run the dispersion study with our measured wind rose",
+      "detail": "The Marsh & Kettering CALPUFF study understates across 11,281 observations: it assumed 4.1% of hours from WSW, we measured 9.9%, and it weighted Pisgah Heights at 13.5% of hours against 25.1% measured. Send the fleet rose to the consultant and base the next permit case on it. Alongside that, offer Pisgah Heights the genset load limit as a proposed mitigation for the smell and vibration reports — the air agency or Aclima handles the reports themselves.",
+      "impact": "No same-day fenceline effect; corrects the planning basis for the NNE/ENE sectors."
+     }
+    ],
+    "rationale": "Measured wind is from the SSW at 3.0 m/s with a tight 30° spread over 35 observations, so site air is tracking NNE — the north gate and genset row sit on that path and are the two points worth touching. The alert monitor is only 425 m NW, close enough that ground-level traffic emissions at 3 m stacks dominate what reaches it. Stability class C and a deep boundary layer help dilution, so load cuts should show at the monitor inside an hour."
+   }
+  },
+  {
+   "alert_id": "al-mobile-diesel-00",
+   "site_id": "site-ridgeline",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "Throttle Diesel backup bank 1 (10 x 3.2 MW), Diesel backup bank 2 (10 x 3.2 MW) by 15% for the next 2 h. The Diesel alert is 470 m W of the site — 6.9 against 3 ug/m3 (129% over). Shift deferrable compute to the E side of the campus while the level is elevated.",
+    "actions": [
+     {
+      "label": "Reduce diesel backup generators by 15%",
+      "detail": "Apply to Diesel backup bank 1 (10 x 3.2 MW), Diesel backup bank 2 (10 x 3.2 MW) for 2 h, then step back in 10% increments while watching your fenceline sensors.",
+      "impact": "About 8% lower Diesel at the fenceline within one averaging period (estimate)"
+     },
+     {
+      "label": "Defer non-urgent compute",
+      "detail": "Move batch and training workloads out of the 2 h window, or to racks fed from grid supply rather than on-site generation.",
+      "impact": "Removes 7% of generation demand without a customer-visible impact"
+     },
+     {
+      "label": "Check your fenceline sensors before reporting",
+      "detail": "Compare the Diesel reading with your own fenceline sensors and the nearest reference monitor. One sensor over the line does not say where the air came from.",
+      "impact": null
+     }
+    ],
+    "rationale": "The diesel indicator isolates compression-ignition exhaust, so diesel backup generators is the shortest lever. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. The governing action level is Diesel exposure 8-hour at 3 ug/m3 (integrated, 8 h)."
+   }
+  },
+  {
+   "alert_id": "al-no2-0034-012",
+   "site_id": "site-ridgeline",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "Throttle Turbine bank A (4 x 14.6 MW), Turbine bank B (4 x 14.6 MW), Turbine bank C (4 x 14.6 MW) by 25% for the next 2 h. The NO2 alert is 6.3 km NE of the site — 60.2 against 60 ppb (0% over). The wind is carrying air from the site toward it. Shift deferrable compute to the SW side of the campus while the level is elevated.",
+    "actions": [
+     {
+      "label": "Reduce gas turbine load by 25%",
+      "detail": "Apply to Turbine bank A (4 x 14.6 MW), Turbine bank B (4 x 14.6 MW), Turbine bank C (4 x 14.6 MW) for 2 h, then step back in 10% increments while watching your fenceline sensors.",
+      "impact": "About 18% lower NO2 at the fenceline within one averaging period (estimate)"
+     },
+     {
+      "label": "Defer non-urgent compute",
+      "detail": "Move batch and training workloads out of the 2 h window, or to racks fed from grid supply rather than on-site generation.",
+      "impact": "Removes 12% of generation demand without a customer-visible impact"
+     },
+     {
+      "label": "Check your fenceline sensors before reporting",
+      "detail": "Compare the NO2 reading with your own fenceline sensors and the nearest reference monitor. One sensor over the line does not say where the air came from.",
+      "impact": null
+     },
+     {
+      "label": "Re-run the dispersion study with our measured rose",
+      "detail": "Ridgeline South Campus — Phase 1 Air Dispersion Modelling Report under-weights wind from the SW and the WSW, which carries air toward Boxtown and White Chapel. It assumed 13.5% of hours carrying air toward Boxtown; our vehicles measured 25.1%. Plan on that transport until the study is revised.",
+      "impact": "The filed study matches the wind the fleet measured before the next permit review"
+     }
+    ],
+    "rationale": "Combustion NOx tracks turbine load almost linearly, so gas turbine load is the shortest lever. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. Against the wind our vehicles measured, Ridgeline South Campus — Phase 1 Air Dispersion Modelling Report understates how often the wind blows from some directions. The governing action level is NO2 1-hour watch at 60 ppb (spike, 1 h). In neutral air your fenceline runs +11 ppb over comparable roads, measured over 7 episodes."
+   }
+  },
+  {
+   "alert_id": "al-windshift-00",
+   "site_id": "site-ridgeline",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "The wind our vehicles measured disagrees with Ridgeline South Campus — Phase 1 Air Dispersion Modelling Report. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. Plan load on the measured wind, not the study's, and have the study re-run against it before the next permit filing.",
+    "actions": [
+     {
+      "label": "Plan load on the measured wind",
+      "detail": "Use the fleet's measured rose, not the study's, to decide which nights need a lower load.",
+      "impact": null
+     },
+     {
+      "label": "Re-run the dispersion study with our measured rose",
+      "detail": "Ridgeline South Campus — Phase 1 Air Dispersion Modelling Report under-weights wind from the SW and the WSW, which carries air toward Boxtown and White Chapel. It assumed 13.5% of hours carrying air toward Boxtown; our vehicles measured 25.1%. Plan on that transport until the study is revised.",
+      "impact": "The filed study matches the wind the fleet measured before the next permit review"
+     }
+    ],
+    "rationale": "Combustion NOx tracks turbine load almost linearly, so gas turbine load is the shortest lever. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. Against the wind our vehicles measured, Ridgeline South Campus — Phase 1 Air Dispersion Modelling Report understates how often the wind blows from some directions. The governing action level is NO2 1-hour watch at 60 ppb (spike, 1 h). In neutral air your fenceline runs +11 ppb over comparable roads, measured over 7 episodes."
+   }
+  },
+  {
+   "alert_id": "al-cluster-07",
+   "site_id": "site-ridgeline",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "6 community reports (health, noise, smell, traffic) have clustered 1.2 km NNW of the site. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. Post an acknowledgement to the community feed today, then throttle Turbine bank A (4 x 14.6 MW), Turbine bank D (4 x 14.6 MW), Turbine bank B (4 x 14.6 MW) by 25% during the reported hours.",
+    "actions": [
+     {
+      "label": "Acknowledge in the community feed",
+      "detail": "Post a short, plain-language update naming the window you are investigating. Only the air agency or Aclima can close a resident's report; proposing a mitigation is the step open to you.",
+      "impact": "Residents see that you are looking at the same hours they reported"
+     },
+     {
+      "label": "Throttle gas turbine load by 25% during the reported hours",
+      "detail": "Apply to Turbine bank A (4 x 14.6 MW), Turbine bank D (4 x 14.6 MW), Turbine bank B (4 x 14.6 MW) across the same time-of-day window the reports came from, for 2 h.",
+      "impact": "About 18% lower NO2 toward the reporting neighbourhood (estimate)"
+     },
+     {
+      "label": "Pull your own logs for the reported window",
+      "detail": "Cross-check generator starts, cooling-tower cycles and gate truck traffic against the report timestamps.",
+      "impact": null
+     }
+    ],
+    "rationale": "Combustion NOx tracks turbine load almost linearly, so gas turbine load is the shortest lever. Our vehicles measured wind from the S at 2.0 m/s over the last 24 h (spread 25° over 17 observations), carrying air from the site toward the N. The governing action level is NO2 1-hour watch at 60 ppb (spike, 1 h). In neutral air your fenceline runs +11 ppb over comparable roads, measured over 7 episodes."
+   }
+  },
+  {
+   "alert_id": "al-mobile-bc-00",
+   "site_id": "site-deltaforge",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "Throttle Standby generator pad by 25% for the next 2 h. The BC alert is 240 m NNW of the site — 7.6 against 5 ug/m3 (51% over). The wind is carrying air from the site toward it. Shift deferrable compute to the SSE side of the campus while the level is elevated.",
+    "actions": [
+     {
+      "label": "Reduce diesel backup generators by 25%",
+      "detail": "Apply to Standby generator pad for 2 h, then step back in 10% increments while watching your fenceline sensors.",
+      "impact": "About 18% lower BC at the fenceline within one averaging period (estimate)"
+     },
+     {
+      "label": "Defer non-urgent compute",
+      "detail": "Move batch and training workloads out of the 2 h window, or to racks fed from grid supply rather than on-site generation.",
+      "impact": "Removes 12% of generation demand without a customer-visible impact"
+     },
+     {
+      "label": "Check your fenceline sensors before reporting",
+      "detail": "Compare the BC reading with your own fenceline sensors and the nearest reference monitor. One sensor over the line does not say where the air came from.",
+      "impact": null
+     }
+    ],
+    "rationale": "Black carbon is a direct diesel-soot marker, so diesel backup generators is the shortest lever. Our vehicles measured wind from the S at 5.2 m/s over the last 6 h (spread 21° over 47 observations), carrying air from the site toward the N. The governing action level is Black carbon 1-hour spike at 5 ug/m3 (spike, 1 h)."
+   }
+  },
+  {
+   "alert_id": "al-cluster-05",
+   "site_id": "site-deltaforge",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "7 community reports (dust) have clustered 1.3 km ENE of the site. Our vehicles measured wind from the S at 5.2 m/s over the last 6 h (spread 21° over 47 observations), carrying air from the site toward the N. Post an acknowledgement to the community feed today, then throttle Remelt furnace stack A, Remelt furnace stack B by 25% during the reported hours.",
+    "actions": [
+     {
+      "label": "Acknowledge in the community feed",
+      "detail": "Post a short, plain-language update naming the window you are investigating. Only the air agency or Aclima can close a resident's report; proposing a mitigation is the step open to you.",
+      "impact": "Residents see that you are looking at the same hours they reported"
+     },
+     {
+      "label": "Throttle gas turbine load by 25% during the reported hours",
+      "detail": "Apply to Remelt furnace stack A, Remelt furnace stack B across the same time-of-day window the reports came from, for 4 h.",
+      "impact": "About 13% lower NO2 toward the reporting neighbourhood (estimate)"
+     },
+     {
+      "label": "Pull your own logs for the reported window",
+      "detail": "Cross-check generator starts, cooling-tower cycles and gate truck traffic against the report timestamps.",
+      "impact": null
+     },
+     {
+      "label": "Re-run the dispersion study with our measured rose",
+      "detail": "Delta Forge Channel Avenue Works — Title V Renewal Dispersion Screening under-weights wind from the SW and the WSW, which carries air toward President's Island. It assumed 13.5% of hours carrying air toward President's Island; our vehicles measured 25.1%. Plan on that transport until the study is revised.",
+      "impact": "The filed study matches the wind the fleet measured before the next permit review"
+     }
+    ],
+    "rationale": "Combustion NOx tracks turbine load almost linearly, so gas turbine load is the shortest lever. Our vehicles measured wind from the S at 5.2 m/s over the last 6 h (spread 21° over 47 observations), carrying air from the site toward the N. Against the wind our vehicles measured, Delta Forge Channel Avenue Works — Title V Renewal Dispersion Screening understates how often the wind blows from some directions. The governing action level is NO2 1-hour watch at 60 ppb (spike, 1 h). In neutral air your fenceline runs +5 ppb over comparable roads, measured over 9 episodes."
+   }
+  },
+  {
+   "alert_id": "al-no2-0034-016",
+   "site_id": "site-riverport",
+   "source": "rules_before_phase3",
+   "reply": {
+    "recommendation": "Throttle Yard tractor fuelling apron, Reefer genset row by 25% for the next 4 h. The NO2 alert is 430 m NW of the site — 104.7 against 100 ppb (5% over). Shift deferrable compute to the SE side of the campus while the level is elevated.",
+    "actions": [
+     {
+      "label": "Reduce gas turbine load by 25%",
+      "detail": "Apply to Yard tractor fuelling apron, Reefer genset row for 4 h, then step back in 10% increments while watching your fenceline sensors.",
+      "impact": "About 13% lower NO2 at the fenceline within one averaging period (estimate)"
+     },
+     {
+      "label": "Defer non-urgent compute",
+      "detail": "Move batch and training workloads out of the 4 h window, or to racks fed from grid supply rather than on-site generation.",
+      "impact": "Removes 12% of generation demand without a customer-visible impact"
+     },
+     {
+      "label": "Check your fenceline sensors before reporting",
+      "detail": "Compare the NO2 reading with your own fenceline sensors and the nearest reference monitor. One sensor over the line does not say where the air came from.",
+      "impact": null
+     }
+    ],
+    "rationale": "Combustion NOx tracks turbine load almost linearly, so gas turbine load is the shortest lever. Our vehicles measured wind from the SSW at 3.0 m/s over the last 24 h (spread 30° over 35 observations), carrying air from the site toward the NNE. The governing action level is NO2 1-hour watch at 60 ppb (spike, 1 h). In neutral air your fenceline runs +3 ppb over comparable roads, measured over 16 episodes."
+   }
+  }
+ ]
+}

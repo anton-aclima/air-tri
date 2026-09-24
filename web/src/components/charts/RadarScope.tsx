@@ -1,6 +1,13 @@
 /**
  * RadarScope — the industry radar warning receiver.
  *
+ * RETIRED from the industry deck (PLAN-refocus D8 / I3): the map now carries
+ * the story on its own, and a second geometry that has to agree with the map
+ * is a second thing that can disagree with it. Kept for the gallery and for
+ * reference until the backlog item "delete RadarScope if admin and the gallery
+ * don't use it" is taken. Its vocabulary (contacts, codes, bearings) is not
+ * product copy — do not lift it into a screen.
+ *
  * This is the one screen a datacenter operator should be able to read from three
  * metres away without interpreting anything: WHAT is wrong, WHICH WAY, HOW FAR,
  * HOW BAD. It is a plan-position indicator, not an analytics chart — so it is
@@ -41,7 +48,7 @@ import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures';
 import { fmtBearing, fmtDistance, fmtElapsed } from '@/core/format';
 import { useNowCampaign } from '@/core/session';
 import { useTheme } from '../lib/theme';
-import { ALERT_KIND_CODE, SEVERITY_GLYPH } from '../lib/vizmeta';
+import { SEVERITY_GLYPH } from '../lib/vizmeta';
 import { niceCeil } from '../lib/vizmeta';
 import { geometryPositions, toPolygons } from '../lib/geo';
 import { scopeProjector } from '../lib/windField';
@@ -59,7 +66,7 @@ export interface RadarContact {
   severity: Severity;
   /** Long name, shown on hover / selection. */
   label?: string;
-  /** Four characters, shown beside the contact. `ALERT_KIND_CODE` supplies these. */
+  /** Four characters, shown beside the contact. `contactsFromAlerts` supplies these. */
   code?: string;
   source?: ContactSource;
   /** Pulses until acknowledged. */
@@ -119,6 +126,21 @@ export interface RadarScopeProps {
   style?: CSSProperties;
 }
 
+/**
+ * The dial's four-character kind codes. They live here, with the one component
+ * that prints them, so they retire with it: cockpit codes are not user copy
+ * (PLAN-refocus I11), and `vizmeta` no longer offers them to anything else.
+ */
+const KIND_CODE: Record<string, string> = {
+  exceedance: 'EXCD',
+  integrated_exposure: 'DOSE',
+  concern_cluster: 'COMM',
+  mobile_detection: 'MOBL',
+  fleet_anomaly: 'FLET',
+  regulatory_notice: 'RGLT',
+  wind_shift: 'WIND',
+};
+
 /** `GET /alerts?site_id=…` rows → contacts. The API supplies bearing + distance. */
 export function contactsFromAlerts(alerts: Alert[]): RadarContact[] {
   return alerts
@@ -129,7 +151,7 @@ export function contactsFromAlerts(alerts: Alert[]): RadarContact[] {
       distance_m: a.distance_m as number,
       severity: a.severity,
       label: a.title,
-      code: ALERT_KIND_CODE[a.kind] ?? a.kind.slice(0, 4).toUpperCase(),
+      code: KIND_CODE[a.kind] ?? a.kind.slice(0, 4).toUpperCase(),
       source: a.source_type as ContactSource,
       isNew: a.status === 'active',
       startedAt: a.started_at,

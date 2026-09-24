@@ -1,12 +1,15 @@
 /**
- * /industry/outreach — the community-facing portal, in nano scale.
+ * /industry/outreach — what residents see of this site, and a place to answer.
  *
  * A claimed building, a logo, a brand colour, and a place to say something. The
- * one thing this page must be honest about: an operator can post, and can
- * propose a mitigation, and can do nothing else. Concerns close when the
- * community and the regulator say they close. The control that would close one
- * is shown, disabled, with the reason — hiding it would let the operator
- * believe they have authority they do not have.
+ * one thing this page must be honest about: an operator can post, answer a
+ * resident's report and propose a mitigation, and can do nothing else. Only
+ * the air agency or Aclima can close a resident's report — the server refuses
+ * anyone else with a 403 (routers/concerns.py) — and every industry page says
+ * so in the same sentence, `WHO_CLOSES`. (This page used to say "the residents
+ * who filed it and DRAQA", which the server does not allow.) The control that
+ * would close one is shown, disabled, with the reason: hiding it would let the
+ * operator believe they have authority they do not have.
  */
 
 import { useMemo, useState } from 'react'
@@ -21,6 +24,9 @@ import type { SitePost } from '@/core/types'
 import { Caps, Panel, Tag, styles as s, useSiteLock } from './lib'
 
 type PostKind = SitePost['kind']
+
+/** The one answer to "who can close a resident's report", matching the server (403). */
+const WHO_CLOSES = "Only the air agency or Aclima can close a resident's report; you can answer it or propose a mitigation."
 
 export function Outreach() {
   const site = useSiteLock()
@@ -110,7 +116,7 @@ export function Outreach() {
                     { value: 'update', label: 'Operational update' },
                     { value: 'mitigation', label: 'Mitigation' },
                     { value: 'event', label: 'Planned event' },
-                    { value: 'response', label: 'Response to a concern' },
+                    { value: 'response', label: "Reply to a resident's report" },
                     { value: 'intro', label: 'Introduction' },
                   ]}
                   onValueChange={(v) => setKind(v as PostKind)}
@@ -121,7 +127,7 @@ export function Outreach() {
                   <Select
                     value={replyTo}
                     options={[
-                      { value: '', label: '— pick a concern —' },
+                      { value: '', label: '— pick a report —' },
                       ...openConcerns.map((c) => ({ value: c.id, label: `${c.title} · ${c.district ?? ''}` })),
                     ]}
                     onValueChange={(v) => setReplyTo(v)}
@@ -152,15 +158,14 @@ export function Outreach() {
               <div className={s.notice}>
                 <span className={s.noticeMark}>▲</span>
                 <span>
-                  A mitigation you file moves a concern to <b>MITIGATION PROPOSED</b> and no
-                  further. Only the residents who filed it and DRAQA can close it. This is not a
-                  UI limitation — the API returns 403.
+                  {WHO_CLOSES} Either one moves the report to “mitigation proposed” and no
+                  further; the server refuses anything else.
                 </span>
               </div>
-              <Tooltip content="Industry accounts cannot resolve a community concern. The residents and the regulator decide when it is over.">
+              <Tooltip content={WHO_CLOSES}>
                 <span style={{ display: 'inline-block' }}>
                   <Button variant="ghost" size="sm" disabled>
-                    MARK CONCERN RESOLVED
+                    CLOSE REPORT
                   </Button>
                 </span>
               </Tooltip>
@@ -170,7 +175,7 @@ export function Outreach() {
 
         {/* ── what is out there ──────────────────────────────────────── */}
         <div className={s.scrollStack}>
-          <Panel title="Open concerns near you" aside={<Caps>{openConcerns.length} open</Caps>}>
+          <Panel title="Open resident reports" aside={<Caps>{openConcerns.length} open</Caps>}>
             <div className={s.tri}>
               {openConcerns.slice(0, 10).map((c) => (
                 <div key={c.id} className={s.triRow} style={{ gridTemplateColumns: '12px minmax(0,1fr) 120px' }}>
@@ -189,7 +194,7 @@ export function Outreach() {
                   </span>
                 </div>
               ))}
-              {!openConcerns.length ? <div className={s.err}>No open concerns right now.</div> : null}
+              {!openConcerns.length ? <div className={s.err}>No open reports at the moment shown.</div> : null}
             </div>
           </Panel>
 

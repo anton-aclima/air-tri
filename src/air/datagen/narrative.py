@@ -787,7 +787,7 @@ class _World:
                 "title": title,
                 "body": body + (f" No reference monitor in the network measures {code}, so the fixed "
                                 "network cannot raise this at all."),
-                "recommendation": rec + " The tripwire exists; nothing in the fixed network can trip it.",
+                "recommendation": rec + " The action level is set, but no instrument in the fixed network measures this channel.",
                 "audience_json": json.dumps(["regulator", "admin"]),
                 "created_at": _ts(min(t0 + timedelta(minutes=40), self.now)),
             })
@@ -1191,9 +1191,21 @@ def _area_of(alert: dict, monitors: list[dict]) -> str:
 
 
 def _recommendation(code: str, severity: str, site_id: str | None, sites: dict) -> str:
-    who = sites[site_id]["name"] if site_id and site_id in sites else None
+    """The alert's stored recommendation, read by every room.
+
+    It no longer names a site. For a Warning or worse it used to add "Wind at
+    the time carried from <site>; expect to be asked about it." — naming a
+    site on the wind alone, which F7 / D7 forbids in every room (the
+    placebo-checked downwind test has to agree, and the generator has not run
+    it). `site_id` and `severity` stay in the signature so the call and the
+    RNG draw order are unchanged; shapes.unname strips the old clause from
+    databases built before this. The NO2 line named a datacentre's equipment
+    for every site; it is site-neutral now, and /alerts?site_id= words it for
+    the site it is served to.
+    """
+    del site_id, severity, sites
     base = {
-        "no2": "Check generator and turbine load for this window.",
+        "no2": "Check what was burning on site in this window.",
         "pm25": "Confirm whether this is regional haze or a local source before acting.",
         "bc": "Look at diesel movements on the approach roads.",
         "o3": "Regional and largely not locally controllable; document and monitor.",
@@ -1201,8 +1213,6 @@ def _recommendation(code: str, severity: str, site_id: str | None, sites: dict) 
         "ch4": "Survey for leaks on foot; the fixed network cannot see this.",
         "diesel": "Look at diesel movements and idling on the approach roads.",
     }.get(code, "Review operations for this window.")
-    if who and severity in ("warning", "critical"):
-        return f"{base} Wind at the time carried from {who}; expect to be asked about it."
     return base
 
 

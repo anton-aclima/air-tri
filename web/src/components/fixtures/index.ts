@@ -17,6 +17,7 @@ import type {
   SeriesPoint, WindField, WindFieldCell, WindPoint,
 } from '@/core/types';
 import { campaignMs, fromCampaignMs } from '@/core/clock';
+import { destination } from '../lib/geo';
 
 export { SEGMENTS } from './segments';
 export { BOUNDARY } from './boundary';
@@ -788,6 +789,69 @@ export const DISPERSION_PLUME: import('@/core/types').DispersionPlume = {
     };
   }),
 };
+
+/**
+ * `GET /wind/dispersion?outline=1`, the kind features only: the plume's outer
+ * edge cut at the 4 km envelope, and its axis. The outline style never reads
+ * the bands, so they are left out rather than carried with a reach that would
+ * have to be kept in step.
+ *
+ * Built the way the contract describes the server's output — ONE outer edge,
+ * cut by a straight line across the axis `detection_envelope_m` from the
+ * axis's origin, on the same geodesic (`destination`) the server places
+ * vertices with — so the gallery shows the register as it is meant to read.
+ * Stable night air at the kernel's 8,000 m limit, so `truncated` is exercised:
+ * both F-class hours sampled on the checked-in data (Aug 12 22:00, Aug 25
+ * 03:00) come back that way.
+ */
+export const DISPERSION_OUTLINE: import('@/core/types').DispersionPlumeOutlined = (() => {
+  const c = RIDGELINE.centroid;
+  const TOWARD = 196; // wind from 16°
+  const ONSET = 900;
+  const ENVELOPE = 4000;
+  const REACH = 8000;
+  const half = (x: number) => 110 + x * 0.12;
+  const pt = (x: number, y: number): Position =>
+    destination(c, TOWARD + (Math.atan2(y, x) * 180) / Math.PI, Math.hypot(x, y));
+  const ring = (x0: number, x1: number, steps = 20): Position[] => {
+    const xs = Array.from({ length: steps + 1 }, (_, i) => x0 + ((x1 - x0) * i) / steps);
+    const r = [...xs.map((x) => pt(x, -half(x))), ...[...xs].reverse().map((x) => pt(x, half(x)))];
+    return [...r, r[0]];
+  };
+  const common = {
+    site_id: 'site_ridgeline',
+    measure: 'no2' as const,
+    ts: stamp(NOW),
+    wind_dir_deg: 16,
+    stability: 'F',
+    detection_envelope_m: ENVELOPE,
+    x_reach_m: REACH,
+    truncated: true,
+  };
+  return {
+    type: 'FeatureCollection' as const,
+    features: [
+      {
+        type: 'Feature' as const,
+        geometry: { type: 'Polygon' as const, coordinates: [ring(ONSET, ENVELOPE)] },
+        properties: { ...common, kind: 'outline' as const, part: 'inside' as const },
+      },
+      {
+        type: 'Feature' as const,
+        geometry: { type: 'Polygon' as const, coordinates: [ring(ENVELOPE, REACH)] },
+        properties: { ...common, kind: 'outline' as const, part: 'beyond' as const },
+      },
+      {
+        type: 'Feature' as const,
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [c, destination(c, TOWARD, ENVELOPE), destination(c, TOWARD, REACH)],
+        },
+        properties: { ...common, kind: 'axis' as const, envelope_m: ENVELOPE, reach_m: REACH },
+      },
+    ],
+  };
+})();
 
 /** `GET /drive-plan/{id}/coverage` — passes against a 25-pass target. */
 export const COVERAGE: import('@/core/types').CoverageCell[] = SEGMENTS.features.map((f) => {

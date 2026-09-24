@@ -143,6 +143,11 @@ export function softShells(features: PlumeFeature[], intensity: number): Shell[]
 function buildShells(features: PlumeFeature[], intensity: number): Shell[] {
   const bySite = new Map<string, PlumeFeature[]>();
   for (const f of features) {
+    // Bands only. `?outline=1` adds outline and axis features (`kind`) for the
+    // regulator and industry maps; an axis is a LineString, and as a cloud
+    // shell it would be a sliver of garbage. Skipped here rather than filtered
+    // by the caller, so the cache above stays keyed on the payload itself.
+    if ((f.properties as { kind?: string }).kind) continue;
     const key = f.properties.site_id ?? '?';
     const list = bySite.get(key);
     if (list) list.push(f);

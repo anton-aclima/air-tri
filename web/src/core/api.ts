@@ -40,8 +40,13 @@ import type {
   ConcernResponse,
   ConcernStatus,
   CoverageCell,
+  DispersionAxisFeature,
+  DispersionBandFeature,
+  DispersionFeature,
   DispersionModel,
+  DispersionOutlineFeature,
   DispersionPlume,
+  DispersionPlumeOutlined,
   DrivePlan,
   FeatureCollection,
   FeedItem,
@@ -542,14 +547,49 @@ export interface DispersionParams {
   site_id?: string
   at?: string
   measure?: MeasureCode
+  /**
+   * Also return each site's outline parts and axis (`DispersionPlumeOutlined`),
+   * for the regulator and industry maps' hairline style (CONTRACT §10b, F6).
+   * Off by default, and sent only when true: without it the request — and the
+   * server's response, which a test holds byte-identical — is what it always
+   * was, so community's soft cloud and the gallery are untouched.
+   */
+  outline?: boolean
 }
 
+export function getDispersion(
+  params: DispersionParams & { outline: true },
+  signal?: AbortSignal,
+): Promise<DispersionPlumeOutlined>
+export function getDispersion(params?: DispersionParams, signal?: AbortSignal): Promise<DispersionPlume>
 export async function getDispersion(
   params: DispersionParams = {},
   signal?: AbortSignal,
-): Promise<DispersionPlume> {
-  const raw = await request<unknown>('/wind/dispersion', { signal, params: { ...params } })
-  return asFeatureCollection<never>(raw) as unknown as DispersionPlume
+): Promise<DispersionPlume | DispersionPlumeOutlined> {
+  // `outline: false` must not reach the wire as "false": the query string
+  // writes every non-empty value, and the server would then have to agree
+  // that the string "false" means off. Absent is off.
+  const { outline, ...rest } = params
+  const raw = await request<unknown>('/wind/dispersion', {
+    signal,
+    params: outline ? { ...rest, outline: 1 } : { ...rest },
+  })
+  return asFeatureCollection<never>(raw) as unknown as DispersionPlumeOutlined
+}
+
+/** A modelled band (no `kind`) — what the default response is made of. */
+export function isBandFeature(f: DispersionFeature): f is DispersionBandFeature {
+  return f.properties.kind == null
+}
+
+/** A plume's outer edge, inside or beyond the detection envelope. */
+export function isOutlineFeature(f: DispersionFeature): f is DispersionOutlineFeature {
+  return f.properties.kind === 'outline'
+}
+
+/** A plume's centreline, source to reach. */
+export function isAxisFeature(f: DispersionFeature): f is DispersionAxisFeature {
+  return f.properties.kind === 'axis'
 }
 
 // ──────────────────────────────────────────── observed wind (fleet anemometry)

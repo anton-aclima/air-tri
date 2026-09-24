@@ -17,11 +17,20 @@ lofted source: ground-level concentration at a 21 m generator under stable air
 is near zero, and the maximum is three kilometres downwind. Between them those
 three defects are why the drawn plume looked like a tiny blob whatever the
 weather.
+
+`outline=1` adds, per site, what CONTRACT 10b actually asks the Aclima model to
+look like: the outer edge split at the detection envelope (`kind: 'outline'`,
+`part: 'inside' | 'beyond'`) and the centreline axis (`kind: 'axis'`). The band
+features are untouched and come first; without the flag the response is
+byte-identical to what it was before the flag existed, which
+tests/test_dispersion_outline.py holds against hashes taken from that code.
 """
 
 from __future__ import annotations
 
+import math
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
@@ -76,6 +85,13 @@ def dispersion(
     # `reach_m` used to override the cone length. Reach is physics now — a
     # caller cannot assert one without contradicting the kernel — and nothing
     # ever sent it. Removed rather than left as a lever that lies.
+    outline: bool = Query(
+        False,
+        description=(
+            "Also return, per site, the plume's outer edge split at the detection "
+            "envelope and its centreline axis (CONTRACT 10b). Band features are unchanged."
+        ),
+    ),
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
@@ -121,6 +137,10 @@ def dispersion(
 
     envelope = plume.DETECTION_ENVELOPE.get(stability, 1500.0)
     features: list[dict[str, Any]] = []
+    # Appended after every band, never interleaved, so index-based readers of
+    # the bands (`features[0]` is a band on a one-site request) see exactly
+    # the collection they saw before `outline` existed.
+    outlines: list[dict[str, Any]] = []
 
     for sid, pts in by_site.items():
         srcs = [plume.Source(float(p["height_m"] or 12.0), p["kind"]) for p in pts]
@@ -198,7 +218,149 @@ def dispersion(
                     "properties": props,
                 }
             )
-    return {"type": "FeatureCollection", "features": features}
+
+        if outline:
+            common: dict[str, Any] = {
+                "site_id": sid,
+                "measure": measure,
+                "ts": wind["ts"],
+                "wind_dir_deg": wind["dir_deg"],
+                "stability": stability,
+                "detection_envelope_m": envelope,
+                "x_onset_m": round(site.x_onset, 1),
+                "x_reach_m": round(site.x_reach, 1),
+                "truncated": site.truncated,
+            }
+            if coercion_note:
+                common["stability_coerced_from"] = reported
+                common["stability_note"] = coercion_note
+            outlines.extend(
+                _outline_features(pts, srcs, site, envelope, float(wind["dir_deg"]), width, common)
+            )
+    return {"type": "FeatureCollection", "features": features + outlines}
+
+
+def _outline_features(
+    pts: list[dict[str, Any]],
+    srcs: list[plume.Source],
+    site: plume.Reach,
+    envelope: float,
+    wind_from_deg: float,
+    width: Callable[[float], float],
+    common: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """CONTRACT 10b's register for Aclima's model: an outline and an axis, never a fill.
+
+    WHY A SERVER SHAPE AND NOT A CLIENT UNION. The bands are three rings that
+    share edges; stroking them draws two interior contour lines the reader
+    takes for boundaries of something. The outer edge alone is what 10b asks
+    for, with the same sigma_y rail the bands use. Rebuilding it in the
+    browser would be a second plume computation, and the product already has
+    two that disagree (R0).
+
+    ONE RING, CUT ONCE (phase 3 review). The parts used to be built one per
+    side of the envelope, each as a union of per-source cones measured from
+    each source. Sources sit 100-230 m apart along the axis, so `inside` ran
+    past the envelope and `beyond` started before it, each ending in a
+    staircase: a 3-23 px jog plus crosswise bars at the envelope, a notched
+    far end, and a reach tick 145-190 m short of the drawn nose.
+    `geo.plume_outline` now builds one ring in the axis's own frame, rounds
+    its far end into a single nose that ends ON the axis at the reach, and
+    cuts it with one straight line across the axis at the envelope — so the
+    two parts share their cut vertices exactly, the axis ends where the
+    outline ends, and the envelope tick sits on the cut. The client's clip at
+    that line (WindLayer.ts `clipAtEnvelope`) is now a no-op guard.
+
+    A lofted plume whose onset is already past the envelope has no inside
+    part at all: nothing is drawn over the aloft segment.
+
+    The bands (the default response) are untouched and still per-source; the
+    outline is a drawing of the same model, not a second evaluation of it.
+    """
+    out: list[dict[str, Any]] = []
+    onset, reach_m = site.x_onset, site.x_reach
+
+    # The axis starts at the EMISSION-WEIGHTED source, with the kernel's own
+    # weights (`Source.emission`) — the ones that shaped the profile being
+    # drawn. Measured on the three sites it sits 7-28 m from the plain mean of
+    # the points and 40-98 m from the site centroid: small against a 1.5 km
+    # envelope, but the site centroid is a map label position, not a release.
+    # Rounded to the served five decimals BEFORE anything is placed from it,
+    # so a client measuring from the axis's first vertex measures from the
+    # same point the outline was built in.
+    weights = [s.emission() for s in srcs]
+    if sum(weights) <= 0.0:
+        weights = [1.0] * len(weights)
+    total = sum(weights)
+    o_lon = round(sum(w * float(p["lon"]) for w, p in zip(weights, pts, strict=True)) / total, 5)
+    o_lat = round(sum(w * float(p["lat"]) for w, p in zip(weights, pts, strict=True)) / total, 5)
+    toward = (wind_from_deg + 180.0) % 360.0
+
+    parts = geo.plume_outline(
+        (o_lon, o_lat),
+        wind_from_deg,
+        [(float(p["lon"]), float(p["lat"])) for p in pts],
+        onset,
+        reach_m,
+        envelope,
+        width,
+    )
+    for part in ("inside", "beyond"):
+        ring = parts.get(part)
+        if not ring:
+            continue
+        along = [_along(o_lon, o_lat, toward, v) for v in ring]
+        out.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Polygon", "coordinates": [ring]},
+                "properties": {
+                    **common,
+                    "kind": "outline",
+                    "part": part,
+                    # Where this ring starts and stops along the axis, metres
+                    # from its origin: the envelope cut is `r1_m` of inside and
+                    # `r0_m` of beyond, and the far end is `x_reach_m`.
+                    "r0_m": round(min(along), 1),
+                    "r1_m": round(max(along), 1),
+                },
+            }
+        )
+
+    def at(d: float) -> list[float]:
+        lon, lat = geo.destination(o_lon, o_lat, toward, d)
+        return [round(lon, 5), round(lat, 5)]
+
+    # The envelope is a vertex of its own when it falls inside the reach, so a
+    # renderer splits solid from dashed at index 1 instead of interpolating a
+    # geodesic — and the reach tick sits exactly on a vertex. The last vertex
+    # is the outline's nose: the ring ends on the axis at `x_reach`.
+    line = [[o_lon, o_lat]]
+    if envelope < reach_m:
+        line.append(at(envelope))
+    line.append(at(reach_m))
+    out.append(
+        {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": line},
+            "properties": {
+                **common,
+                "kind": "axis",
+                "envelope_m": envelope,
+                "reach_m": round(reach_m, 1),
+            },
+        }
+    )
+    return out
+
+
+def _along(o_lon: float, o_lat: float, toward: float, p: list[float]) -> float:
+    """Metres along the axis from its origin, polar on the sphere — the same
+    reading WindLayer.ts `alongAxis` takes of a served vertex."""
+    d = geo.haversine_m(o_lon, o_lat, p[0], p[1])
+    if d == 0.0:
+        return 0.0
+    return d * math.cos(math.radians(geo.bearing_deg(o_lon, o_lat, p[0], p[1]) - toward))
 
 
 # ── forecast: derived, not invented ───────────────────────────────────────────

@@ -53,6 +53,7 @@ import type {
   CoverageCell,
   DispersionModel,
   DispersionPlume,
+  DispersionPlumeOutlined,
   DrivePlan,
   FeedItem,
   FleetPosition,
@@ -795,19 +796,36 @@ export function useCurrentWind(): WindPoint | undefined {
   return data[data.length - 1]
 }
 
-/** Plume cone(s) for a site at a moment. Defaults `at` to the time cursor. */
+/**
+ * Plume cone(s) for a site at a moment. Defaults `at` to the time cursor.
+ * `outline: true` adds the outline parts and axis (`DispersionPlumeOutlined`)
+ * for the hairline style; the default leaves the request as it always was.
+ */
+export function useDispersion(
+  params: api.DispersionParams & { outline: true },
+  opts?: QueryOpts<DispersionPlumeOutlined>,
+): UseQueryResult<DispersionPlumeOutlined, Error>
+export function useDispersion(
+  params?: api.DispersionParams,
+  opts?: QueryOpts<DispersionPlume>,
+): UseQueryResult<DispersionPlume, Error>
 export function useDispersion(
   params: api.DispersionParams = {},
-  opts?: QueryOpts<DispersionPlume>,
-): UseQueryResult<DispersionPlume, Error> {
+  opts?: QueryOpts<DispersionPlume> | QueryOpts<DispersionPlumeOutlined>,
+): UseQueryResult<DispersionPlume | DispersionPlumeOutlined, Error> {
   const time = useSession((s) => s.time)
   const ready = useClockReady()
-  const merged: api.DispersionParams = { at: params.at ?? timeParam(time), ...params }
-  return useApiQuery(
+  // `outline` joins the key only when on, so every existing caller keeps its
+  // cache entry, and `outline: false` is the same entry as leaving it out.
+  const { outline, ...rest } = params
+  const merged: api.DispersionParams = {
+    at: rest.at ?? timeParam(time), ...rest, ...(outline ? { outline: true } : {}),
+  }
+  return useApiQuery<DispersionPlume | DispersionPlumeOutlined>(
     qk.wind.dispersion(merged),
     (signal) => api.getDispersion(merged, signal),
     STALE.dispersion,
-    timed(ready, { enabled: !!merged.site_id }, opts),
+    timed(ready, { enabled: !!merged.site_id }, opts as QueryOpts<DispersionPlume | DispersionPlumeOutlined>),
   )
 }
 

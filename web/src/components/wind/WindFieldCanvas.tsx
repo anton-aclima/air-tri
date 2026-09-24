@@ -21,6 +21,24 @@
  * Hot-loop discipline: no allocation per particle per frame. Segments accumulate
  * into preallocated Float32Arrays, one per speed bucket, and each bucket is a
  * single `beginPath`/`stroke`.
+ *
+ * A camera move re-projects, it does not draw. Each particle remembers the
+ * screen point it was last drawn at; when the projector changes, that point
+ * belongs to the OLD camera, and stroking from it to the particle's new
+ * position draws the pan itself — a long straight streak radiating from the
+ * zoom pivot, one per particle. Those streaks then fade to a residue the 8-bit
+ * alpha never quite clears (a pixel at alpha ≤ 6 times 0.92 rounds back to
+ * itself), which is how street-coloured ink lingered over unmeasured fields
+ * seconds after a re-centre. So a new projector re-projects every particle
+ * before the next step, and a new `viewKey` also wipes the trails.
+ *
+ * The residue itself is swept. Multiplying by `keep` can never take an 8-bit
+ * alpha of 1–6 to zero, so every pixel a particle ever crossed kept a faint
+ * floor of ink — measured on the deck, pixels at alpha ≤ 6 went from 2k to
+ * 60k within 2.5 s of a wipe and stayed. A few times a second the canvas is
+ * redrawn onto itself through an SVG filter that subtracts 7/255 of alpha,
+ * which clears that floor and shortens a live trail by a frame or two. Where
+ * `ctx.filter` is unsupported the sweep is skipped: the old behaviour.
  */
 
 import { useEffect, useRef } from 'react';
@@ -57,6 +75,16 @@ export interface WindFieldCanvasProps {
   speedScale?: number;
   ramp?: 'map' | 'intensity' | 'aqi';
   /**
+   * `'ramp'` (default): colour by speed through `ramp`. `'neutral'`: every
+   * particle in one quiet ink (`--ink-2`, or `colorToken` when given), speed
+   * carried by alpha over a floor so slow air still reads. For a map whose
+   * ramp is also the MEASURED street ramp — industry's `--ramp-map-*` is
+   * `--ramp-intensity-*` — where wind drawn in that ramp reads as measured
+   * ink over ground nobody drove (CONTRACT §10b: measurement is the only
+   * inked thing). Matches a plain `--ink-2` legend line.
+   */
+  colorMode?: 'ramp' | 'neutral';
+  /**
    * Paint every particle in this token instead of the ramp, with SPEED carried by
    * brightness. This is the radar-scope idiom — a magenta magnitude ramp over a
    * phosphor dial fights the narrative and reads as a second data series.
@@ -85,6 +113,61 @@ interface Particle {
 /** Speed buckets — the whole field draws in this many stroke batches. */
 const BUCKETS = 7;
 
+/** Frames between residue sweeps (see the header): ~0.4 s at 60 fps. */
+const SWEEP_EVERY = 24;
+const SWEEP_FILTER_ID = 'air-wind-residue-sweep';
+
+/**
+ * The residue sweep's filter, added to the document once: alpha minus 7/255,
+ * clamped at 0, colour untouched (`color-interpolation-filters: sRGB`, or the
+ * default linearRGB round trip would shift the ink). Null where a canvas
+ * cannot take a filter, and the sweep is skipped.
+ */
+function sweepFilter(ctx: CanvasRenderingContext2D): string | null {
+  if (typeof document === 'undefined' || !('filter' in ctx)) return null;
+  if (!document.getElementById(SWEEP_FILTER_ID)) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '0');
+    svg.setAttribute('height', '0');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.style.position = 'absolute';
+    svg.style.pointerEvents = 'none';
+    const filter = document.createElementNS(NS, 'filter');
+    filter.setAttribute('id', SWEEP_FILTER_ID);
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const transfer = document.createElementNS(NS, 'feComponentTransfer');
+    const funcA = document.createElementNS(NS, 'feFuncA');
+    funcA.setAttribute('type', 'linear');
+    funcA.setAttribute('slope', '1');
+    funcA.setAttribute('intercept', String(-7 / 255));
+    transfer.appendChild(funcA);
+    filter.appendChild(transfer);
+    svg.appendChild(filter);
+    document.body.appendChild(svg);
+  }
+  return `url(#${SWEEP_FILTER_ID})`;
+}
+
+/** `colorMode: 'neutral'` paints in this token unless `colorToken` overrides. */
+const NEUTRAL_TOKEN = 'ink-2';
+
+/**
+ * Bucket `i`'s share of the peak alpha when one token carries speed. The
+ * scope's floor (0.22) suits a phosphor dial; over a basemap the slowest
+ * buckets at 0.22 × a context-level opacity vanished, so neutral keeps more.
+ */
+function bucketAlpha(i: number, neutral: boolean): number {
+  const t = i / (BUCKETS - 1);
+  return neutral ? 0.45 + t * 0.55 : 0.22 + t * 0.78;
+}
+
+/** The single token a canvas paints in, or null when it colours by ramp. */
+function singleToken(colorMode: 'ramp' | 'neutral' | undefined, colorToken: string | undefined): string | null {
+  return colorToken ?? (colorMode === 'neutral' ? NEUTRAL_TOKEN : null);
+}
+
 /**
  * Peak particle alpha per basemap skin. The community's warm-paper `light` map
  * has a fraction of the headroom the regulator's near-black `dark` shell does;
@@ -100,7 +183,7 @@ const SKIN_ALPHA: Record<string, number> = {
 export function WindFieldCanvas(props: WindFieldCanvasProps) {
   const {
     field, projector, theme, viewKey, particles = 3600, keep = 0.92,
-    speedDomain, maxAge = 110, speedScale = 1, ramp = 'intensity', colorToken,
+    speedDomain, maxAge = 110, speedScale = 1, ramp = 'intensity', colorMode = 'ramp', colorToken,
     opacity = 0.42, lineWidth = 1, minConfidence = 0.04,
     running = true, className, style,
   } = props;
@@ -111,11 +194,11 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
   // Everything the loop reads lives in a ref, so a pan or a prop tweak is picked
   // up on the next frame instead of tearing down the simulation.
   const live = useRef({
-    projector, theme, speedDomain, ramp, colorToken, opacity, lineWidth,
+    projector, viewKey, theme, speedDomain, ramp, colorMode, colorToken, opacity, lineWidth,
     speedScale, keep, minConfidence, maxAge, particles,
   });
   live.current = {
-    projector, theme, speedDomain, ramp, colorToken, opacity, lineWidth,
+    projector, viewKey, theme, speedDomain, ramp, colorMode, colorToken, opacity, lineWidth,
     speedScale, keep, minConfidence, maxAge, particles,
   };
 
@@ -130,6 +213,7 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
 
   const width = Math.round(projector?.width ?? 0);
   const height = Math.round(projector?.height ?? 0);
+  const staticKey = reduced ? viewKey : null;
 
   // Wipe on camera move — no restart, so particles keep their positions.
   useEffect(() => {
@@ -155,9 +239,9 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
     const [d0, d1] = live.current.speedDomain
       ?? [0, Math.max(1.5, idx.maxSpeed || idx.meanSpeed * 2 || 6)];
 
-    const single = live.current.colorToken
-      ? live.current.theme.color(live.current.colorToken)
-      : null;
+    const token = singleToken(live.current.colorMode, live.current.colorToken);
+    const neutral = live.current.colorMode === 'neutral';
+    const single = token ? live.current.theme.color(token) : null;
     const bucketColors = Array.from({ length: BUCKETS }, (_, i) => {
       const t = i / (BUCKETS - 1);
       return single ?? live.current.theme.rampColor(0.18 + t * 0.82, undefined, live.current.ramp);
@@ -171,7 +255,7 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
     const bucketStroke = bucketColors.map((c, i) => rgbaCss(withAlpha(
       c,
       skinAlpha * (single
-        ? live.current.opacity * (0.22 + (i / (BUCKETS - 1)) * 0.78)
+        ? live.current.opacity * bucketAlpha(i, neutral)
         : live.current.opacity),
     )));
 
@@ -251,7 +335,10 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
         idx.sample(p.lon, p.lat, sample);
         const t = (sample.speed - d0) / Math.max(0.001, d1 - d0);
         const bi = Math.max(0, Math.min(BUCKETS - 1, Math.round(t * (BUCKETS - 1))));
-        ctx.strokeStyle = rgbaCss(withAlpha(bucketColors[bi], live.current.opacity * (0.35 + p.conf * 0.65)));
+        ctx.strokeStyle = rgbaCss(withAlpha(
+          bucketColors[bi],
+          live.current.opacity * (0.35 + p.conf * 0.65) * (single ? bucketAlpha(bi, neutral) : 1),
+        ));
         ctx.beginPath();
         proj.project(p.lon, p.lat, scr);
         ctx.moveTo(scr[0], scr[1]);
@@ -271,17 +358,49 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
     // ── the animation ─────────────────────────────────────────────────────
     let raf = 0;
     let stopped = false;
+    // The camera the particles' `px/py` were last projected with.
+    let drawnWith: Projector | null = live.current.projector;
+    let drawnKey = live.current.viewKey;
+    const sweep = sweepFilter(ctx);
+    let frames = 0;
 
     const frame = () => {
       if (stopped) return;
       const proj = live.current.projector;
       if (!proj) { raf = requestAnimationFrame(frame); return; }
 
+      // 0. A new camera: re-project, so no segment spans two cameras (see the
+      //    header). A new projector object with the same camera re-projects to
+      //    the same points, which is harmless; only a new `viewKey` wipes.
+      if (proj !== drawnWith) {
+        if (live.current.viewKey !== drawnKey) {
+          ctx.clearRect(0, 0, width, height);
+          drawnKey = live.current.viewKey;
+        }
+        for (let i = 0; i < n; i++) {
+          const p = pool[i];
+          if (!p.live) continue;
+          proj.project(p.lon, p.lat, scr);
+          p.px = scr[0];
+          p.py = scr[1];
+        }
+        drawnWith = proj;
+      }
+
       // 1. Fade what is already there toward transparent. THIS is the trail.
       ctx.globalCompositeOperation = 'destination-in';
       ctx.fillStyle = `rgba(0,0,0,${live.current.keep})`;
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = 'source-over';
+      // 1b. Now and then, clear the floor the fade cannot (see the header).
+      if (sweep && ++frames % SWEEP_EVERY === 0) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'copy';
+        ctx.filter = sweep;
+        ctx.drawImage(canvas, 0, 0);
+        ctx.restore();
+      }
 
       segN.fill(0);
       const halfW = proj.cx ?? width / 2;
@@ -359,8 +478,10 @@ export function WindFieldCanvas(props: WindFieldCanvasProps) {
       cancelAnimationFrame(raf);
     };
     // Deliberately NOT keyed on the projector: panning must not restart the sim.
+    // Reduced motion draws once, so it IS redrawn per camera (`staticKey`) —
+    // the wipe on `viewKey` would otherwise leave it blank after a pan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldKey, width, height, reduced, running, particles, maxAge, theme.role, theme.skin, ramp, colorToken, idxReady.current]);
+  }, [fieldKey, width, height, reduced, running, particles, maxAge, theme.role, theme.skin, ramp, colorMode, colorToken, idxReady.current, staticKey]);
 
   if (!projector) return null;
 
@@ -431,12 +552,15 @@ export function windSpeedLegend(
   ramp: 'map' | 'intensity' | 'aqi' = 'intensity',
   /** Pass the same `colorToken` the canvas got, or the key will lie. */
   colorToken?: string,
+  /** And the same `colorMode`. */
+  colorMode: 'ramp' | 'neutral' = 'ramp',
 ) {
-  const single = colorToken ? theme.color(colorToken) : null;
+  const token = singleToken(colorMode, colorToken);
+  const single = token ? theme.color(token) : null;
   const stops = Array.from({ length: BUCKETS }, (_, i) => {
     const t = i / (BUCKETS - 1);
     return single
-      ? rgbaCss(withAlpha(single, 0.22 + t * 0.78))
+      ? rgbaCss(withAlpha(single, bucketAlpha(i, colorMode === 'neutral')))
       : rgbaCss(theme.rampColor(0.18 + t * 0.82, undefined, ramp));
   });
   return {

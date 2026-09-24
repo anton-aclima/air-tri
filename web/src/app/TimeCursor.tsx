@@ -33,6 +33,7 @@ import { Button, Icon, IconButton, Segmented } from '@/app/ui'
 import { campaignMs, floorTo, fromCampaignMs, hoursBetween } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
 import { countOf, fmtDay, fmtNum, fmtTime24 } from '@/core/format'
+import { severityRank } from '@/core/measures'
 import { useAlerts, useCampaignStats, useConcernClusters } from '@/core/queries'
 import { PLAYBACK_SPEEDS, useSession } from '@/core/session'
 import type { Severity } from '@/core/types'
@@ -55,8 +56,6 @@ const DRAG_WRITE_MS = 250
 const END_SNAP_MIN = 30
 /** Prev/next skip a tick the cursor is already sitting on. */
 const SAME_MS = 60_000
-
-const SEVERITY_RANK: Record<Severity, number> = { info: 0, watch: 1, warning: 2, critical: 3 }
 
 interface Mark {
   id: string
@@ -179,7 +178,7 @@ function toTicks(marks: Mark[], xOf: (ms: number) => number): Tick[] {
     const alerts = t.marks.filter((m) => m.kind === 'alert')
     t.kind = alerts.length === 0 ? 'cluster' : alerts.length === t.marks.length ? 'alert' : 'mixed'
     t.severity = alerts.reduce<Severity | null>(
-      (best, m) => (m.severity && (!best || SEVERITY_RANK[m.severity] > SEVERITY_RANK[best]) ? m.severity : best),
+      (best, m) => (m.severity && (!best || severityRank(m.severity) > severityRank(best)) ? m.severity : best),
       null,
     )
     // A merged pill is filled when any of its events is measured, so the

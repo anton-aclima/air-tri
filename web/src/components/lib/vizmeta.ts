@@ -9,7 +9,14 @@ import type { Severity } from '@/core/types';
 
 /**
  * Severity → a glyph, so severity is NEVER carried by colour alone.
- * Geometric rather than emoji: these have to read at 10px inside a radar scope.
+ * Geometric rather than emoji: these have to read at 10px beside a map mark.
+ *
+ * The WORDS for the same four levels are `SEVERITY_LABEL` in `@/core/measures`
+ * — Critical / Warning / Watch / Info — and that is the only severity
+ * vocabulary (PLAN-refocus F3). There is no annunciator ladder here: the deck's
+ * CAUTION / ADVISORY / NORMAL was a second vocabulary for the same alert, and a
+ * second vocabulary is how one screen said ADVISORY above a banner saying
+ * CAUTION.
  */
 export const SEVERITY_GLYPH: Record<Severity, string> = {
   info: '·', watch: '△', warning: '▲', critical: '◆',
@@ -45,16 +52,42 @@ export const ALERT_KIND_LABEL: Record<string, string> = {
   wind_shift: 'Wind shift',
 };
 
-/** Four-character RWR codes. Anything longer will not fit beside a contact. */
-export const ALERT_KIND_CODE: Record<string, string> = {
-  exceedance: 'EXCD',
-  integrated_exposure: 'DOSE',
-  concern_cluster: 'COMM',
-  mobile_detection: 'MOBL',
-  fleet_anomaly: 'FLET',
-  regulatory_notice: 'RGLT',
-  wind_shift: 'WIND',
-};
+/**
+ * The three model registers of CONTRACT §10b, as stroke specs.
+ *
+ * One table, read by BOTH the map layers (`DispersionLayer` style 'outline',
+ * `FiledStudyLayer`) and the legend swatch (`PlumeSwatch`), so the key cannot
+ * drift from the marks it explains.
+ *
+ * `dash` is deck.gl's `PathStyleExtension` unit — multiples of the line
+ * WIDTH, not pixels — so the swatch multiplies by `width` to draw the same
+ * pattern in SVG.
+ *
+ * `beyond` and `filed` are both "an outline with no fill" under §10b, so with
+ * the filed study switched on they would differ by colour alone
+ * (PLAN-refocus §8: "confirmed"). They are separated on two channels: a dash
+ * against a dot, and ink against the filed study's own `accent-2`. Never give
+ * them the same pattern.
+ */
+export const PLUME_STROKE = {
+  /** Aclima's model, inside the detection envelope: a solid hairline. */
+  model: { token: 'ink', alpha: 0.9, width: 1.25, dash: null },
+  /** Aclima's model past the envelope — "beyond measurement range — model only". */
+  beyond: { token: 'ink', alpha: 0.7, width: 1.25, dash: [6, 4] },
+  /**
+   * The centreline axis. Solid to the envelope, then `beyond`'s dash. §10b
+   * asks for a FAINTER axis than the outline: at 0.7 against the edges' 0.9
+   * the three lines from the stack read as three bearing lines (phase 3
+   * review), so it sits well under the edge and the reach tick carries it.
+   */
+  axis: { token: 'ink', alpha: 0.38, width: 1, dash: null },
+  /** The filed / permit study: dotted, in its own token. */
+  filed: { token: 'accent-2', alpha: 0.9, width: 1.5, dash: [1.5, 3] },
+} as const satisfies Record<string, {
+  token: string; alpha: number; width: number; dash: readonly [number, number] | null;
+}>;
+
+export type PlumeRegister = keyof typeof PLUME_STROKE;
 
 /** Axis-tick rounding: the smallest 1/2/5×10ⁿ step at or above `raw`. */
 export function niceStep(raw: number): number {

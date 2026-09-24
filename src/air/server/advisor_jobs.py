@@ -14,6 +14,13 @@ do" destroys that, so `POST /advisor` never waits for the model:
 The guarantee: **there is never a spinner where an answer should be**, and a
 missing key or a network hiccup costs the operator nothing — the rules answer is
 already on screen and simply stays.
+
+The same is true of a reply that breaks the rules. `run(..., screen=)` holds
+the finished reply against `advisor_copy.screen` (the never-say, cockpit,
+attribution and action rules the rules engine is tested on) and, when it
+fails, reports `error: "screened"` with `keep: "rules"` instead of `done`. The
+snapshot's `reply` stays the rules answer, so the polling client never swaps
+it in, and a streaming client is told to put the rules answer back.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -216,6 +224,31 @@ def normalise(parsed: dict[str, Any], model: str | None, speed: str | None = Non
     return reply
 
 
+def accept(job: Job, reply: dict[str, Any], screen: Screen | None = None) -> bool:
+    """Swap the model's reply in — or refuse it and keep the rules answer.
+
+    The deltas and action cards already streamed are a preview; this is the
+    only place a model reply becomes `job.reply`, which is what the snapshot
+    (and so the polling client) serves. A screen that raises refuses too: the
+    rules answer is always the safe side.
+    """
+    try:
+        problems = screen(reply) if screen else []
+    except Exception as exc:  # noqa: BLE001 — refusing is always safe
+        problems = [f"screen failed: {type(exc).__name__}: {exc}"]
+    if problems:
+        log.warning("advisor %s: reply refused by the copy screen (%d): %s — keeping the rules answer",
+                    job.id, len(problems), problems[0])
+        job.status = "failed"
+        job.error = "screened"
+        job.emit("error", {"error": "screened", "keep": "rules", "problems": problems[:5]})
+        return False
+    job.reply = reply
+    job.status = "complete"
+    job.emit("done", {"reply": reply})
+    return True
+
+
 # ── the streaming call ────────────────────────────────────────────────────────
 
 def build_request(prompt: str, system: str, schema: dict[str, Any]) -> dict[str, Any]:
@@ -258,10 +291,15 @@ def _beta_rejected(text: str) -> bool:
     return "fallback" in low or "beta" in low or "speed" in low or "fast" in low
 
 
-async def run(job: Job, prompt: str, system: str, schema: dict[str, Any]) -> None:
+Screen = Callable[[dict[str, Any]], list[str]]
+
+
+async def run(
+    job: Job, prompt: str, system: str, schema: dict[str, Any], screen: Screen | None = None
+) -> None:
     """Stream the model's answer into `job`. Never raises."""
     try:
-        await _run(job, prompt, system, schema)
+        await _run(job, prompt, system, schema, screen)
     except Exception as exc:  # the demo must survive anything that happens here
         log.warning("advisor %s: unexpected error (%r) — keeping the rules answer", job.id, exc)
         job.status = "failed"
@@ -271,7 +309,9 @@ async def run(job: Job, prompt: str, system: str, schema: dict[str, Any]) -> Non
         job.finished.set()
 
 
-async def _run(job: Job, prompt: str, system: str, schema: dict[str, Any]) -> None:
+async def _run(
+    job: Job, prompt: str, system: str, schema: dict[str, Any], screen: Screen | None = None
+) -> None:
     base = build_request(prompt, system, schema)
     # (fast, server-side fallbacks) — degrade to the plain request on a 400 that
     # names a beta, so an org without either preview still gets the LLM answer.
@@ -400,9 +440,7 @@ async def _run(job: Job, prompt: str, system: str, schema: dict[str, Any]) -> No
                 job.emit("error", {"error": "incomplete", "keep": "rules"})
                 return
 
-            job.reply = reply
-            job.status = "complete"
-            job.emit("done", {"reply": reply})
+            accept(job, reply, screen)
             return
 
     job.status = "failed"

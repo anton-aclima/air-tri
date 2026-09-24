@@ -16,6 +16,7 @@ core/
   session.ts    zustand UI state (role, persona, selection, map view, TIME CURSOR)
   clock.ts      naive campaign time: build, parse, compare, add hours
   events.ts     what had happened by the moment on screen: hasStarted, isOngoing…
+  alerts.ts     useLiveAlerts(role): THE live-alert count — rail badge, page, alert pages
   measures.ts   MeasureDef → formatted value, risk, ramp colour, band label
   format.ts     dates, relative times, distances, bearings, numbers
   roles.ts      role metadata: label, org, narrative, accent, nav, landing route
@@ -110,12 +111,28 @@ useAlerts({ role?, status?, severity?, kind?, site_id?, at? })
     // server's `ongoing`), never status === 'active'.
 useAlert(id, siteId?)           useActionLevels()
 
+useLiveAlerts(role)             // core/alerts. { alerts, notices, count, bySeverity, worst, all, folded, loading }
+    // The ONE count (docs/PLAN-refocus.md F3): the nav badge, a page's status
+    // and the alert pages all print `count`, so they cannot disagree (they
+    // read 9 / 4 / 3 / 5 on one industry screen). Live = isOngoing at the
+    // demo's now (active AND acknowledged, never ended); industry is scoped to
+    // the locked `siteId`; concurrent levels from one source fold to the
+    // highest (`foldConcurrent`). Severity words: SEVERITY_LABEL only.
+    // Industry counts places, not models: the wind-shift study alert (and
+    // anything with no bearing from the site) is in `notices`, never `count`,
+    // and nothing past INDUSTRY_NEAR_M (7 km, the deck's reach) is counted.
+    // A list that must match the count lists `alerts`.
+
 useFeed({ role?, since?, limit?, at? })  // merged social feed
 
 useFleet({ at?, delay_min? })   // at ← time cursor; delay_min ← role (community ≥180)
 useVehicles()  useDrivePlan()  useDrivePlanCoverage(planId)
 
-useWind()  useCurrentWind()  useDispersion({ site_id, at? })
+useWind()  useCurrentWind()  useDispersion({ site_id, at?, outline? })
+    // outline: true → DispersionPlumeOutlined: the bands PLUS each site's
+    // outline (part 'inside' | 'beyond' the detection envelope) and axis.
+    // Narrow with isBandFeature / isOutlineFeature / isAxisFeature (core/api).
+    // Default off, and then the request is exactly what it always was.
 useMobileWind({ from?, to?, bbox?, quality? })   // fleet anemometry, quality: 'good' by default
 useWindField({ cell_m? })                        // binned OBSERVED wind → particle overlay
 useDispersionModels(siteId)                      // the consultant's deliverables

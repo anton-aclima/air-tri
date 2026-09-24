@@ -116,6 +116,10 @@ class AdvisorIn(BaseModel):
     question: str | None = None
     site_id: str | None = None
     campaign_id: str | None = None
+    # The moment shown (naive campaign time, like every `at`). Whether the
+    # alert is still ongoing, the readings and the reports the advice may cite,
+    # and "the wind now" are judged at it. Absent is the end of the data.
+    at: str | None = None
 
 
 class DrivePlanIn(BaseModel):

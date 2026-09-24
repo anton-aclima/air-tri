@@ -8,6 +8,7 @@ Rules enforced here (quality bar):
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
 
@@ -439,6 +440,23 @@ def alert_begun_at(r: Row) -> str | None:
     return r["created_at"] if r["kind"] == "concern_cluster" else r["started_at"]
 
 
+# The generator's recommendation for a Warning or worse named a site on the wind
+# alone: "Wind at the time carried from Riverport Intermodal Terminal; expect
+# to be asked about it." That is attribution by wind without the placebo-checked
+# downwind test (F7 / D7 — "a site is named only when the wind at the time and
+# the downwind test agree", in every room), and once the industry list stopped
+# filtering by the generator's site tag it reached the other two operators as
+# well. narrative.py no longer writes it; this removes it from databases built
+# before that.
+_WIND_NAMES_A_SITE = r"\s*Wind at the time carried from [^;.]+; expect to be asked about it\."
+
+
+def unname(text: str | None) -> str | None:
+    if not text:
+        return text
+    return re.sub(_WIND_NAMES_A_SITE, "", text).strip() or None
+
+
 def alert(r: Row, now: str | None = None) -> dict[str, Any]:
     """`ongoing` is begun and not yet ended at `now` — the served moment, or the
     demo's now. It is what "live" means, the same test as `isOngoing` in
@@ -469,7 +487,7 @@ def alert(r: Row, now: str | None = None) -> dict[str, Any]:
         "status": r["status"],
         "title": r["title"],
         "body": r["body"],
-        "recommendation": r["recommendation"],
+        "recommendation": unname(r["recommendation"]),
         "audience": jload(r["audience_json"], ["regulator", "industry", "admin"])
         or ["regulator", "industry", "admin"],
         "created_at": r["created_at"],

@@ -210,11 +210,18 @@ Every interface subscribes. This is how the tension becomes *visible* in a live 
 
 ### The four visual narratives — hold these lines
 
-| Role | Narrative | It must feel like | It must NOT feel like |
+The narrative column is **visual direction for whoever styles the room, never copy.**
+The owner's review (2026-09-23) found the metaphors printed on screen and built into
+panels — "tower defence" on the Landing page, CAUTION / SLEW TO / CONTACTS on the
+industry deck, a radar dial duplicating the map — and called it "too literal". A
+metaphor is a feel: palette, type, corner radius, restraint. It is not vocabulary and
+it is not a component list. See the "never in copy" rule in §10a.
+
+| Role | Visual direction (never copy) | It must feel like | It must NOT feel like |
 |---|---|---|---|
 | **community** | social feed | Warm paper, big cards, faces, plain words, one obvious button: *Report a concern*. Unitless risk scores, never "µg/m³". | a dashboard, a science tool, government |
-| **regulator** | tower defense | Their **towers** (monitors, with coverage rings + sweep), our **fleet** extending reach, suspected **emitters** as contacts. Dense, precise, exact concentrations, action levels as tripwires. | a consumer app |
-| **industry** | radar warning receiver | A radial scope: bearing + distance + severity to threats, terse phosphor text, a timeline of how long each contact has been up, one recommended action. Glanceable at 3 m. Plus a nullschool-style **wind particle field on the scope** when locked onto a site (§8b). | an analytics product; nothing requiring interpretation |
+| **regulator** | tower defence | One map that answers three questions in order: what the **reference monitors** report, what the **fleet** adds on every street between them (with each site's modelled plume as an outline), and where **residents** are reporting. Dense, precise, exact concentrations. | a consumer app, or a game |
+| **industry** | avionics (finish only) | A map that tells the operator's story on its own — measured streets, the site's own fenceline road, the wind, today's plume as an outline — beside one line saying how hard they can run. Mono numerals, a phosphor accent, square corners. Glanceable. | a cockpit to be operated; an analytics product |
 | **admin** | drafting table | Blueprint grid, draw handles, numeric readouts, generation controls with visible parameters, everything-visible oversight. | polished marketing |
 
 ---
@@ -283,10 +290,13 @@ underneath. Implement it as a canvas overlay, not as deck.gl geometry:
 
 **Use it in two places:**
 1. **Regulator map** — the campaign-wide field, so dispersion is legible as motion.
-2. **Industry RWR** — particles flowing *inside the radial scope* while locked onto a
-   site. This is the single most distinctive frame in the product: threats plotted by
-   bearing, with the wind visibly carrying the operator's own emissions toward one of
-   them.
+2. **Industry map** — particles flowing across the operator's own streets, on by default,
+   so the wind visibly carries the site's plume toward whatever it reaches.
+
+*Retired 2026-09-23 (owner decision D8):* the industry RWR — a radial scope beside the
+map. It drew the same bearings the map already drew, as a second geometry that had to
+agree with the first, and the owner judged the map could tell the story alone. Do not
+rebuild the dial.
 
 ### Verify your consultant
 
@@ -303,8 +313,12 @@ strongest single argument for why they should pay us.
 - `GET /sites/{id}/model-verification` returns assumed vs observed rose, per-bearing
   bias, understated bearings, under-weighted districts, and a `verdict`.
 
-Draw the consultant's contour as a reference outline **on the scope**, with the observed
-particle field flowing over it, so the divergence is something you see rather than read.
+Draw the consultant's contour as a dotted reference outline **on the industry map**,
+**off by default** behind "Compare with filed study" (owner decision D9: verify your
+consultant is a supporting visual, not the headline), with the observed particle field
+flowing over it, so the divergence is something you see rather than read. It must be
+distinguishable from the model's "beyond measurement range" dashes before any label is
+read (§10b).
 
 Never overstate it. Where `n_obs` is low or `dir_sd` is high, say so — our whole premise
 is that we are the trustworthy measurement, so fake confidence is off-brand.
@@ -358,6 +372,13 @@ Never, in any interface, in any copy, in any generated summary:
    the states it guards against do not occur in this dataset.
 6. Community language additionally drops every one of the above words that is
    an acronym, a unit or chemistry (non-negotiable 3 still applies on top).
+7. **Never print a design metaphor as copy.** Not in labels, headings, captions,
+   nav, tooltips, generated advisor text or alert copy: *tower defence, tripwire,
+   armed, invader, suspected emitter, contact(s), scope, radar, RWR, MFD, slew,
+   lock / lock-on, flight deck, watchfloor, drafting table, annunciator words*
+   (CAUTION / ADVISORY / NORMAL as a status). Severity has one vocabulary in every
+   room: **Critical / Warning / Watch**. The monitors are **reference monitors**;
+   the tower glyph may stay on the map. (Owner review, 2026-09-23.)
 
 ### 10b. The encoding rule — epistemic status is a rendering channel
 
@@ -367,10 +388,20 @@ reader resolves mud in favour of whichever layer looks most authoritative.
 
 | what it is | how it is drawn |
 | --- | --- |
-| filed / permit model | dashed outline, **no fill** |
-| Aclima model | solid hairline outline + centreline axis with a reach tick, **no fill** |
-| measurement | the **only** filled or inked thing on the map — road segments, per non-negotiable 2 |
-| anything beyond the detection envelope | dashed, no fill, plus the legend line **"beyond measurement range — model only"** |
+| filed / permit model | **dotted** outline (`[1.5, 3]`) in its own colour (`--accent-2`), **no fill** — never the same pattern as "beyond" |
+| Aclima model | solid hairline outline + a fainter centreline axis with a reach tick at the envelope, **no fill** |
+| measurement | the **only** filled or inked thing on the map — road segments, per non-negotiable 2. A report or alert mark is filled only when the site-naming rule (below) links it; otherwise hollow |
+| anything beyond the detection envelope | **dashed** (`[6, 4]`), no fill, plus the legend line **"beyond measurement range — model only"**. Nothing is judged from this part: a monitor under it is not "downwind" |
+
+The filed study and "beyond" used to share one dashed style, so on the industry map
+the consultant's contour and the model's own far field differed only by colour
+(2026-09-23 re-check). The stroke table lives in one place, `PLUME_STROKE` in
+`web/src/components/lib/vizmeta.ts`, and the legend swatches read it.
+
+**Naming a site** (owner decision D7): a report, cluster or alert is linked to a named
+site only when the wind at the time carried from the site to it **and** the site's
+placebo-checked downwind test for that pollutant is `elevated_downwind`. Noise,
+vibration and light reports are never linked by an air test.
 | anything outside the driven-coverage mask | dimmed or hatched, and excluded from every agreement metric |
 
 A model plume from Ridgeline at 10 km covers 96.7% of the road grid. Without the

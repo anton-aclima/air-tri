@@ -132,3 +132,17 @@
   border-radius: var(--r-sm);
   background: var(--surface-2);
 }
+
+/* The §10b key: three swatches and their words, small, in a corner — the
+   registers have to read before it does. */
+.registerKey {
+  display: grid;
+  gap: 4px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.registerRow { display: flex; align-items: center; gap: var(--s-2); }

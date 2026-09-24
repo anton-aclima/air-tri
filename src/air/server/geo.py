@@ -255,3 +255,206 @@ def plume_union_polygon(
     if out[0] != out[-1]:
         out.append(out[0])
     return out
+
+
+# ── the model's outline: one ring, one cut, one nose ─────────────────────────
+
+# Segments per side of the rounded far end. The nose is a cubic, so 16 chords
+# put the worst chord error well under a pixel at any zoom the deck uses.
+_NOSE_STEPS = 16
+# How long the nose is, as a share of the plume's own length at most. The rest
+# of the time it is one half-width, which is what makes it read as a rounded
+# end rather than as a point.
+_NOSE_MAX_SHARE = 0.4
+# Stations closer than this to the envelope cut are dropped, so the only
+# vertex near the cut is the cut itself. A kink station 2 m short of it would
+# otherwise sit inside the client's 1.5 m "on the cut" tolerance and leave a
+# 2 m gap in the rail where the client drops the cut edge.
+_CUT_CLEARANCE_M = 3.0
+
+
+def plume_outline(
+    origin: tuple[float, float],
+    wind_from_deg: float,
+    sources: list[tuple[float, float]],
+    x_onset: float,
+    x_reach: float,
+    split_at: float | None,
+    half_width: Callable[[float], float],
+    steps: int = 28,
+) -> dict[str, list[list[float]]]:
+    """A site's modelled plume as ONE outline, split once at the envelope.
+
+    CONTRACT 10b draws Aclima's model as an outline, solid up to the detection
+    envelope and dashed past it, with an axis whose tick sits at the envelope.
+    This used to be two `plume_union_polygon` calls, one per part, each with
+    per-source spans measured from each source. Sources sit 100-230 m apart
+    along the axis, so the two parts overlapped by a few hundred metres and
+    each ended in a staircase of per-source steps: a 3-23 px jog and a set of
+    crosswise bars at the envelope on the deck (phase 3 review), and a far end
+    notched like a house roof. Here there is one ring and one cut:
+
+    * **Frame.** `origin` is the axis's own first vertex — the emission-
+      weighted source, already rounded to the five decimals it is served at —
+      so a vertex `x` metres along this frame reads back as `x` metres from
+      the axis origin in any client that measures from it (polar, one
+      geodesic hop, the same sphere).
+    * **Rails.** Each source's cone starts at its own onset (`u + x_onset`),
+      so the outline encloses every release point, and all of them run to the
+      SAME far station `x_reach` in this frame. `x_reach` is the site's reach
+      (`air.dispersion.reach` treats the site's points as co-located), so
+      measuring it from the site's emission-weighted origin is the reading
+      the axis and the reach tick already use; measuring it from each source
+      is what put the outline 145-190 m past the tick.
+    * **Nose.** The far end is one smooth cubic from each rail to a point on
+      the axis at `x_reach`, leaving the rail on its own tangent and arriving
+      crosswind. No per-source notches, and the axis ends where the outline
+      does, so the tick and "truncated" mark the drawn end.
+    * **Cut.** `split_at` (the envelope) is a straight line across the axis.
+      Both parts carry the SAME two cut vertices, so they share an edge
+      exactly and a client clip at that line is a no-op.
+
+    Returns `{"inside": ring, "beyond": ring}` with whichever parts exist
+    (closed GeoJSON rings, five decimals). `split_at` None or outside the
+    ring's span returns the whole ring under the part it lies in.
+    """
+    o_lon, o_lat = origin
+    axis = (wind_from_deg + 180.0) % 360.0
+    local: list[tuple[float, float]] = []
+    for lon, lat in sources:
+        d = haversine_m(o_lon, o_lat, lon, lat)
+        th = math.radians(bearing_deg(o_lon, o_lat, lon, lat) - axis) if d > 0 else 0.0
+        local.append((d * math.cos(th), d * math.sin(th)))
+
+    x_end = float(x_reach)
+    starts = [u + x_onset for u, _v in local]
+    x_start = min(starts)
+    if not local or x_end - x_start < 1.0:
+        return {}
+
+    def rails(x: float) -> tuple[float, float] | None:
+        lo, hi = math.inf, -math.inf
+        for (u, v), s in zip(local, starts, strict=True):
+            if x < s - 1e-9:
+                continue
+            w = half_width(max(x - u, 0.0))
+            lo, hi = min(lo, v - w), max(hi, v + w)
+        return None if lo > hi else (lo, hi)
+
+    # The nose: one half-width long, never more than a share of the plume.
+    end = rails(x_end)
+    if end is None:
+        return {}
+    nose = min(0.5 * (end[1] - end[0]), _NOSE_MAX_SHARE * (x_end - x_start))
+    x_c = x_end - nose
+
+    cut = split_at if split_at is not None and x_start < split_at < x_end else None
+
+    xs = {x_start + (x_c - x_start) * (i / steps) for i in range(steps + 1)}
+    for s in starts:
+        # Where a source joins: a kink in the rail, stepped across as in
+        # `plume_union_polygon` (see `_KINK_NUDGE_M`).
+        for x in (s - _KINK_NUDGE_M, s + _KINK_NUDGE_M):
+            if x_start < x < x_c:
+                xs.add(x)
+    if cut is not None and cut < x_c:
+        xs = {x for x in xs if abs(x - cut) >= _CUT_CLEARANCE_M}
+        xs.add(cut)
+    stations = sorted(xs)
+
+    left: list[tuple[float, float]] = []
+    right: list[tuple[float, float]] = []
+    for x in stations:
+        r = rails(x)
+        if r is None:
+            continue
+        left.append((x, r[0]))
+        right.append((x, r[1]))
+    if len(left) < 2:
+        return {}
+
+    # Each side of the nose leaves its rail on the rail's own heading (so
+    # there is no corner where it starts) and arrives at the axis crosswind
+    # (so the two sides meet in one smooth curve). Control arms of 0.55 of
+    # the span are the quarter-circle constant; the slope is clamped so a
+    # steep near-field rail cannot throw the arm outside the plume.
+    back = max(1.0, min(nose * 0.05, 25.0))
+    lo_b, hi_b = rails(x_c - back) or (left[-1][1], right[-1][1])
+    lo_c, hi_c = left[-1][1], right[-1][1]
+    y_tip = min(max(0.0, lo_c + 1.0), hi_c - 1.0)
+
+    def arc(y_c: float, slope: float) -> list[tuple[float, float]]:
+        slope = max(-1.0, min(1.0, slope))
+        k = 0.55
+        p0 = (x_c, y_c)
+        p1 = (x_c + k * nose, y_c + k * nose * slope)
+        p3 = (x_end, y_tip)
+        p2 = (x_end, y_tip + k * (y_c - y_tip))
+        pts = []
+        for i in range(1, _NOSE_STEPS + 1):
+            t = i / _NOSE_STEPS
+            a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3
+            pts.append((
+                a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+                a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
+            ))
+        return pts
+
+    left += arc(lo_c, (lo_c - lo_b) / back)
+    right += arc(hi_c, (hi_c - hi_b) / back)
+    # Both arcs end on the same tip; `right` keeps it so the ring has it once.
+    left.pop()
+
+    def to_lonlat(x: float, y: float) -> list[float]:
+        br = (axis + math.degrees(math.atan2(y, x))) % 360.0
+        p = destination(o_lon, o_lat, br, math.hypot(x, y))
+        return [round(p[0], 5), round(p[1], 5)]
+
+    def ring_of(pts: list[tuple[float, float]]) -> list[list[float]]:
+        out: list[list[float]] = []
+        for x, y in pts:
+            q = to_lonlat(x, y)
+            if not out or q != out[-1]:
+                out.append(q)
+        if len(out) < 3:
+            return []
+        if out[0] != out[-1]:
+            out.append(out[0])
+        return out
+
+    def crossing(side: list[tuple[float, float]], x: float) -> tuple[int, tuple[float, float]]:
+        """Index of the first vertex past `x`, and the point on the side at `x`."""
+        for i in range(1, len(side)):
+            (xa, ya), (xb, yb) = side[i - 1], side[i]
+            if xb >= x:
+                if abs(xa - x) < 1e-9:
+                    return i, (x, ya)
+                t = (x - xa) / (xb - xa) if xb > xa else 1.0
+                return i, (x, ya + (yb - ya) * t)
+        return len(side), side[-1]
+
+    # `right` runs near -> far like `left`; the ring walks out one side and
+    # back the other.
+    whole_tip = right[-1]
+    if cut is None:
+        ring = ring_of(left + [whole_tip] + list(reversed(right[:-1])))
+        part = "beyond" if split_at is not None and x_start >= split_at else "inside"
+        return {part: ring} if ring else {}
+
+    li, lcut = crossing(left + [whole_tip], cut)
+    ri, rcut = crossing(right, cut)
+    near_l = [p for p in left[:li] if p[0] < cut - 1e-9]
+    near_r = [p for p in right[:ri] if p[0] < cut - 1e-9]
+    far_l = [p for p in (left + [whole_tip])[li:] if p[0] > cut + 1e-9]
+    far_r = [p for p in right[ri:] if p[0] > cut + 1e-9]
+    # The tip belongs to both far lists when the cut is short of it; keep one.
+    if far_l and far_r and far_l[-1] == far_r[-1]:
+        far_l = far_l[:-1]
+    inside = ring_of(near_l + [lcut, rcut] + list(reversed(near_r)))
+    beyond = ring_of([lcut] + far_l + list(reversed(far_r)) + [rcut])
+    out: dict[str, list[list[float]]] = {}
+    if inside:
+        out["inside"] = inside
+    if beyond:
+        out["beyond"] = beyond
+    return out

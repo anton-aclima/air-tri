@@ -118,6 +118,23 @@ export function alongPath(path: Position[], t: number): { position: Position; he
   };
 }
 
+/**
+ * Cut a polyline `dist` metres from its start. Both halves carry the cut
+ * point, so a solid half and a dashed half meet with no gap and no overlap.
+ * A `dist` at or past either end leaves the whole path on one side.
+ */
+export function splitPathAt(path: Position[], dist: number): [Position[], Position[]] {
+  if (path.length < 2) return [path.slice(), []];
+  const { total, cum } = pathMetrics(path);
+  if (!(dist > 0)) return [[], path.slice()];
+  if (dist >= total) return [path.slice(), []];
+  let i = 1;
+  while (i < cum.length - 1 && cum[i] < dist) i++;
+  const seg = cum[i] - cum[i - 1];
+  const cut = lerpPosition(path[i - 1], path[i], seg === 0 ? 0 : (dist - cum[i - 1]) / seg);
+  return [[...path.slice(0, i), cut], [cut, ...path.slice(i)]];
+}
+
 /** Great-circle-ish linear interpolation. Fine at neighbourhood scale. */
 export function lerpPosition(a: Position, b: Position, t: number): Position {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];

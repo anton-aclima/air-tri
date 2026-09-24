@@ -370,25 +370,59 @@ def load_alerts(
 def alert_geometry(
     conn: sqlite3.Connection, alerts: list[dict[str, Any]], site_id: str, radius_m: float | None = None
 ) -> list[dict[str, Any]]:
-    """Derived RWR geometry: true bearing + range from the site centroid.
+    """Where each alert is from the site: true bearing + distance from its centroid.
 
-    This is what the industry radar scope renders, so it is computed server-side
-    against the site's own centroid rather than left to the client.
+    The industry deck prints it as "6.3 km NE", so it is computed server-side
+    against the site's own centroid rather than left to the client. (It was
+    the radar dial's geometry; the dial is retired, PLAN-refocus D8.)
+
+    GEOMETRY ONLY — `alert.site_id` IS NOT CONSULTED (phase 3 honesty review).
+    It used to drop every alert the generator had tagged with another site and
+    exempt this site's tagged alerts from the radius. That tag is the
+    generator's wind-only guess (`narrative._suspect`), which PLAN-refocus §8
+    says must not be used for attribution, and it decided which reference-
+    monitor exceedances an operator saw: DRAQA's Riverport Road monitor
+    raised 15 alerts, of which Ridgeline saw the 5 untagged ones and none of
+    the 10 tagged Riverport — the two 1-hour-standard Warnings included. Now
+    an alert within `radius_m` is on every nearby site's list, whoever the
+    generator guessed.
+
+    Two things are placed by what the data model says instead:
+
+    * An alert stored ON a site's centroid has no place (the generator's and
+      the simulator's convention for site-wide alerts — wind shifts, the
+      study comparison). It belongs to that site, as "site-wide", and to no
+      other: at 5.7 km from Delta Forge, Ridgeline's study alert would
+      otherwise read as an alert 5.7 km WSW of Delta Forge.
+    * An alert whose source is a filed dispersion model is about that
+      model's site's study, and is on that site's list only.
+
+    An alert with no coordinates at all has no geometry and is left out.
     """
     site = one(conn, "SELECT id, name, centroid_lon, centroid_lat FROM industry_site WHERE id=?", (site_id,))
     if site is None:
         return []
     slon, slat = site["centroid_lon"], site["centroid_lat"]
+    centroids = {
+        r["id"]: (r["centroid_lon"], r["centroid_lat"])
+        for r in rows(conn, "SELECT id, centroid_lon, centroid_lat FROM industry_site")
+    }
+    studies = {r["id"]: r["site_id"] for r in rows(conn, "SELECT id, site_id FROM dispersion_model")}
     out = []
     for a in alerts:
-        if a["site_id"] not in (None, site_id):
+        study_site = studies.get(a.get("source_id") or "")
+        if study_site is not None and study_site != site_id:
             continue
         if a["lon"] is None or a["lat"] is None:
-            if a["site_id"] == site_id:
-                out.append(a)  # site-addressed but not located: no scope geometry
+            continue
+        on = next(
+            (sid for sid, (lon, lat) in centroids.items() if geo.haversine_m(lon, lat, a["lon"], a["lat"]) < 1.0),
+            None,
+        )
+        if on is not None and on != site_id:
             continue
         dist = geo.haversine_m(slon, slat, a["lon"], a["lat"])
-        if radius_m is not None and dist > radius_m and a["site_id"] != site_id:
+        if radius_m is not None and dist > radius_m and on != site_id and study_site != site_id:
             continue
         a = dict(a)
         a["bearing_deg"] = round(geo.bearing_deg(slon, slat, a["lon"], a["lat"]), 1)

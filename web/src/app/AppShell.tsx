@@ -6,12 +6,16 @@
  * chrome that is *materially different* per role — not the same bar recoloured:
  *
  *   community  · header + pill nav + one obvious CTA, page scrolls
- *   regulator  · watchfloor rail + dense network status strip
- *   industry   · thin phosphor frame, corner brackets, terse readout
+ *   regulator  · code rail + a header with nothing but the clock and persona
+ *   industry   · thin phosphor frame, corner brackets, a rail of short words
  *   admin      · drafting rail + numeric status bar along the bottom
+ *
+ * Status lives on the page, once (docs/PLAN-refocus.md F3). The only number
+ * the shell prints for regulator and industry is the rail's alert badge, and
+ * that is `useLiveAlerts(role).count` — the hook the pages count with.
  */
 
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
@@ -24,18 +28,13 @@ import { ToastHost } from '@/app/Toasts'
 import { useShellHotkeys } from '@/app/useRoleSwitch'
 import { useClockBounds, useTimePlayback } from '@/app/useTimePlayback'
 import { ROLES, activeNav, type NavItem, type RoleMeta } from '@/core/roles'
-import { useNowCampaign, useSession } from '@/core/session'
-import { isOngoing } from '@/core/events'
+import { useSession } from '@/core/session'
+import { useLiveAlerts } from '@/core/alerts'
 import { startLive, useLiveStatus } from '@/core/live'
-import {
-  useActiveSite,
-  useAlerts,
-  useBootstrap,
-  useCampaignStats,
-  useMonitors,
-} from '@/core/queries'
+import { severityVar } from '@/core/measures'
+import { useActiveSite, useBootstrap, useCampaignStats } from '@/core/queries'
 import { fmtNum, fmtPct } from '@/core/format'
-import type { Alert, Role } from '@/core/types'
+import type { Role } from '@/core/types'
 
 const FALLBACK_CAMPAIGN = 'Southwest Memphis Community Air Monitoring'
 
@@ -103,30 +102,22 @@ function PersonaChip({ meta }: { meta: RoleMeta }) {
   )
 }
 
-// ────────────────────────────────────────────────────────── status strips
+// ──────────────────────────────────────────────────────────── status strip
+//
+// Admin's only. The regulator and industry strips are gone (docs/PLAN-refocus.md
+// F3): the page carries the status, once. Each strip was a second verdict with
+// its own filter, and they disagreed with the pages under them — in the review
+// industry read "ALERTS 4 · HEADROOM 21% · STATUS ADVISORY" over a deck saying CAUTION, 3
+// alerts and "22% cut needed" (21% was the retired `headroom_pct`, and it meant
+// the opposite of 22%); the regulator read "ACTIVE ALERTS 13" over a page's 15.
+// Admin's strip is campaign bookkeeping — segments, passes, vehicles — which no
+// page repeats, so it stays.
 
-function StripItem({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: ReactNode
-  tone?: 'warn' | 'ok' | 'threat'
-}) {
+function StripItem({ label, value, tone }: { label: string; value: ReactNode; tone?: 'ok' }) {
   return (
     <span className={s.stripItem}>
       <span className={s.stripLabel}>{label}</span>
-      <span
-        className={clsx(
-          s.stripValue,
-          tone === 'warn' && s.stripValueWarn,
-          tone === 'ok' && s.stripValueOk,
-          tone === 'threat' && s.stripValueThreat,
-        )}
-      >
-        {value}
-      </span>
+      <span className={clsx(s.stripValue, tone === 'ok' && s.stripValueOk)}>{value}</span>
     </span>
   )
 }
@@ -134,84 +125,13 @@ function StripItem({
 const DASH = '—'
 
 /**
- * The alerts live at the moment on screen, for the header strip and the rail
- * badge: one query and one test, so the two cannot disagree with each other or
- * with the page. Live is `isOngoing` — begun and not yet ended at the demo's
- * now — whatever the status says. Counting `status: 'active'` put ended alerts
- * in the header during replay: at Aug 25 13:54 the header said "Active alerts
- * 2" over a page saying "0 LIVE", and at the end 13 over the page's 6. The
- * industry deck is one site's, so its count is that site's too (the rail said
- * 9 over a Contacts list of 2). It is the site the industry pages lock
- * (`siteId`, written by `useSiteLock`), the same key the timeline's ticks use —
- * not `useActiveSite`'s fallback, which lands on another company's site until
- * the lock is written.
+ * Which site the industry pages are showing. A name, not a status: every
+ * industry screen is one site's, and most of them never say whose. It is the
+ * name alone — the numbers that used to sit beside it are the page's.
  */
-function useLiveAlerts(): Alert[] | undefined {
-  const role = useSession((st) => st.role)
-  const siteId = useSession((st) => st.siteId)
-  const now = useNowCampaign()
-  const industry = role === 'industry'
-  const alerts = useAlerts(
-    industry ? { site_id: siteId ?? undefined } : {},
-    { enabled: !industry || siteId != null },
-  )
-  return useMemo(() => alerts.data?.filter((a) => isOngoing(a, now)), [alerts.data, now])
-}
-
-function RegulatorStrip() {
-  const monitors = useMonitors({ owner_type: 'regulator' })
-  const live = useLiveAlerts()
-  const online = monitors.data?.filter((m) => m.status === 'online').length
-  const total = monitors.data?.length
-  const active = live?.length
-  const critical = live?.filter((a) => a.severity === 'critical').length ?? 0
-  return (
-    <div className={s.strip}>
-      <StripItem
-        label="Monitors"
-        value={total ? `${online ?? 0}/${total}` : DASH}
-        tone={total && online === total ? 'ok' : total ? 'warn' : undefined}
-      />
-      <StripItem
-        label="Live alerts"
-        value={active != null ? fmtNum(active, 0) : DASH}
-        tone={critical > 0 ? 'threat' : active ? 'warn' : undefined}
-      />
-      <StripItem label="Critical" value={live ? fmtNum(critical, 0) : DASH} tone={critical ? 'threat' : undefined} />
-    </div>
-  )
-}
-
-function IndustryStrip() {
+function IndustrySiteName() {
   const site = useActiveSite()
-  const live = useLiveAlerts()
-  const contacts = live?.length
-  const critical = live?.some((a) => a.severity === 'critical')
-  const caution = live?.some((a) => a.severity === 'warning')
-  const threat = critical || caution
-  return (
-    <div className={s.strip}>
-      <span className={s.campaignName}>{site?.name ?? ROLES.industry.org}</span>
-      <StripItem
-        label="Alerts"
-        value={contacts != null ? fmtNum(contacts, 0) : DASH}
-        tone={threat ? 'threat' : contacts ? 'warn' : 'ok'}
-      />
-      <StripItem
-        label="Headroom"
-        /* `headroom_pct` is the share of the safe envelope *used*, not left. */
-        value={site?.headroom_pct != null ? fmtPct(100 - site.headroom_pct, 0, false) : DASH}
-        tone={site?.headroom_pct != null && 100 - site.headroom_pct < 25 ? 'threat' : undefined}
-      />
-      {/* Civil annunciator levels, matching the page below: act now / act soon /
-          be aware. "THREAT" was the radar metaphor leaking into the chrome. */}
-      <StripItem
-        label="Status"
-        value={critical ? 'WARNING' : caution ? 'CAUTION' : contacts ? 'ADVISORY' : 'NORMAL'}
-        tone={threat ? 'threat' : 'ok'}
-      />
-    </div>
-  )
+  return <span className={s.campaignName}>{site?.name ?? ROLES.industry.org}</span>
 }
 
 function AdminStrip() {
@@ -269,24 +189,35 @@ function AdminStatusBar() {
 
 // ───────────────────────────────────────────────────────────────────── nav
 
+/**
+ * The badge is `useLiveAlerts(role).count` — the same number the page and the
+ * alert pages print, from the same hook (F3). It had its own query, active
+ * only and network-wide, so on industry it said 9 beside a site list of 3.
+ * Its colour is the worst live level, not a fixed red: two Watch alerts in the
+ * critical colour was a louder claim than any page made.
+ */
 function NavRail({ meta, pathname }: { meta: RoleMeta; pathname: string }) {
   const active = activeNav(meta.role, pathname)
-  const alertCount = useLiveAlerts()?.length ?? 0
+  // Only a rail with a badge asks: admin's has none, and a null role leaves
+  // the hook disabled rather than fetching a list nobody prints.
+  const live = useLiveAlerts(meta.nav.some((i) => i.badge === 'alerts') ? meta.role : null)
 
-  const badgeFor = (item: NavItem): number | null => {
-    if (!alertCount) return null
-    return item.icon === 'alert' || item.icon === 'contacts' ? alertCount : null
-  }
+  const badgeFor = (item: NavItem): number | null =>
+    item.badge === 'alerts' && live.count > 0 ? live.count : null
 
   return (
     <nav className={s.rail} aria-label={`${meta.label} sections`}>
       {meta.nav.map((item) => {
         const badge = badgeFor(item)
+        const title = badge
+          ? `${item.label} — ${item.hint} · ${badge} live now`
+          : `${item.label} — ${item.hint}`
         return (
           <Link
             key={item.to}
             to={item.to}
-            title={`${item.label} — ${item.hint}`}
+            title={title}
+            aria-label={badge ? `${item.label}, ${badge} live now` : item.label}
             className={clsx(
               s.railItem,
               active?.to === item.to && s.railItemActive,
@@ -295,8 +226,16 @@ function NavRail({ meta, pathname }: { meta: RoleMeta; pathname: string }) {
             )}
           >
             <Icon name={item.icon} size={18} />
-            <span className={s.railCode}>{item.code}</span>
-            {badge ? <span className={s.railBadge}>{badge}</span> : null}
+            {item.short ? (
+              <span className={s.railWord}>{item.short}</span>
+            ) : (
+              <span className={s.railCode}>{item.code}</span>
+            )}
+            {badge ? (
+              <span className={s.railBadge} style={{ ['--badge' as string]: severityVar(live.worst) }}>
+                {badge}
+              </span>
+            ) : null}
           </Link>
         )
       })}
@@ -409,16 +348,14 @@ export function AppShell({ role, children }: AppShellProps) {
           </>
         ) : (
           <>
-            {meta.role === 'regulator' ? (
-              <>
-                <span className={s.campaignName}>{campaign?.name ?? FALLBACK_CAMPAIGN}</span>
-                <span className={s.spacer} />
-                <RegulatorStrip />
-              </>
-            ) : null}
+            {/* Regulator: nothing between the brand and the clock. Its strip
+                was a second status beside the page's (F3), and the campaign
+                name (F4) is on the Landing and in the timeline popup's
+                footer — at 1080 it was the header width the strip lost. */}
+            {meta.role === 'regulator' ? <span className={s.spacer} /> : null}
             {meta.role === 'industry' ? (
               <>
-                <IndustryStrip />
+                <IndustrySiteName />
                 <span className={s.spacer} />
               </>
             ) : null}

@@ -1,8 +1,8 @@
 /**
  * /industry/evidence — says who.
  *
- * The scope tells an operator to run 58 MW under what they are running, on
- * about a third of nights. The first thing anyone sensible asks is **says
+ * The deck tells an operator to hold near 210 MW (modelled) against the 268
+ * they are running, on stable nights. The first thing anyone sensible asks is **says
  * who**, and the answer has to be one click away rather than a footnote.
  *
  * So: the two distributions side by side, the roads they came from inked on
@@ -22,9 +22,28 @@ import { BaseMap, MapOverlay, SegmentLayer } from '@/components'
 import type { SegmentFeature, Theme } from '@/components'
 import { fmtDistance, fmtNum, fmtPct } from '@/core/format'
 import { useEnvelope, useSegments, useTouchdown } from '@/core/queries'
-import type { EnvelopeRegime } from '@/core/types'
+import type { EnvelopeRegime, TouchdownState } from '@/core/types'
 
 import { Caps, Panel, Readout, styles as s, useSiteLock } from './lib'
+
+/**
+ * One sentence per touchdown state that is NOT a finding. Figures — the
+ * excess, the paired hours, the district bars, "N of M segments" — are printed
+ * only for `elevated_downwind`: CONTRACT §10a.4 forbids a sample size or an
+ * estimate for a stratum that failed the placebo gate. Delta Forge's result is
+ * `no_detection` (1.78 ppb under a 3.28 floor, placebo ratio 0.73) and this
+ * page used to print its 1.8 ppb anyway, beside "but it is over homes" — when
+ * 100% of its downwind passes are on President's Island.
+ */
+const TOUCHDOWN_SENTENCE: Record<Exclude<TouchdownState, 'elevated_downwind'>, string> = {
+  no_detection: 'Measured, inside the noise: downwind of this site in stable air the fleet finds '
+    + 'no more than this estimator finds on wind that never blew.',
+  contested: 'A rotated bearing matched it: a wind direction that never happened produces a '
+    + 'comparable excess, so the result cannot be read as this site\u2019s plume.',
+  insufficient_passes: 'Not enough to say: the fleet has not driven downwind of this site in '
+    + 'stable air often enough, on both sides of the comparison.',
+  not_measured: 'Not enough to say: the fleet has not driven downwind of this site in stable air.',
+}
 
 const REGIME_LABEL: Record<string, string> = {
   unstable: 'Well-mixed air',
@@ -62,10 +81,10 @@ function Compare({ r, unit, line }: { r: EnvelopeRegime; unit: string; line: num
           {r.comparison_p50 == null ? '—' : `${fmtNum(r.comparison_p50, 0)} ${unit}`}
         </span>
       </div>
-      <Caps>
-        bars are the median and the 90th percentile · the tick is the action level ·{' '}
-        {r.n_fenceline} fenceline passes over {r.n_episodes} episodes
-      </Caps>
+      <span className={s.evCaption}>
+        Bars are the median and the 90th percentile; the tick is the action level.{' '}
+        {r.n_fenceline} fenceline passes over {r.n_episodes} episodes.
+      </span>
     </div>
   )
 }
@@ -88,6 +107,9 @@ export function Evidence() {
   const fenceIds = new Set(env?.fenceline_segment_ids ?? [])
   const compIds = new Set(env?.comparison_segment_ids ?? [])
   const td = tdQ.data
+  // Said from the payload, never assumed: the district the downwind passes
+  // actually fell in. Whether that district is homes is not in the data.
+  const topDistrict = [...(td?.districts ?? [])].sort((a, b) => b.share - a.share).find((d) => d.n_downwind > 0) ?? null
 
   /*
     The road grid, in three registers. The fenceline is the only inked thing —
@@ -123,8 +145,9 @@ export function Evidence() {
               : stable?.excess == null
                 ? `We have not driven ${site.name}'s fenceline on enough stable nights to say. `
                   + 'That is a sampling gap, not a clean result.'
-                : `${env.fenceline_roads.join(', ')} runs ${fmtNum(stable.excess, 0)} ${env.unit} over `
-                  + `road of the same class more than ${fmtDistance(2000)} from any site, in stable air. `
+                : `${env.fenceline_roads.join(', ')} ${env.fenceline_roads.length > 1 ? 'run' : 'runs'} `
+                  + `${fmtNum(stable.excess, 0)} ${env.unit} over roads of the same class more than `
+                  + `${fmtDistance(2000)} from any site, in stable air. `
                   + `Same instrument, same nights.`}
           </span>
         </div>
@@ -144,11 +167,11 @@ export function Evidence() {
       <div className={s.siteBody}>
         <Panel title="The roads this rests on" aside={<Caps>{env?.fenceline_roads.join(' · ')}</Caps>}>
           <BaseMap layers={layers} initialView={{ longitude: site.centroid[0], latitude: site.centroid[1], zoom: 12.4 }}>
-            <MapOverlay>
-              <Caps>
-                thick = your fenceline, within {env ? fmtDistance(env.fenceline_m) : '—'} of an active
-                emission point · faint = the comparison set, over 2 km from every site
-              </Caps>
+            <MapOverlay place="bottom-left">
+              <span className={s.mapCaption}>
+                Thick: your fenceline, within {env ? fmtDistance(env.fenceline_m) : '—'} of a running
+                source. Faint: the comparison roads, over 2 km from every site.
+              </span>
             </MapOverlay>
           </BaseMap>
         </Panel>
@@ -195,20 +218,31 @@ export function Evidence() {
             title="And who is downwind while it happens"
             aside={td ? <Caps>{td.site.state.replace(/_/g, ' ')}</Caps> : null}
           >
-            {td?.site.excess == null ? (
+            {!td ? (
               <span className={s.bannerSub}>
-                Not enough conditioned passes to say where the plume lands.
+                {tdQ.isError ? 'The downwind test is unavailable.' : 'Reading the downwind test…'}
+              </span>
+            ) : td.site.state !== 'elevated_downwind' || td.site.excess == null ? (
+              <span className={s.bannerSub}>
+                {td.site.state === 'elevated_downwind'
+                  ? TOUCHDOWN_SENTENCE.insufficient_passes
+                  : TOUCHDOWN_SENTENCE[td.site.state]}
               </span>
             ) : (
               <>
                 <span className={s.bannerSub}>
-                  One to four kilometres downwind in stable air we measure{' '}
-                  {fmtNum(td.site.excess, 1)} {env?.unit} above matched control roads, over{' '}
-                  {td.site.n_hours} paired hours. That is a smaller and much less certain result
-                  than the fenceline above, and it crosses no action level — but it is over homes.
+                  {fmtDistance(td.site.r_lo_m)} to {fmtDistance(td.site.r_hi_m)} downwind in stable
+                  air we measure {fmtNum(td.site.excess, 1)} {env?.unit} above matched control roads,
+                  over {td.site.n_hours} paired hours, and a rotated bearing does not reproduce it.
+                  That is a smaller and much less certain result than the fenceline above, and it is
+                  an increment over control roads, not a level, so it says nothing about any
+                  action level.
+                  {topDistrict
+                    ? ` ${fmtPct(topDistrict.share * 100, 0, false)} of those downwind passes were in ${topDistrict.district}.`
+                    : ''}
                 </span>
                 <div className={s.evDistricts}>
-                  {td.districts.slice(0, 3).map((d) => (
+                  {td.districts.filter((d) => d.n_downwind > 0).slice(0, 3).map((d) => (
                     <div key={d.district} className={s.evRow}>
                       <Caps ink>{d.district}</Caps>
                       <div className={s.evTrack}>
@@ -218,10 +252,10 @@ export function Evidence() {
                     </div>
                   ))}
                 </div>
-                <Caps>
-                  share of downwind passes by district · {td.site.n_supported_segments} of{' '}
-                  {td.features.length} road segments carry enough passes to say anything at all
-                </Caps>
+                <span className={s.evCaption}>
+                  Share of downwind passes by district. {td.site.n_supported_segments} of{' '}
+                  {td.features.length} road segments carry enough passes to say anything at all.
+                </span>
               </>
             )}
           </Panel>

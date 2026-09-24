@@ -11,10 +11,15 @@
  * the outbound half. Here they read; there they answer. The one thing they can
  * never do, from either screen, is close a report.
  *
- * Everything is measured from *their* site: bearing, distance, and whether it
- * sits in today's plume track. A report two kilometres upwind is somebody
- * else's problem and saying so plainly is more credible than implying every
- * complaint is theirs.
+ * Everything is measured from *their* site: direction and distance. A report
+ * is tagged "downwind then" only under the one linking rule every room uses
+ * (F7): the wind at the time carried from this site to it, AND the site's
+ * measured downwind test passed its rotation check — and only for the kinds an
+ * air test can speak to (smell, smoke, dust, health; never noise, vibration or
+ * light). It used to be tagged
+ * "downwind of you" or "off your axis" by TODAY's wind, for reports up to three
+ * weeks old — a statement about this afternoon's weather printed as if it were
+ * about the report.
  */
 
 import { useMemo, useState } from 'react'
@@ -24,14 +29,14 @@ import { Sparkline } from '@/components'
 import { Button } from '@/app/ui'
 import { campaignMs } from '@/core/clock'
 import { happenedBy } from '@/core/events'
-import { compassPoint, fmtBearing, fmtDistance, fmtNum, relativeShort } from '@/core/format'
-import { useConcernClusters, useConcerns, useWind } from '@/core/queries'
+import { compassPoint, fmtDistance, fmtNum, relativeShort } from '@/core/format'
+import { useConcernClusters, useConcerns, useDispersion, useTouchdown } from '@/core/queries'
 import { useNowCampaign } from '@/core/session'
 import type { Concern } from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Tag, bearingFrom, placeReports, styles as s, useSiteLock,
-  useStableWindow,
+  Caps, Panel, Readout, Tag, bearingFrom, clusterLinked, placeReports, plumeFacts, reportLinked,
+  styles as s, useSiteLock,
 } from './lib'
 
 const DAYS = 21
@@ -49,16 +54,15 @@ export function Community() {
   // then from the reports it had so far.
   const clustersData = useConcernClusters().data
   const clusters = useMemo(() => clustersData ?? [], [clustersData])
-  // The latest hourly observation at the moment shown — see Scope.
-  const windSeries = useWind(useStableWindow(24)).data
-  const wind = windSeries?.[windSeries.length - 1]
-  const transport = wind ? (wind.dir_deg + 180) % 360 : null
+  // F7's (b): the site's measured downwind test, for its plume's species.
+  const facts = plumeFacts(useDispersion({ site_id: site?.id }).data)
+  const tdState = useTouchdown(site?.id, { measure: facts?.measure ?? 'no2' }).data?.site.state
   const [picked, setPicked] = useState<string | null>(null)
 
   /** Every report placed relative to this campus, nearest first. */
   const near = useMemo(
-    () => (site ? placeReports(site.centroid, concerns, transport) : []),
-    [concerns, site, transport],
+    () => (site ? placeReports(site.centroid, concerns, (c) => reportLinked(c, site.id, tdState)) : []),
+    [concerns, site, tdState],
   )
 
   /**
@@ -82,7 +86,7 @@ export function Community() {
   const priorWeek = trend.slice(-14, -7).reduce((a, b) => a + b, 0)
   const rising = recentWeek > priorWeek
 
-  /** Clusters within reach, and whether the wind was pointing at them. */
+  /** Clusters within reach, nearest first. */
   const nearClusters = useMemo(() => {
     if (!site) return []
     return clusters
@@ -95,7 +99,7 @@ export function Community() {
   const chosenGeo = picked ? near.find((r) => r.concern.id === picked) ?? null : null
 
   if (!site) {
-    return <div className={`${s.page}`}><div className={s.err}>No site locked.</div></div>
+    return <div className={`${s.page}`}><div className={s.err}>No site for this persona.</div></div>
   }
 
   return (
@@ -120,7 +124,7 @@ export function Community() {
         </div>
       </div>
 
-      <div className={s.scopeBody} style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(340px, 0.7fr)' }}>
+      <div className={s.twoPane}>
         <Panel title="Reports near this campus" aside={<Caps>nearest first</Caps>}>
           <div className={s.trendWrap}>
             <Caps>Reports per day · {DAYS} days</Caps>
@@ -135,7 +139,7 @@ export function Community() {
           <div className={s.rows}>
             {near.length === 0 ? (
               <span className={s.reportNote}>No resident reports within 6 km.</span>
-            ) : near.slice(0, 40).map(({ concern: c, distanceM, bearing, downwind }) => {
+            ) : near.slice(0, 40).map(({ concern: c, distanceM, bearing, linked }) => {
               return (
                 <button
                   key={c.id}
@@ -151,11 +155,9 @@ export function Community() {
                       {' · '}{relativeShort(c.created_at, now)}
                     </span>
                   </span>
-                  {/* Downwind of us, or somebody else's problem. Saying which is
-                      more credible than implying every complaint is theirs. */}
-                  {downwind
-                    ? <Tag tone="threat">downwind of you</Tag>
-                    : <Tag>off your axis</Tag>}
+                  {/* Only when both F7 tests agree. No tag is the honest
+                      default: most reports cannot be tied to any one site. */}
+                  {linked ? <LinkedTag /> : null}
                 </button>
               )
             })}
@@ -172,11 +174,14 @@ export function Community() {
                   <span className={s.reportCount}>{cl.count}</span>
                   <span className={s.reportBody}>
                     <span className={s.reportTitle}>{cl.label ?? 'Cluster'}</span>
+                    {/* A compass point, not "NNW 338°": the degrees were
+                        instrument talk, and they pushed "last 1d" onto two
+                        lines in the 324 px column at 1080. */}
                     <span className={s.reportSub}>
-                      {fmtDistance(distanceM, 1)} {fmtBearing(bearing)} · last {relativeShort(cl.last_at, now)}
+                      {fmtDistance(distanceM, 1)} {compassPoint(bearing)} · last{'\u00a0'}{relativeShort(cl.last_at, now)}
                     </span>
                   </span>
-                  {cl.site_id === site.id ? <Tag tone="threat">attributed to you</Tag> : <Tag>unattributed</Tag>}
+                  {clusterLinked(cl, concerns, site.id, tdState) ? <LinkedTag /> : null}
                 </div>
               ))}
             </div>
@@ -211,5 +216,17 @@ export function Community() {
         </div>
       </div>
     </div>
+  )
+}
+
+/** The F7 link, said as the wind at the time plus the test, never as "yours". */
+function LinkedTag() {
+  return (
+    <Tag
+      tone="accent"
+      title="The wind at the time carried from your campus to here, and your measured downwind test passed its rotation check."
+    >
+      downwind then
+    </Tag>
   )
 }

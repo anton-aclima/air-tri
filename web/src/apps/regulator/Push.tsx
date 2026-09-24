@@ -72,7 +72,7 @@ function communityDraft(x: PushSubject): string {
     : 'above'
   return [
     `Our monitoring is showing ${over} the level we act on near ${x.where}.`,
-    'If you are sensitive to air quality, consider keeping windows closed and limiting time outdoors until this clears.',
+    'If you are sensitive to air quality, consider keeping windows closed and limiting time outdoors until levels fall back.',
     'We have put the operator on notice and are following up.',
   ].join(' ')
 }

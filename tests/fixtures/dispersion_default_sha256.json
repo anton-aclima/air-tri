@@ -1,0 +1,374 @@
+{
+ "what": "sha256 of the raw response bytes of GET /api/v1/wind/dispersion with no `outline` parameter, captured from the router at commit d35410a \u2014 before `outline=1` existed. tests/test_dispersion_outline.py asserts the default response still hashes to these. Do NOT regenerate to make that test pass: a mismatch means the default payload changed, which is the thing it guards.",
+ "datagen_now": "2026-08-28T13:54:00",
+ "seed": 20260827,
+ "cases": [
+  {
+   "params": {},
+   "n_features": 9,
+   "sha256": "0a4ea9d9baa2032db926b95c127b3ccabeb4155a3b566c2429386494fecb48a2"
+  },
+  {
+   "params": {
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "f99844b297904ad14b463b6a4a10e489a51467c2fe83f79bc3c0074f14db34f4"
+  },
+  {
+   "params": {
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "f29c0258a7d6b94b9bed763eda41df20bc811852da6798991319fe55e6d7ffbf"
+  },
+  {
+   "params": {
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "1d02f067eae8246f6168e00a4e20bc5b932e54cd22482ae87ca5927eba4735fc"
+  },
+  {
+   "params": {
+    "at": "2026-06-07T10:00:00"
+   },
+   "n_features": 9,
+   "sha256": "17d5a270be382bcb661ed3f0b4f48451793f726c78333ae2ac05f3a6f1bed9cb"
+  },
+  {
+   "params": {
+    "at": "2026-06-07T10:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "8d1d47b66dce8c8bc865af04737ff9552091d2956d83b753bb434eb8b016435d"
+  },
+  {
+   "params": {
+    "at": "2026-06-07T10:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "d4cd713d60e923c3dc8908027fa10449d828243100f39307f250d0f126ec9b3c"
+  },
+  {
+   "params": {
+    "at": "2026-06-07T10:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "c7774bc3c2d30ed9c55da601a251483e1ade45f64af9d5523a2f26333d16682c"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T19:00:00"
+   },
+   "n_features": 9,
+   "sha256": "1574ac22a7842744eb0865fa4008271154928e2084f42719a449adff4280da58"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T19:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "7576f1d823ee3397afbf80291e7fefa709fcf415687502216736ebd89a15aa26"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T19:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "acc65f2af8deda61d9ab0662c49135d4637b520cf5bb21277f68922112665956"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T19:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "6c2d52ce9f7435792e57b0012200940b8724aa9994df1b4942170c7c66bf7936"
+  },
+  {
+   "params": {
+    "at": "2026-07-03T07:00:00"
+   },
+   "n_features": 9,
+   "sha256": "962aec0a0315a06bd1170dd8532cf72cba207414d486c6f32d0a98372086b7d0"
+  },
+  {
+   "params": {
+    "at": "2026-07-03T07:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "77349088a489018b646512ce5a935b4134ba27dd2281cdf9e365499c73841270"
+  },
+  {
+   "params": {
+    "at": "2026-07-03T07:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "5b95b52ac7fdd30040819aeb459f4e3a857d43c5ea17eeddb313f2a48def2d95"
+  },
+  {
+   "params": {
+    "at": "2026-07-03T07:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "48176199afb468fd8ba1e929254dfa72c05197075261f91d7ef91cef46baf2ec"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T07:00:00"
+   },
+   "n_features": 9,
+   "sha256": "897738f88eed8c6fcb18f21797a5927de2ee5c162289efd5d95db1cc9de838ec"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T07:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "92a12b0bd235d559b61a4dff4024d107ad98fae100633c486e942708f85fb818"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T07:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "2921efd4af9b29c7817f101dbbfeda0dcc0c78a5fa00030663e12b6712532b7b"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T07:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "e12363be0cca4463aa4d0ba2cec7acf8bbc2be22863f407c98a525cce09f16f2"
+  },
+  {
+   "params": {
+    "at": "2026-07-18T08:00:00"
+   },
+   "n_features": 9,
+   "sha256": "cc2da1489298ad432ed6f44bd3e24704c5ae218e22270b84a9c58321aa547962"
+  },
+  {
+   "params": {
+    "at": "2026-07-18T08:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "fa74aef7162e03591243e17a26a6addf53172bb9f40c51bdd40cd986cea2bcaf"
+  },
+  {
+   "params": {
+    "at": "2026-07-18T08:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "8a018976a7da648a0ef8724eb483d84433bd5bc50b90053456c3c67dc2764980"
+  },
+  {
+   "params": {
+    "at": "2026-07-18T08:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "04cc87474278b995794b2c8ea7cf42612cc7c73760acb2ee0d9699fe9212c748"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T20:00:00"
+   },
+   "n_features": 9,
+   "sha256": "3ea202f478b9939024e387850bb178a898da45f75aa1b5031749e207c0e4c0cd"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T20:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "266ab0008fb58853c538e905a058a33c5e679aaaa9f93b6b877264e7bb4da272"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T20:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "b4c7df284cf1378e8e8ebde58cba0bfb9f7e888670846a66f75a5aee3a24f59c"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T20:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "1680dbcd37623f4c2631242398649371668bf952c121f92d8ab078ef78e43846"
+  },
+  {
+   "params": {
+    "at": "2026-06-02T04:00:00"
+   },
+   "n_features": 9,
+   "sha256": "8e3b29fc91b345bb654c02e0c627a9f7d490d12b8cff5e1df660afa1ef8fe90b"
+  },
+  {
+   "params": {
+    "at": "2026-06-02T04:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "f500fed4a4c9e5f1074513cfb515b9c6e05ef9509d90978c0c63f67e99ee4cf0"
+  },
+  {
+   "params": {
+    "at": "2026-06-02T04:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "0347e8e38a1404b5d7dd15b22f7dfc3ba662cf1f6b66d4a3bc6b8fac7d3fffa1"
+  },
+  {
+   "params": {
+    "at": "2026-06-02T04:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "0332924c57307b4575a3be9baba707170889df82334d7c0fd383529433b43647"
+  },
+  {
+   "params": {
+    "at": "2026-06-03T21:00:00"
+   },
+   "n_features": 9,
+   "sha256": "609c01c048f9112ec4b14b8fc41bc7cf7f848528cda4d0e383dc38a1411d3c93"
+  },
+  {
+   "params": {
+    "at": "2026-06-03T21:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "0f896d25adbfe3f89cadcbf9b93c6e4ceab19428c3503943ec35d19d259a245b"
+  },
+  {
+   "params": {
+    "at": "2026-06-03T21:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "2f9a0da16c26698814e868a122c10e9f6960fe67568bc6c169f82ce850dd0a2a"
+  },
+  {
+   "params": {
+    "at": "2026-06-03T21:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "c8c83ca9f3581786b698953e5ae0520fb4234183974a103a7d34ce87be85df02"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T00:00:00"
+   },
+   "n_features": 9,
+   "sha256": "90fddf26ffdaaf5719fcc706bfc660464e53225ad30f5b9bbc32696cc862ba17"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T00:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "163b64ffe2f1acf5a8a15e6c7fd15e9840f2a134d83f333803ae8c201f111d9c"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T00:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "d178a3fe9fd9ede0f578fea6c9caf41a633ca71a9cae5d00fe02886407f35983"
+  },
+  {
+   "params": {
+    "at": "2026-05-31T00:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "fa9025041bf3ad810f9c36a18ff2de29b3fe57c57b2b3e86f913b87bf3b446b8"
+  },
+  {
+   "params": {
+    "at": "2026-08-03T01:00:00"
+   },
+   "n_features": 9,
+   "sha256": "ff0ada95f7a842038c2dd61448efb4e480813db52e45d29045f52fcb11c36876"
+  },
+  {
+   "params": {
+    "at": "2026-08-03T01:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "123d60059bc7ceaa3c201062680f006ae0332883ad397fc442b1de0139eed947"
+  },
+  {
+   "params": {
+    "at": "2026-08-03T01:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "4acd55c0a5f4d0395460ffc6800498bbce2d6f31f9c9babb7fd3d75287deac03"
+  },
+  {
+   "params": {
+    "at": "2026-08-03T01:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "77a6caff98ab4b0ad93bc41c6462ccc6c832db454136305e6d9ff6f105ed7c98"
+  },
+  {
+   "params": {
+    "at": "2026-07-21T02:00:00"
+   },
+   "n_features": 9,
+   "sha256": "3d576da5ca688ebf35fc2f923a4be1716f2d001ed1aab89bd6db5c4f84aca8d0"
+  },
+  {
+   "params": {
+    "at": "2026-07-21T02:00:00",
+    "site_id": "site-ridgeline"
+   },
+   "n_features": 3,
+   "sha256": "1618305e12072dc742c621656cbd9cbe29961d867fc002bcccae2fa6c443e29e"
+  },
+  {
+   "params": {
+    "at": "2026-07-21T02:00:00",
+    "site_id": "site-deltaforge"
+   },
+   "n_features": 3,
+   "sha256": "d892235109ecac4082a0d0cf7b552003b9892f69e296b619807cfec1a13a73cf"
+  },
+  {
+   "params": {
+    "at": "2026-07-21T02:00:00",
+    "site_id": "site-riverport"
+   },
+   "n_features": 3,
+   "sha256": "23b3e3151fb61b9708c0e9e90312f0f2444ea2360c1e36acfb44d45437b49446"
+  }
+ ]
+}

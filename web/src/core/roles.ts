@@ -21,8 +21,18 @@ export interface NavItem {
   label: string
   /** Uppercase micro-label used by the dense skins. */
   code: string
+  /**
+   * A short word the rail prints instead of `code`. Codes read as a cockpit
+   * panel ("DECK · ALRT · COMM · OUTR"), and a reader has to decode each one;
+   * a word needs no key (docs/PLAN-refocus.md F4, CONTRACT §10a.7). Rooms
+   * move to words one at a time — industry first — so the rail takes both.
+   */
+  short?: string
   icon: IconName
+  /** Plain language: what is on the page, never how the page is styled. */
   hint: string
+  /** The rail shows the room's live alert count on this item (`useLiveAlerts`). */
+  badge?: 'alerts'
   /** Renders as the one obvious call to action (community "Report"). */
   cta?: boolean
   /** Pull to the end of the rail (settings-ish). */
@@ -103,7 +113,7 @@ export const ROLES: Record<Role, RoleMeta> = {
     nav: [
       { to: '/regulator', label: 'Watchfloor', code: 'WATCH', icon: 'shield', hint: 'Network status at a glance' },
       { to: '/regulator/map', label: 'Map', code: 'MAP', icon: 'map', hint: 'Monitors, fleet, road grid' },
-      { to: '/regulator/alerts', label: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Exceedances and exposures' },
+      { to: '/regulator/alerts', label: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Exceedances and exposures', badge: 'alerts' },
       { to: '/regulator/thresholds', label: 'Action levels', code: 'THRS', icon: 'threshold', hint: 'The action levels you set' },
       { to: '/regulator/analysis', label: 'Analysis', code: 'ANLY', icon: 'analysis', hint: 'Diurnal, dispersion, ranking' },
     ],
@@ -113,23 +123,36 @@ export const ROLES: Record<Role, RoleMeta> = {
     role: 'industry',
     label: 'Industry',
     org: 'Ridgeline Compute',
-    tagline: 'How hard can I run without crossing a line?',
+    // The room's message is performance inside the air's constraints (owner,
+    // 2026-09-23): how hard to run comes first, what is downwind second, and
+    // checking the filed study is a supporting view, not a headline. The
+    // avionics are the look — mono numerals, phosphor, square corners — and
+    // none of their words reach the copy: "Flight deck", "Watch the margin"
+    // and "Protect the headroom" (the retired `headroom_pct`) all read as the
+    // metaphor taken literally.
+    tagline: 'How hard can I run, given the air around my site?',
     narrative: 'flight deck',
     blurb:
-      'Run at the top of your operating envelope — the regulator\'s action levels on your own fenceline roads, measured street by street — alongside what is downwind of you now and what residents are saying.',
-    wants: ['Watch the margin', 'Answer the community', 'Protect the headroom'],
+      'Run as hard as the air allows. The fleet measures your fenceline roads against the agency\'s action levels; the map shows the wind, where your emissions are modelled to go, and what residents report.',
+    wants: [
+      'See how hard you can run, hour by hour',
+      'See what lies downwind of you',
+      'Respond to residents with the measurements',
+    ],
     accentVar: 'var(--actor-industry)',
     icon: 'radar',
     landing: '/industry',
     chrome: 'scope',
     hotkey: '3',
+    // Words on the rail, not codes (F4). The first item is the map because the
+    // screen is a map: "Flight deck" named the metaphor, not what is on it.
     nav: [
-      { to: '/industry', label: 'Flight deck', code: 'DECK', icon: 'scope', hint: 'Map, gauges and what is nearby' },
-      { to: '/industry/alerts', label: 'Alerts', code: 'ALRT', icon: 'contacts', hint: 'Everything active, on a timeline' },
-      { to: '/industry/community', label: 'Community', code: 'COMM', icon: 'people', hint: 'What your neighbours are reporting' },
-      { to: '/industry/outreach', label: 'Outreach', code: 'OUTR', icon: 'megaphone', hint: 'Post, respond, propose mitigation' },
-      { to: '/industry/evidence', label: 'Evidence', code: 'EVID', icon: 'analysis', hint: 'The measurements your envelope rests on' },
-      { to: '/industry/site', label: 'Site', code: 'SITE', icon: 'factory', hint: 'Your campus and emission points' },
+      { to: '/industry', label: 'Map', short: 'Map', code: 'MAP', icon: 'map', hint: 'Your site, the wind, and the streets measured around it' },
+      { to: '/industry/alerts', label: 'Alerts', short: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Alerts near your site at the time shown', badge: 'alerts' },
+      { to: '/industry/community', label: 'Reports', short: 'Reports', code: 'RPTS', icon: 'people', hint: 'What residents near you are reporting' },
+      { to: '/industry/outreach', label: 'Outreach', short: 'Outreach', code: 'OUTR', icon: 'megaphone', hint: 'Post updates, respond to residents, propose mitigation' },
+      { to: '/industry/evidence', label: 'Evidence', short: 'Evidence', code: 'EVID', icon: 'analysis', hint: 'The street measurements behind how hard you can run' },
+      { to: '/industry/site', label: 'Site', short: 'Site', code: 'SITE', icon: 'factory', hint: 'Your campus, emission points and the filed study' },
     ],
   },
 

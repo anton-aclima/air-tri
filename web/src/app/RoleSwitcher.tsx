@@ -4,6 +4,14 @@
  * Four doors, each rendered *in its own real skin* (`data-role` on the card),
  * so the four worlds are visibly different products before you even enter one.
  * ⌘K opens it, 1–4 pick a door, ⌥1–⌥4 skip it entirely.
+ *
+ * Every persona is on its door. The door used to show the first two, which
+ * left Riverport's terminal manager — the only way into the Riverport deck,
+ * since no industry page picks a site — reachable only by editing
+ * localStorage. The chips are compact (first name, the full name, title and
+ * organisation on hover and to assistive tech), and a persona at a company
+ * other than the door's own carries that company's short name, because on the
+ * industry door the persona IS the choice of site.
  */
 
 import { useEffect, useRef } from 'react'
@@ -15,23 +23,54 @@ import { Avatar, Icon, Kbd } from '@/app/ui'
 import { SimulatedBadge } from '@/app/SimulatedBadge'
 import { ROLES, ROLE_ORDER, type RoleMeta } from '@/core/roles'
 import { useSession } from '@/core/session'
-import { useCampaignInfo, useUsers } from '@/core/queries'
+import { useCampaignInfo, useOrgs, useUsers } from '@/core/queries'
 import { useRoleSwitch } from '@/app/useRoleSwitch'
-import type { Role, User } from '@/core/types'
+import type { Org, Role, User } from '@/core/types'
+
+/**
+ * The chip's name: the first name, without an honorific ("Dr. Priya
+ * Raghunathan" → "Priya"). A team account named after its organisation
+ * ("Aclima Data Ops") keeps its whole name — "Aclima" alone would read as the
+ * company, not a person in it.
+ */
+function chipName(u: User, org: Org | undefined): string {
+  const bare = u.name.replace(/^(dr|mr|mrs|ms|mx|prof)\.?\s+/i, '').trim()
+  const first = bare.split(/\s+/)[0] ?? bare
+  const orgWords = [org?.short_name, org?.name].filter(Boolean).map((w) => w!.split(/\s+/)[0].toLowerCase())
+  return orgWords.includes(first.toLowerCase()) ? u.name : first
+}
 
 function Door({
   meta,
   current,
   index,
   personas,
+  orgs,
   onPick,
 }: {
   meta: RoleMeta
   current: boolean
   index: number
   personas: User[]
+  orgs: Org[]
   onPick: (role: Role, user?: User | null) => void
 }) {
+  const orgOf = (u: User) => orgs.find((o) => o.id === u.org_id)
+  // The door's own organisation (`meta.org`, by name): its personas need no
+  // tag, and they come first. Everyone else, grouped by their company.
+  const home = orgs.find((o) => o.name === meta.org)?.id ?? null
+  const ordered = [...personas].sort((a, b) => {
+    const ha = Number(a.org_id !== home)
+    const hb = Number(b.org_id !== home)
+    if (ha !== hb) return ha - hb
+    const oa = orgOf(a)?.short_name ?? orgOf(a)?.name ?? ''
+    const ob = orgOf(b)?.short_name ?? orgOf(b)?.name ?? ''
+    return oa.localeCompare(ob) || a.name.localeCompare(b.name)
+  })
+  // Tag a persona with its company only on a door that spans companies
+  // (industry): residents with no organisation are not "somewhere else".
+  const spansCompanies = new Set(personas.map((u) => u.org_id).filter((o) => o != null)).size > 1
+    && personas.every((u) => orgOf(u)?.kind === 'company')
   return (
     <button
       type="button"
@@ -72,27 +111,36 @@ function Door({
         {personas.length === 0 ? (
           <span className={s.personaHint}>Enter as {meta.label}</span>
         ) : (
-          personas.slice(0, 2).map((u) => (
-            <span
-              key={u.id}
-              className={s.personaBtn}
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation()
-                onPick(meta.role, u)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+          ordered.map((u) => {
+            const org = orgOf(u)
+            const tag = spansCompanies && u.org_id !== home ? (org?.short_name ?? org?.name ?? null) : null
+            const full = [u.name, u.title, org?.name].filter(Boolean).join(' · ')
+            return (
+              <span
+                key={u.id}
+                className={s.personaBtn}
+                role="button"
+                tabIndex={0}
+                title={full}
+                aria-label={`Enter as ${full}`}
+                onClick={(e) => {
                   e.stopPropagation()
                   onPick(meta.role, u)
-                }
-              }}
-            >
-              <Avatar user={u} size="sm" />
-              <span className={s.personaName}>{u.name}</span>
-            </span>
-          ))
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onPick(meta.role, u)
+                  }
+                }}
+              >
+                <Avatar user={u} size="sm" className={s.personaAvatar} />
+                <span className={s.personaName}>{chipName(u, org)}</span>
+                {tag && <span className={s.personaOrg}>{tag}</span>}
+              </span>
+            )
+          })
         )}
       </span>
     </button>
@@ -105,6 +153,7 @@ export function RoleSwitcher() {
   const setSwitcherOpen = useSession((st) => st.setSwitcherOpen)
   const switchTo = useRoleSwitch()
   const users = useUsers()
+  const orgs = useOrgs()
   const campaign = useCampaignInfo()
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -149,6 +198,7 @@ export function RoleSwitcher() {
             meta={ROLES[r]}
             current={role === r}
             personas={users.filter((u) => u.role === r)}
+            orgs={orgs}
             onPick={switchTo}
           />
         ))}

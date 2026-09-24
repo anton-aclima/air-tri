@@ -5,7 +5,7 @@
  * the whole show: pick a cue, read what it will do to each of the other three
  * interfaces, then pull the lever. Everything is two-stage and every
  * consequence is stated before the fact — nothing here should ever be fired by
- * accident, and one cue (ALL CLEAR) empties the industry radar, so it is
+ * accident, and one cue (WIND DOWN) empties the industry deck's alert list, so it is
  * marked, coloured and gated behind an extra confirmation.
  *
  * Scenarios write real rows. The cluster detector, the action-level evaluator
@@ -52,7 +52,7 @@ const CUES: Cue[] = [
     description:
       'Ridgeline runs a turbine test. NO₂ and black carbon spike on the east fenceline, real monitor readings are written, and the action-level evaluator does the rest.',
     consequences: [
-      { who: 'industry', what: 'A new contact appears on the scope at ~095°, close in. The safe-envelope readout tightens.' },
+      { who: 'industry', what: 'A new alert appears on the map east of the campus, close in. The envelope line tightens.' },
       { who: 'regulator', what: 'An exceedance alert lands in the queue with the samples attached.' },
       { who: 'community', what: 'Nothing yet — residents only see it if someone files a concern or DRAQA issues an advisory.' },
     ],
@@ -65,7 +65,7 @@ const CUES: Cue[] = [
       'Six residents file smell, noise and health reports within ninety minutes and 600 m of each other. Cluster detection fires on its own.',
     consequences: [
       { who: 'community', what: 'Six new concerns on the map and in the feed; the cluster halo starts breathing.' },
-      { who: 'industry', what: 'A concern-cluster contact appears on the radar to the south-east. The operator cannot close it.' },
+      { who: 'industry', what: 'A cluster of resident reports appears on the map to the south-east. The operator cannot close it.' },
       { who: 'regulator', what: 'The cluster enters the queue as a warning-severity alert.' },
     ],
   },
@@ -78,7 +78,7 @@ const CUES: Cue[] = [
     consequences: [
       { who: 'community', what: 'A public advisory appears, pinned, in plain language with no units.' },
       { who: 'regulator', what: 'An integrated-exposure alert opens alongside the advisory.' },
-      { who: 'industry', what: 'The observed wind field in the scope swings — and stops agreeing with the consultant contour.' },
+      { who: 'industry', what: 'The fleet-measured wind on the map swings — and stops agreeing with the filed study.' },
     ],
   },
   {
@@ -89,7 +89,7 @@ const CUES: Cue[] = [
       'Mobile monitoring finds a methane anomaly no stationary monitor can see. The leapfrog moment: the regulator\'s own network is blind to it.',
     consequences: [
       { who: 'regulator', what: 'A mobile-detection alert with no reference-monitor corroboration — because none of the three monitors measures CH₄.' },
-      { who: 'industry', what: 'A contact from a source the operator has no instrument of their own to check.' },
+      { who: 'industry', what: 'An alert from a source the operator has no instrument of their own to check.' },
       { who: 'community', what: 'The affected streets change colour on the map.' },
     ],
   },
@@ -108,12 +108,12 @@ const CUES: Cue[] = [
   {
     id: 'all_clear',
     no: '6',
-    name: 'All clear',
+    name: 'Wind down',
     description:
       'Mitigation completes, levels fall, alerts resolve and advisories close. The reset at the end of a demo.',
     danger: true,
     consequences: [
-      { who: 'industry', what: 'THE RADAR EMPTIES. Every contact resolves and the scope reads CLEAR — there is no undo.' },
+      { who: 'industry', what: 'The deck\'s Downwind list empties: every alert resolves. There is no undo.' },
       { who: 'regulator', what: 'The alert queue drains to nothing.' },
       { who: 'community', what: 'Advisories close and the feed goes quiet.' },
     ],
@@ -145,7 +145,7 @@ export function Director() {
   const reseed = useReseed()
   const events = useLiveEvents()
   const status = useLiveStatus()
-  // The whole record (`at: undefined`), not the session's moment: ALL CLEAR
+  // The whole record (`at: undefined`), not the session's moment: WIND DOWN
   // resolves by status at the end of the data, whatever the cursor says, so
   // its confirmation must count every alert it will close. The world state is
   // cut to the moment below — all 31 alerts fit in one request.
@@ -442,7 +442,7 @@ export function Director() {
       <Modal
         open={confirm}
         onClose={() => setConfirm(false)}
-        title="Fire ALL CLEAR?"
+        title="Fire WIND DOWN?"
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirm(false)}>Cancel</Button>
@@ -462,7 +462,7 @@ export function Director() {
       >
         <p className={s.note}>
           This resolves <strong>every open alert</strong> and closes every advisory. The
-          industry radar goes to CLEAR and the regulator queue empties. There is no undo: the
+          industry deck's alert list empties and the regulator queue drains. There is no undo: the
           only way back is to fire the other cues again, one at a time.
         </p>
         <p className={s.noteDim} style={{ marginTop: 'var(--s-3)' }}>

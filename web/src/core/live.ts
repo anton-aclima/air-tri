@@ -307,13 +307,16 @@ export function invalidationsFor(event: LiveEvent): readonly (readonly unknown[]
 export function hrefFor(event: LiveEvent, role: Role | null): string | null {
   const id = event.objectId
   switch (event.type) {
+    // Industry lands on `/industry`, the map, not its old `/industry/scope`
+    // alias: the alias named the retired radar and is free to go with it, and
+    // a toast that navigates to a removed route lands on Not Found.
     case 'concern':
       if (role === 'community' && id) return `/community/c/${id}`
       if (role === 'regulator') return '/regulator/alerts'
-      if (role === 'industry') return '/industry/scope'
+      if (role === 'industry') return '/industry'
       return '/admin/oversight'
     case 'alert':
-      if (role === 'industry') return id ? `/industry/alerts/${id}` : '/industry/scope'
+      if (role === 'industry') return id ? `/industry/alerts/${id}` : '/industry'
       if (role === 'regulator') return '/regulator/alerts'
       if (role === 'community') return '/community'
       return '/admin/oversight'

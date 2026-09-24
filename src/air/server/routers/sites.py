@@ -325,8 +325,24 @@ def site_model_verification(
     now = domain.data_now(conn, cid)
     to = to or now
     from_ = from_ or (timeutil.shift(to, days=-VERIFY_DEFAULT_DAYS) or timeutil.ago(days=VERIFY_DEFAULT_DAYS))
+    return verification(conn, site, model, from_, to, quality)
 
-    key = ("model_verification", site_id, model["id"], from_, to, quality or "")
+
+def verification(
+    conn: sqlite3.Connection,
+    site: Any,
+    model: dict[str, Any],
+    from_: str,
+    to: str,
+    quality: str | None = None,
+) -> dict[str, Any]:
+    """One study verdict, cached on its window. The advisor calls this with the
+    same campaign window /industry/site sends (`useCampaignWindow`), so the two
+    quote one set of numbers: the advisor used to compute its own over the last
+    30 days and printed "assumed 4.1% ... across 11,281 observations" beside a
+    page that said 9.5% across 28,324."""
+    cid = site["campaign_id"]
+    key = ("model_verification", site["id"], model["id"], from_, to, quality or "")
     hit = cache.get(key)
     if hit is not None:
         return hit
@@ -338,5 +354,5 @@ def site_model_verification(
         windfield.downwind_districts_fn(conn, cid, centroid),
         (from_, to),
     )
-    payload = {"site_id": site_id, "model": model, **result}
+    payload = {"site_id": site["id"], "model": model, **result}
     return cache.put(key, payload)

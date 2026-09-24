@@ -19,8 +19,10 @@ from air.server import domain, geo, loaders, shapes, timeutil, windfield
 from air.server.db import one, rows, scalar
 
 SCENARIOS = {
-    "generator_test": "Ridgeline runs a turbine test — NO2 + BC spike on the east fenceline, exceedance alert, RWR contact at ~095°.",
-    "concern_wave": "Six residents file smell/noise reports in 90 minutes — a cluster forms and lands on the industry radar to the southeast.",
+    # Served by GET /admin/scenarios, so this is copy: CONTRACT 10a.7 keeps
+    # the design metaphor ("RWR contact", "the industry radar") out of it.
+    "generator_test": "Ridgeline runs a turbine test — NO2 + BC spike on the east fenceline and an exceedance alert east of the site.",
+    "concern_wave": "Six residents file smell/noise reports in 90 minutes — a cluster forms and shows on the industry map to the southeast.",
     "wind_shift": "Wind veers from SW to NNE and carries the plume over the school — integrated-exposure alert plus a community advisory.",
     "methane_leak": "Mobile monitoring finds a methane anomaly no stationary monitor can see. The leapfrog moment.",
     "all_clear": "Mitigation completes, levels fall, alerts resolve and advisories close.",
@@ -394,7 +396,7 @@ def wind_shift(conn: sqlite3.Connection, cid: str, site_id: str | None = None) -
                     "The wind has changed direction and is now blowing across the south side of the "
                     "neighbourhood. Our monitors are showing higher than usual levels there. If you or "
                     "your children are sensitive to air quality, it is a good evening to keep windows "
-                    "closed and take it easy outdoors. We will post an update when it clears."
+                    "closed and take it easy outdoors. We will post an update when levels fall back."
                 ),
                 audience=["community"], alert_id=wind_alert["id"], actor_role="regulator",
             )
@@ -651,7 +653,10 @@ def all_clear(conn: sqlite3.Connection, cid: str, site_id: str | None = None) ->
 
     advisory = domain.create_advisory(
         conn, cid, kind="all_clear", severity="info",
-        title="All clear — levels are back to normal",
+        # Not "All clear". `all_clear` is the scenario's name; as a title it
+        # is an all-clear about health, which no interface may issue
+        # (PLAN-plume "Never say"). What is true is that the levels fell.
+        title="Update — levels are back to where they usually sit",
         body=(
             "Levels across the neighbourhood are back to where they normally sit. The operator "
             "finished the work they proposed, and the earlier notices are closed. Thank you to "
@@ -662,7 +667,7 @@ def all_clear(conn: sqlite3.Connection, cid: str, site_id: str | None = None) ->
     domain.log(
         conn, "sim.all_clear", campaign_id=cid, actor_role="admin",
         object_type="campaign", object_id=cid,
-        summary="All clear — mitigations completed, levels fell, advisories closed",
+        summary="Mitigations completed, levels fell, notices closed",
         payload={"alerts_resolved": len(resolved), "mitigations_completed": len(completed),
                  "concerns_resolved": len(resolved_concerns)},
     )
@@ -769,9 +774,9 @@ def model_divergence(conn: sqlite3.Connection, cid: str, site_id: str | None = N
     severity = {"understates": "warning", "overstates": "info",
                 "consistent": "info", "insufficient_data": "info"}[verification["verdict"]]
 
-    # Place the contact where the plume actually goes, not on top of the site:
-    # an RWR contact at bearing 0 / range 0 tells the operator nothing. Aim it at
-    # the centroid of the under-weighted receptor if we found one.
+    # Place the alert where the plume actually goes, not on top of the site:
+    # an alert at 0 m tells the operator nothing (and reads as "site-wide").
+    # Aim it at the centroid of the under-weighted receptor if we found one.
     top_district = verification["affected_districts"][0]["district"] if verification["affected_districts"] else None
     alert_lon, alert_lat = centroid
     reach = 1500.0

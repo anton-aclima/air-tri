@@ -1,8 +1,8 @@
 /**
- * industry — the radar warning receiver.
+ * industry — the operator's deck: a map, one line of status, one side panel.
  *
- * `/industry` and `/industry/scope` are the same screen: the scope IS the
- * interface, and the nav item points back at it from anywhere.
+ * `/industry` is the deck. (The `/industry/scope` alias is gone: nothing links
+ * to it any more, and the retired RWR was the only reason for the name.)
  */
 
 import { createRoute, Outlet } from '@tanstack/react-router'
@@ -23,8 +23,7 @@ const layout = createRoute({
   component: Outlet,
 })
 
-const scope = createRoute({ getParentRoute: () => layout, path: '/', component: Scope })
-const scopeAlias = createRoute({ getParentRoute: () => layout, path: 'scope', component: Scope })
+const deck = createRoute({ getParentRoute: () => layout, path: '/', component: Scope })
 const contacts = createRoute({ getParentRoute: () => layout, path: 'alerts', component: Contacts })
 
 const contactDetail = createRoute({
@@ -39,9 +38,9 @@ const contactDetail = createRoute({
 const community = createRoute({ getParentRoute: () => layout, path: 'community', component: Community })
 const outreach = createRoute({ getParentRoute: () => layout, path: 'outreach', component: Outreach })
 const siteConfig = createRoute({ getParentRoute: () => layout, path: 'site', component: SiteConfig })
-// "Says who" — the measurements the envelope on the scope rests on.
+// "Says who" — the measurements the deck's envelope rests on.
 const evidence = createRoute({ getParentRoute: () => layout, path: 'evidence', component: Evidence })
 
 export const industryRoutes = layout.addChildren([
-  scope, scopeAlias, contacts, contactDetail, community, outreach, siteConfig, evidence,
+  deck, contacts, contactDetail, community, outreach, siteConfig, evidence,
 ])

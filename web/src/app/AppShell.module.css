@@ -2,9 +2,10 @@
    air — application shell.
 
    The shell is not one layout recoloured four times. Community gets a header
-   and a scrolling page; the regulator gets a watchfloor rail plus a dense
-   status strip; industry gets a near-empty phosphor frame with corner
-   brackets; admin gets a drafting table with a numeric status bar.
+   and a scrolling page; the regulator gets a rail and a header that carries
+   only the clock and the persona; industry gets a near-empty phosphor frame
+   with corner brackets and a rail of short words; admin gets a drafting table
+   with a numeric status bar. Status is the page's, never the header's (F3).
    ========================================================================= */
 
 .shell {
@@ -54,9 +55,11 @@
   grid-template-areas: 'head' 'main' 'foot';
 }
 
-/* ── industry: thin rail, thin header ─────────────────────────────────── */
+/* ── industry: thin header, the shared 68px rail ─────────────────────── */
+/* The rail was 56px so it could hold four-letter codes (DECK, ALRT, COMM…).
+   It holds words now, and "Outreach" / "Evidence" at 11px need ~46px inside
+   the item; 56px left 44. It takes the shell's own rail width. */
 .shell[data-role='industry'] {
-  --rail-w: 56px;
   --head-h: 44px;
 }
 
@@ -136,14 +139,14 @@
 
 .shell[data-role='industry'] .mark { font-size: var(--text-lg); }
 
-/* ── status strip (regulator / industry / admin) ── */
+/* ── status strip (admin only — the regulator and industry strips went in F3) ── */
 .strip {
   display: flex;
   align-items: center;
   gap: var(--s-4);
   /* The numbers keep their width; the campaign name beside them is the one
      built to ellipsize. At 1080 the strip used to lose "CRITICAL 0" to "CR"
-     while the name kept its room. The strips go in phase 3 (F3). */
+     while the name kept its room. */
   flex: none;
 }
 
@@ -170,9 +173,7 @@
   font-weight: var(--weight-medium);
 }
 
-.stripValueWarn { color: var(--sev-warning); }
 .stripValueOk { color: var(--sev-ok); }
-.stripValueThreat { color: var(--sev-critical); }
 
 .campaignName {
   flex: 1 1 0;
@@ -283,6 +284,19 @@
   line-height: 1;
 }
 
+/* A word, set as a word: sentence case, no tracking. In capitals with the
+   code's tracking "OUTREACH" measured wider than the item; the capitals were
+   also what made the rail read as a panel of codes. Never ellipsized — a
+   clipped nav word is a broken one — so the rail is sized to the longest. */
+.railWord {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
 .railItemActive { color: var(--accent); background: var(--accent-soft); }
 
 .railItemActive::before {
@@ -300,19 +314,26 @@
 .railCta:hover { color: var(--accent-2); }
 .railEnd { margin-top: auto; }
 
+/* Coloured by the worst live level (`--badge`, set from `useLiveAlerts`), not
+   a fixed critical red: two Watch alerts in red claimed more than any page
+   did. `--ink-inv` is dark in every railed skin, so it reads on all four
+   severity colours. Pinned to the item's right edge so it sits beside the
+   18px icon rather than on it: at 68px the item is 59px wide, the icon ends
+   9px right of centre, and `right: 5px` leaves the badge clear of it. */
 .railBadge {
   position: absolute;
   top: 3px;
-  right: 6px;
-  min-width: 14px;
-  height: 14px;
+  right: 5px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 3px;
   border-radius: var(--r-pill);
-  background: var(--sev-critical);
+  background: var(--badge, var(--sev-watch));
   color: var(--ink-inv);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-3xs);
   font-weight: var(--weight-bold);
+  line-height: 1;
   display: grid;
   place-items: center;
 }

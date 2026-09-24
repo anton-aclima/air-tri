@@ -464,14 +464,32 @@ def verify_model(
         worst = max((b for b in bearing_bias if material(b)), key=lambda b: b["delta"])
         transport = (worst["dir_deg"] + 180.0) % 360.0
         who = ", ".join(d["district"] for d in affected[:3]) or "downwind receptors"
+        # The verdict is about HOW OFTEN, and the pair that says so is the
+        # assumed vs observed frequency. `disagreement` (hours outside the
+        # contour) is a different measure and is quoted only when it is not
+        # zero: on the pinned build it is 0% at all three sites while the
+        # verdict is `understates`, and /industry/site printed "UNDERSTATES"
+        # beside "0% of observed hours fall outside where the modelled contour
+        # actually reaches" — a contradiction the advisor had already dropped.
+        # Compass points, not degrees, as the advisor says them.
+        top = affected[0] if affected else None
+        pair = (
+            f" It had air carried toward {top['district']} {top['assumed_freq']:.1f}% of the "
+            f"hours; we measured {top['observed_freq']:.1f}%."
+            if top
+            else ""
+        )
+        outside = (
+            f" {disagreement * 100:.0f}% of observed hours fall outside where the modelled "
+            "contour actually reaches."
+            if disagreement > 0.0
+            else ""
+        )
         summary = (
-            f"{name}{vendor} assumed {worst['assumed_freq']:.1f}% of hours with wind from "
-            f"{geo.compass(worst['dir_deg'])} ({worst['dir_deg']:.0f}°); our fleet measured "
-            f"{worst['observed_freq']:.1f}% across {n_obs} observations — "
-            f"{worst['delta']:+.1f} points. That wind carries the plume toward "
-            f"{geo.compass(transport)}, over {who}. "
-            f"{disagreement * 100:.0f}% of observed hours fall outside where the modelled "
-            f"contour actually reaches."
+            f"{name}{vendor} assumed {worst['assumed_freq']:.1f}% of hours with wind from the "
+            f"{geo.compass(worst['dir_deg'])}; our fleet measured {worst['observed_freq']:.1f}% "
+            f"across {n_obs} observations. That wind carries air toward the "
+            f"{geo.compass(transport)}, over {who}.{pair}{outside}"
         )
     elif verdict == "overstates":
         worst = max(over_sectors, key=lambda b: -b["delta"])

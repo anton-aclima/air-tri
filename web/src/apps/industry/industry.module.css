@@ -1,9 +1,13 @@
 /* ============================================================================
-   industry — the instrument skin.
-   Near-black, monospace, terse — but flat. A modern compass, not a CRT: no
-   scanlines, no glare, no bevels, no idle glow. Every colour is a token.
-   Layout rule: <main> does not scroll for this role, so every pane owns its own
-   overflow and the top-level read never moves.
+   industry — the instrument skin, as finish only.
+   Near-black, monospace numerals, a phosphor accent, square corners — and
+   flat: no scanlines, no glare, no bevels, no idle glow. Every colour is a
+   token. The avionics are a look, never vocabulary (CONTRACT §10a.7).
+
+   Layout rule: <main> does not scroll for this role at 960 px and wider, so
+   every pane owns its own overflow. Below 960 px (DESIGN.md's one stacking
+   width — a CSS variable cannot sit in a media query, so the number is
+   written here as a literal) side panels become drawers or stack.
    ========================================================================= */
 
 .page {
@@ -17,31 +21,401 @@
   font-family: var(--font-mono);
 }
 
-/* the scope screen: banner / body / ribbon */
-.scopePage { grid-template-rows: auto minmax(0, 1fr) auto; }
-.scopeBody {
+/* ───────────────────────────────────────────────────────────────── the deck
+   A map, one line of status, one narrow side panel (PLAN-refocus I1). The
+   panel is minmax(0,1fr) beside clamp(280px, 24vw, 340px): measured at
+   1080x900 the old three-column grid collapsed below 1180 to one column and
+   gave the map a 1000x2 px row. There is no single-column rule at all now
+   above 960 — at 1080 the map keeps ~700 px of width. */
+.deckPage { grid-template-rows: auto minmax(0, 1fr); }
+
+/* The one line: the operating answer in the page's primary type, then the
+   reason, then — on its own row — anything the envelope cannot see (the fence
+   now, a linked reference monitor). Wraps rather than clips, never an ellipsis
+   over the MW figure. The answer was 13 px, the size of the panel body, so it
+   did not read as the headline. */
+.statusLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+/* A small square, not a word: the state is carried by the sentence. Its tone
+   follows the worst of the envelope, the fence and a linked monitor. */
+.statusMark {
+  flex: none;
+  inline-size: 10px;
+  block-size: 10px;
+  align-self: center;
+  background: var(--ink-3);
+}
+.statusHold { background: var(--accent-2); }
+.statusRoom { background: var(--scope, var(--accent)); }
+.statusAlert { background: var(--threat, var(--sev-critical)); }
+.statusText { min-width: 0; color: var(--ink); }
+.statusAnswer {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  line-height: 1.25;
+  color: var(--ink);
+}
+.statusReason { color: var(--ink-2); }
+.statusBut {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  padding-inline-start: calc(10px + var(--s-3));
+}
+.statusClause { display: inline; color: var(--ink); }
+.statusClauseMark {
+  display: inline-block;
+  inline-size: 7px;
+  block-size: 7px;
+  margin-inline-end: var(--s-2);
+  vertical-align: 0.08em;
+}
+.saysWho {
+  margin-inline-start: auto;
+  color: var(--scope, var(--accent));
+  text-decoration: none;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.saysWho:hover { text-decoration: underline; }
+
+.deckBody {
+  position: relative;
   min-height: 0;
   display: grid;
-  /* Quad stack: the map, whatever is picked on it, the gauges, the scope.
-     Each column has one job, so nothing has to scroll to be read — the rail
-     used to hold four panels and lost the bottom two below the fold. */
-  /* Three columns, each a vertical stack:
-       1. the map, with whatever is picked on it directly beneath
-       2. the performance bars, with the wind under them
-       3. the scope, with the alert list under it
-     The four-column version put the gauges in a strip too narrow to share, so
-     the wind ended up in the alerts column and fell off the bottom. */
-  grid-template-columns:
-    minmax(0, 1.6fr)        /* MFD + selected */
-    minmax(280px, 0.74fr)   /* margin + wind */
-    minmax(285px, 0.68fr);  /* scope + alerts */
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 24vw, 340px);
   gap: var(--s-2);
 }
-@media (max-width: 1180px) {
-  .scopeBody { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; }
+.deckMap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+/* The panel scrolls on its own, with natural-height cards: the flex tapes
+   that squeezed each card to fit are gone, so nothing is clipped through the
+   middle and nothing paints over its neighbour. */
+.deckPanel {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  overscroll-behavior: contain;
+}
+.deckPanel > * { flex: none; }
+.drawerHandle { display: none; }
+
+/* Below 960 the panel is a drawer over the bottom of the map: the map keeps
+   the whole body, and the drawer shows only its handle until opened. */
+@media (max-width: 959px) {
+  /* The closed drawer's handle sits in this padding, not over the map: it
+     covered the legend's "About this map" button at 900x800. */
+  .deckBody { grid-template-columns: minmax(0, 1fr); padding-block-end: 2.5rem; }
+  .deckPanel {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: var(--z-panel);
+    max-block-size: 60%;
+    background: var(--bg);
+    border-block-start: 1px solid var(--line-strong);
+    padding: 0 var(--s-2) var(--s-2);
+    transform: translateY(calc(100% - 2.5rem));
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .deckPanelOpen { transform: none; }
+  .drawerHandle {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    block-size: 2.5rem;
+    background: var(--bg);
+    border: 0;
+    color: var(--ink-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-align: start;
+    cursor: pointer;
+  }
+}
+@media (max-width: 959px) and (prefers-reduced-motion: reduce) {
+  .deckPanel { transition: none; }
 }
 
-/* ─────────────────────────────────────────────── the panel: corner brackets */
+/* A card in the side panel: a title row and natural-height content. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3) var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+}
+.cardHead { display: flex; align-items: baseline; gap: var(--s-2); }
+.cardTitle { font-size: var(--text-xs); color: var(--ink-2); font-weight: var(--weight-medium); }
+.cardCaption { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
+.cardLink {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--scope, var(--accent));
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cardLink:hover { text-decoration: underline; }
+.backBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--scope, var(--accent));
+}
+.groupHead {
+  margin-block-start: var(--s-1);
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  font-weight: var(--weight-medium);
+}
+
+/* ── now: the air, the fence, a linked monitor ───────────────────────── */
+.nowRows { display: grid; gap: 1px; }
+.nowRow {
+  display: grid;
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: 3px 0;
+  border-block-end: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--ink);
+}
+.nowRow:last-child { border-block-end: 0; }
+.nowRowBtn {
+  inline-size: 100%;
+  background: none;
+  border-inline: 0;
+  border-block-start: 0;
+  font-family: var(--font-mono);
+  text-align: start;
+  cursor: pointer;
+}
+.nowRowBtn:hover .nowVal { color: var(--scope, var(--accent)); }
+.nowRowBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nowKey { font-size: var(--text-2xs); color: var(--ink-3); }
+.nowVal { min-width: 0; }
+.nowMark {
+  display: inline-block;
+  inline-size: 7px;
+  block-size: 7px;
+  margin-inline-end: 6px;
+  vertical-align: 0.08em;
+}
+.aboutText { display: grid; gap: var(--s-2); font-size: var(--text-xs); line-height: 1.5; color: var(--ink-2); }
+.aboutText p { margin: 0; }
+
+/* ── the typical day ─────────────────────────────────────────────────── */
+.band { display: grid; gap: var(--s-2); }
+.bandLead { font-size: var(--text-xs); line-height: 1.45; color: var(--ink); }
+.bandChart { position: relative; }
+.bandSvg { inline-size: 100%; block-size: 64px; display: block; }
+.bandBarRoom { fill: color-mix(in srgb, var(--scope, var(--accent)) 38%, transparent); }
+.bandBarHold { fill: var(--accent-2); }
+/* Direct labels in the bars' own runs: "352 MW · full" over the day, "210 MW"
+   over the night. HTML, because the SVG stretches and its text would too. */
+.bandLabel {
+  position: absolute;
+  font-size: var(--text-3xs);
+  line-height: 1;
+  text-align: center;
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bandLabelHold { color: var(--accent-ink, var(--bg)); font-weight: var(--weight-medium); }
+.bandLoadLabel {
+  position: absolute;
+  font-size: var(--text-3xs);
+  line-height: 1;
+  color: var(--ink-2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* The no-rating form: the state by hour in one strip. */
+.bandStrip { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 1px; block-size: 14px; }
+.bandCellRoom { background: color-mix(in srgb, var(--scope, var(--accent)) 38%, transparent); }
+.bandCellStable {
+  background: color-mix(in srgb, var(--scope, var(--accent)) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--scope, var(--accent));
+}
+.bandCellHold { background: var(--accent-2); }
+.bandCellNone { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.bandBarNone {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+.bandLoad { stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bandAxis {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  margin-block-start: calc(-1 * var(--s-1));
+  font-size: var(--text-3xs);
+  line-height: 1;
+}
+.bandTick { grid-row: 1; color: var(--ink-3); }
+.bandNow { grid-row: 2; color: var(--ink); text-align: center; }
+.bandCaption { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
+
+/* ── the Downwind list: two-line rows, natural height ─────────────────── */
+.alertList { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.alertRow {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  inline-size: 100%;
+  padding: var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  text-align: start;
+  cursor: pointer;
+}
+.alertRow:hover, .alertRowOn { background: var(--surface-2); border-color: var(--line); }
+.alertRow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.alertGlyph { font-size: var(--text-sm); line-height: 1.3; text-align: center; }
+.alertText { display: grid; gap: 2px; min-width: 0; }
+.alertWhat { font-size: var(--text-xs); line-height: 1.4; color: var(--ink); }
+.alertWhen {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2);
+  font-size: var(--text-2xs); color: var(--ink-3);
+}
+/* A site-wide notice (the study-vs-wind alert): one quiet line, not a row
+   with "now" — it is live but not the room's count (core/alerts rule 4). */
+.noticeRow {
+  inline-size: 100%;
+  padding: var(--s-1) var(--s-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  color: var(--ink-2);
+  text-align: start;
+  cursor: pointer;
+}
+.noticeRow:hover { background: var(--surface-2); border-color: var(--line); color: var(--ink); }
+.noticeRow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.elsewhere { border-block-start: 1px solid var(--line); padding-block-start: var(--s-2); }
+.elsewhere > summary {
+  cursor: pointer;
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  list-style-position: inside;
+}
+
+/* ── map furniture: one bar top-left, one legend bottom-left ──────────── */
+.mapBar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.mapBtn {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.mapBtn:hover { border-color: var(--scope, var(--accent)); }
+.mapBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pollutant {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  padding: 3px 8px;
+}
+.pollutantKey { font-size: var(--text-2xs); color: var(--ink-3); }
+.pollutantSelect {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--scope, var(--accent));
+  background: transparent;
+  border: 0;
+  outline: 0;
+  cursor: pointer;
+  max-inline-size: 12rem;
+}
+.pollutantSelect option { background: var(--surface); color: var(--ink); }
+.layersMenu { display: grid; gap: var(--s-2); padding: var(--s-3); font-size: var(--text-xs); }
+
+/* The legend: swatches, one line each, sentence case. The longer
+   explanations open above it on request — the old key was up to six lines of
+   capitals over the bottom of the map (32% of its height at 1280). */
+.legend {
+  display: grid;
+  gap: var(--s-2);
+  max-inline-size: min(22rem, calc(100vw - 4rem));
+}
+.legendKeys {
+  display: grid;
+  gap: 3px;
+  padding: var(--s-2);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  line-height: 1.35;
+}
+.legendKey { display: flex; align-items: center; gap: var(--s-2); }
+.legendSwatch { flex: none; display: inline-flex; align-items: center; inline-size: 22px; }
+.legendNote { color: var(--ink-2); padding-inline-start: calc(22px + var(--s-2)); }
+.legendMore {
+  justify-self: start;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-block-start: 2px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--scope, var(--accent));
+}
+
+/* ─────────────────────────────────────────────── the panel: plain boxes */
 .panel {
   position: relative;
   min-height: 0;
@@ -61,7 +435,6 @@
   color: var(--ink-2);
 }
 .panelBody { min-height: 0; flex: 1; overflow: auto; }
-.pad { padding: var(--s-3); }
 
 .caps {
   font-size: var(--text-3xs);
@@ -72,17 +445,17 @@
 .capsInk { color: var(--ink-2); }
 .spacer { flex: 1; }
 
-/* ───────────────────────────────────────────────────── the top-level verdict */
+/* ──────────────────────────────────── page headers on the other screens */
 .banner {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  gap: var(--s-4);
+  gap: var(--s-3) var(--s-4);
   padding: var(--s-3) var(--s-4);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-xs);
   background: var(--surface-2);
-  overflow: hidden;
 }
 .bannerThreat { border-color: var(--threat, var(--sev-critical)); }
 .bannerClear { border-color: color-mix(in srgb, var(--scope, var(--accent)) 55%, transparent); }
@@ -99,14 +472,6 @@
   width: 1.4em;
   text-align: center;
 }
-.verdictWord {
-  font-size: var(--text-3xl);
-  font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-caps);
-  line-height: 1;
-}
-.threatInk { color: var(--threat, var(--sev-critical)); }
-.clearInk  { color: var(--scope, var(--accent)); }
 
 .bannerLine { display: flex; flex-direction: column; gap: 2px; min-width: 0; justify-content: center; }
 .bannerHead {
@@ -115,15 +480,12 @@
   letter-spacing: var(--tracking-wide);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bannerSub { font-size: var(--text-xs); color: var(--ink-2); }
+.bannerSub { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5; }
 
 .bannerStats { display: flex; align-items: stretch; gap: var(--s-4); margin-left: auto; }
 .readout { display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: right; }
-.readoutValue { font-size: var(--text-xl); line-height: 1; color: var(--ink); }
+.readoutValue { font-size: var(--text-xl); line-height: 1; color: var(--ink); white-space: nowrap; }
 .readoutBig   { font-size: var(--text-2xl); }
-/* Unacknowledged contacts are marked, not animated: a hairline ring around the
-   glyph. Nothing on this interface moves while the world is standing still. */
-.new { outline: 1px solid currentColor; outline-offset: 2px; border-radius: 50%; }
 
 /* ─────────────────────────────────────────────────────── headroom / envelope */
 .envelope { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border-bottom: 1px solid var(--line); }
@@ -134,7 +496,7 @@
   position: relative;
   height: 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   background: var(--bg-sunk);
   overflow: hidden;
 }
@@ -142,13 +504,13 @@
 .envTicks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 9px, var(--line) 9px 10px); opacity: .6; }
 .envEdge { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--scope, var(--accent)); }
 
-/* ────────────────────────────────────────────────────────── the contact list */
+/* ────────────────────────────────────────── the alerts page's list */
 .contacts { display: flex; flex-direction: column; }
 /* Column headers, because "430 m" and "30 m" in adjacent columns are two
    different quantities and a glance must not have to work that out. */
 .contactHead {
   display: grid;
-  grid-template-columns: 18px 44px minmax(0, 1fr) 58px 62px 54px;
+  grid-template-columns: 18px 58px minmax(0, 1fr) 58px 62px 54px;
   gap: var(--s-2);
   padding: var(--s-1) var(--s-3);
   border-bottom: 1px solid var(--line);
@@ -165,7 +527,7 @@
 .contactHead > span:nth-child(n + 4) { text-align: right; }
 .contact {
   display: grid;
-  grid-template-columns: 18px 44px minmax(0, 1fr) 58px 62px 54px;
+  grid-template-columns: 18px 58px minmax(0, 1fr) 58px 62px 54px;
   align-items: center;
   gap: var(--s-2);
   width: 100%;
@@ -189,8 +551,6 @@
 .contactAge { text-align: right; color: var(--ink-3); }
 
 /* ─────────────────────────────────────────────────────────────── small parts */
-.kv { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: var(--s-1) var(--s-3); align-items: baseline; }
-.kvRow { display: contents; }
 /* Wraps rather than clips. `nowrap` + `overflow: hidden` made the consultant
    line collide with its own trailing observation count on a narrow rail, which
    read as two overlapping strings rather than as truncation. */
@@ -205,49 +565,44 @@
 .stripLink:hover { color: var(--scope, var(--accent)); }
 .tag {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 2px;
+  padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: var(--r-xs);
   font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-2);
+  white-space: nowrap;
 }
 .tagThreat { border-color: var(--threat, var(--sev-critical)); color: var(--threat, var(--sev-critical)); }
 .tagAccent { border-color: color-mix(in srgb, var(--scope, var(--accent)) 60%, transparent); color: var(--scope, var(--accent)); }
 
-/* The MFD fills its panel edge to edge — it is the instrument, not a figure
-   sitting inside one, so no padding and no centring. */
-.scopeWrap { position: relative; min-height: 0; flex: 1; overflow: hidden; }
-
-.ribbon { flex: none; }
-
-/* ──────────────────────────────────────────────────────── contact detail page */
+/* ──────────────────────────────────────────────────────── alert detail page */
 .detailPage { grid-template-rows: auto minmax(0, 1fr); }
+/* Two columns at every width from 960: the stack-at-1180 rule here was the
+   same collapse that hid the deck's map (PLAN-refocus I1). The right column is
+   the answer, sized like a side panel. */
 .detailBody {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 34vw, 440px);
   gap: var(--s-2);
 }
-@media (max-width: 1180px) { .detailBody { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 959px) {
+  .detailBody { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .detailBody > .scrollStack { overflow: visible; }
+}
 .stack { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; overflow-y: auto; }
-/* Panels in a scrolling rail keep their natural height. Without this they are
-   squeezed instead — the scope gets clipped through the middle and a report's
-   closing line is cut off — which reads as broken rather than as "scroll for
-   more". The alert list is the one thing allowed to give, via .stackGrow. */
+/* Panels in a scrolling column keep their natural height. Squeezed instead,
+   a report's closing line is cut off, which reads as broken rather than as
+   "scroll for more". The alert list is the one thing allowed to give. */
 .stack > * { flex: none; }
-/* ...except the alert list, which is the rail's reason for existing and should
-   absorb whatever height the scope above it does not use. */
 .stack > .stackGrow { flex: 1 1 auto; }
 .scrollStack { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--s-2); padding-right: 2px; }
-/* Panels in a scrolling column keep their natural height — squeezing them makes
-   their content spill over the panel below. */
 .scrollStack > * { flex: none; }
 
 /* geometry: the compass at a fixed size, the sentences flowing beside it */
 .geo { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-3); }
-.geoText { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
-.geoLine { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5; }
+.geoText { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; padding: var(--s-1) 0; }
+.geoLine { font-size: var(--text-xs); color: var(--ink); line-height: 1.5; }
 
 /* recommended action */
 .action { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
-.actionHead { display: flex; align-items: center; gap: var(--s-2); }
 .actionText { font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
 .actionList { display: flex; flex-direction: column; gap: var(--s-2); }
 .actionItem {
@@ -257,9 +612,10 @@
 .actionIndex { color: var(--scope, var(--accent)); font-size: var(--text-xs); }
 .actionLabel { font-size: var(--text-xs); color: var(--ink); letter-spacing: var(--tracking-wide); }
 .actionDetail { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.5; margin-top: 2px; }
-.actionImpact { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--scope, var(--accent)); margin-top: var(--s-1); }
+/* Sentences, so sentence case (DESIGN.md: caps for labels and buttons only). */
+.actionImpact { font-size: var(--text-2xs); line-height: 1.45; color: var(--scope, var(--accent)); margin-top: var(--s-1); }
 .reasoning { border-top: 1px solid var(--line); padding-top: var(--s-2); }
-.reasoning summary { cursor: pointer; font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
+.reasoning summary { cursor: pointer; font-size: var(--text-2xs); color: var(--ink-3); }
 .reasoning p { margin: var(--s-2) 0 0; font-size: var(--text-xs); line-height: 1.55; color: var(--ink-2); }
 .upgrading { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
 .upgradeDot { width: 6px; height: 6px; border-radius: 50%; background: var(--scope, var(--accent)); }
@@ -274,18 +630,20 @@
   padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line);
 }
 .triSrc { font-size: var(--text-xs); color: var(--ink); }
-.triNote { font-size: var(--text-3xs); color: var(--ink-3); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.triNote { font-size: var(--text-2xs); line-height: 1.4; color: var(--ink-3); }
 .triValue { text-align: right; font-size: var(--text-md); color: var(--ink); }
 .triState { text-align: right; }
 .triBadge { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 .triVerdict { padding: var(--s-3); display: flex; gap: var(--s-3); align-items: flex-start; }
 .triVerdictWord { font-size: var(--text-lg); letter-spacing: var(--tracking-caps); line-height: 1.1; }
-.triVerdictBody { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.55; }
+.triVerdictBody { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.55; margin: 0; }
 
 /* ─────────────────────────────────────────────────────────── outreach portal */
 .outreachPage { grid-template-rows: minmax(0, 1fr); }
 .outreachBody { min-height: 0; display: grid; grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr); gap: var(--s-2); }
-@media (max-width: 1080px) { .outreachBody { grid-template-columns: minmax(0, 1fr); } }
+/* Two panes down to 960 (F4, DESIGN.md's one stacking width). At <=1080 it
+   used to stack, and the post form was squeezed into a 142 px scroller. */
+@media (max-width: 959px) { .outreachBody { grid-template-columns: minmax(0, 1fr); overflow-y: auto; } }
 .brand { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3); border-bottom: 1px solid var(--line); }
 .brandMark {
   width: 44px; height: 44px; display: grid; place-items: center;
@@ -298,7 +656,7 @@
 .postTitle { font-size: var(--text-sm); color: var(--ink); }
 .postBody { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.55; white-space: pre-wrap; }
 .form { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
-.formRow { display: flex; gap: var(--s-2); align-items: flex-end; }
+.formRow { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: flex-end; }
 .notice {
   display: flex; gap: var(--s-2); padding: var(--s-2) var(--s-3);
   border: 1px dashed var(--line-strong); border-radius: var(--r-xs);
@@ -309,7 +667,7 @@
 /* ─────────────────────────────────────────────────────────────────── site */
 .sitePage { grid-template-rows: auto minmax(0, 1fr); }
 .siteBody { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.7fr); gap: var(--s-2); }
-@media (max-width: 1080px) { .siteBody { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 959px) { .siteBody { grid-template-columns: minmax(0, 1fr); overflow-y: auto; } }
 .ep {
   display: grid; grid-template-columns: 14px minmax(0, 1fr) 92px 74px 54px;
   align-items: center; gap: var(--s-2);
@@ -323,148 +681,26 @@
 
 .err { padding: var(--s-4); font-size: var(--text-xs); color: var(--ink-2); }
 
-/* The contact list is the rail's reason for existing, so it gets the slack —
-   but never less than this. With four panels in the rail it was being squeezed
-   to a single header row while the panels above kept their natural height. */
+/* The alerts page's list gets the slack — but never less than this. */
 .stackGrow { flex: 1 1 auto; min-height: 11rem; overflow: hidden; }
 
-/* ── MFD furniture ────────────────────────────────────────────────────────
-   Slew-to-designate chips. Deliberately quiet: they sit on top of the map and
-   the map is the thing being read. */
-
-/* Two chips, wrapping rather than overflowing: "channel" carries measure names
-   long enough to push "slew to" off a narrow MFD, and the map underneath is
-   worth more than keeping them on one line. */
-.mfdPicks {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.sourcePick {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 2px 6px;
-}
-.sourcePickCaps {
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.sourceSelect {
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  color: var(--scope, var(--accent));
-  background: transparent;
-  border: 0;
-  outline: 0;
-  cursor: pointer;
-  max-inline-size: 15rem;
-}
-.sourceSelect option { background: var(--surface); color: var(--ink); }
-
-.rwrWrap {
+/* ── community reports (the /industry/community page) ────────────────────
+   A list and a narrow side panel, the same two panes as the deck. */
+.twoPane {
+  min-height: 0;
   display: grid;
-  place-items: center;
-  padding: var(--s-2) 0 var(--s-1);
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 380px);
+  gap: var(--s-2);
 }
-
-/* A regulator instrument sitting in your plume track is the one thing on this
-   page worth interrupting someone for. */
-.stripAlarm {
-  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 9%, transparent);
-  box-shadow: inset 2px 0 0 var(--threat, var(--sev-critical));
+@media (max-width: 959px) {
+  .twoPane { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
 }
-
-/* ── the gauge stack ──────────────────────────────────────────────────────
-   Two vertical tapes, read like N1/N2. The operator lives near the top of the
-   green and watches the redline; that is the whole job, so it gets a column of
-   its own rather than a bar squeezed into a card. */
-.instruments { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; }
-.instruments > * { flex: none; }
-.gauges { display: grid; gap: var(--s-2); padding-block-start: var(--s-1); }
-
-.tape { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-height: 0; }
-.tapeLabel {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase;
-  color: var(--ink-3); text-align: center; line-height: 1.15;
-}
-.tapeBody {
-  position: relative; flex: 1; min-height: 3rem; inline-size: 1.7rem;
-  background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 2px;
-  overflow: hidden;
-}
-/* The band you are not supposed to enter. */
-.tapeRed {
-  position: absolute; inset-inline: 0; top: 0;
-  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 22%, transparent);
-  border-bottom: 1px solid var(--threat, var(--sev-critical));
-}
-.tapeFill {
-  position: absolute; inset-inline: 1px; bottom: 1px;
-  background: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--scope, var(--accent)) 55%, transparent),
-    color-mix(in srgb, var(--scope, var(--accent)) 95%, transparent)
-  );
-}
-.tapeFillOver {
-  background: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--threat, var(--sev-critical)) 55%, transparent),
-    color-mix(in srgb, var(--threat, var(--sev-critical)) 95%, transparent)
-  );
-}
-/* Graduations every 10% of full scale — enough to read a trend, not a ruler. */
-.tapeTicks {
-  position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(
-    to top, transparent 0, transparent calc(10% - 1px),
-    color-mix(in srgb, var(--ink-3) 45%, transparent) calc(10% - 1px),
-    color-mix(in srgb, var(--ink-3) 45%, transparent) 10%
-  );
-}
-.tapeNeedle {
-  position: absolute; inset-inline: -1px; block-size: 0;
-  border-top: 2px solid var(--ink);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 70%, transparent);
-}
-.tapeNeedleOver { border-top-color: var(--threat, var(--sev-critical)); }
-.tapeValue { font-size: var(--text-sm); color: var(--ink); line-height: 1; }
-.tapeValueOver { color: var(--threat, var(--sev-critical)); }
-.tapeSub {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
-.gaugeFoot {
-  padding: var(--s-2); border-top: 1px solid var(--line);
-  font-size: var(--text-2xs); color: var(--ink-2); line-height: 1.35;
-}
-.instrumentsBody { display: flex; flex-direction: column; min-height: 0; flex: 1; }
-
-/* Two lines of key under the map: what the rings mean, and which of the two
-   dispersion pictures is currently drawn. */
-.mapKey { display: grid; gap: 2px; }
-
-/* ── community reports ────────────────────────────────────────────────────
-   The inbound half of outreach. Shares the row shape used elsewhere in this
-   app so a resident's report reads with the same weight as a sensor contact —
-   which is the point: to this operator both are inbound signals. */
 .rows { display: grid; gap: 2px; min-inline-size: 0; }
 .trendWrap { display: grid; gap: 4px; padding: 0 var(--s-2) var(--s-2); }
 .reportRow {
   display: flex; align-items: center; gap: var(--s-2);
   inline-size: 100%; text-align: left; padding: 5px var(--s-2);
-  background: transparent; border: 1px solid transparent; border-radius: 3px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-xs);
   color: inherit; cursor: pointer;
 }
 .reportRow:hover { border-color: var(--line); background: var(--surface); }
@@ -478,115 +714,45 @@
   font-family: var(--font-mono); font-size: var(--text-sm); color: var(--actor-community);
 }
 .reportBody { display: grid; gap: 1px; min-inline-size: 0; flex: 1; }
+/* Two lines, then an ellipsis: at 1080 the side column is 324 px and a
+   single nowrap line cut "Boxtown · Paul R Lowry Road" to "Paul R Low…". */
 .reportTitle {
-  font-size: var(--text-xs); color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--text-xs); color: var(--ink); line-height: 1.35;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden;
 }
 .reportSub {
   font-family: var(--font-mono); font-size: var(--text-3xs);
   letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
 }
-.reportDetail { display: grid; gap: var(--s-2); padding: var(--s-2); }
+.reportDetail { display: grid; gap: var(--s-2); }
 .reportQuote {
   margin: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--ink-2);
   padding-inline-start: var(--s-2);
   border-inline-start: 2px solid color-mix(in srgb, var(--actor-community) 55%, transparent);
 }
 .reportActions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
-.reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; padding: var(--s-2); }
-.reportDetailHead { display: flex; align-items: flex-start; gap: var(--s-2); justify-content: space-between; }
-.linkBtn {
-  background: none; border: 0; padding: 0; cursor: pointer;
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
-.linkBtn:hover { color: var(--scope, var(--accent)); }
+.reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; padding: var(--s-2) 0; }
+/* Inside a boxed panel the note lines up with the panel title, not the border. */
+.panelBody > .reportNote, .rows > .reportNote { display: block; padding-inline: var(--s-3); }
+.panelBody > .reportDetail { padding-inline: var(--s-3); }
+.panelBody > .reportDetail { padding-block: var(--s-2) var(--s-3); }
 
-/* In the detail block the title is the point, so let it wrap to two lines
-   rather than truncating, and keep the downwind tag on one line beside it. */
-.reportDetailHead .reportTitle {
-  white-space: normal;
-  overflow: visible;
-  line-height: 1.25;
-}
-.reportDetailHead > :last-child { white-space: nowrap; flex: none; }
-
-/* The selected-item column. Scrolls on its own so a long report never pushes
-   the gauges or the scope off the screen. */
-.selected { display: flex; flex-direction: column; min-height: 0; }
-.selBody { min-height: 0; overflow-y: auto; }
+/* The detail view in the side panel. */
 .selHead { display: flex; align-items: flex-start; gap: var(--s-2); justify-content: space-between; }
-.selTitle { font-size: var(--text-sm); color: var(--ink); line-height: 1.25; }
+.selHead > :last-child:not(:first-child) { flex: none; }
+.selTitle { font-size: var(--text-sm); color: var(--ink); line-height: 1.3; }
 .selRow {
   display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2);
-  padding-block: 2px; border-block-end: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  padding-block: 3px; border-block-end: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
 }
-.selKey {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
+.selKey { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--ink-3); }
 .selVal { font-size: var(--text-xs); color: var(--ink); text-align: right; }
-
-/* ── horizontal performance bars ──────────────────────────────────────────
-   The tape, turned on its side so it can share a column with the wind. */
-.gauge { display: grid; gap: 3px; padding: var(--s-2) var(--s-3); }
-.gaugeHead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
-.gaugeLabel {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
-.gaugeValue { font-size: var(--text-lg); line-height: 1; color: var(--ink); }
-.gaugeValueOver { color: var(--threat, var(--sev-critical)); }
-.gaugeTrack {
-  position: relative; block-size: 0.85rem;
-  background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 2px;
-  overflow: hidden;
-}
-/* The band you are not supposed to enter. */
-.gaugeRed {
-  position: absolute; inset-block: 0; inset-inline-end: 0;
-  background: color-mix(in srgb, var(--threat, var(--sev-critical)) 22%, transparent);
-  border-inline-start: 1px solid var(--threat, var(--sev-critical));
-}
-.gaugeFill {
-  position: absolute; inset-block: 1px; inset-inline-start: 1px;
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--scope, var(--accent)) 50%, transparent),
-    color-mix(in srgb, var(--scope, var(--accent)) 92%, transparent)
-  );
-}
-.gaugeFillOver {
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--threat, var(--sev-critical)) 50%, transparent),
-    color-mix(in srgb, var(--threat, var(--sev-critical)) 92%, transparent)
-  );
-}
-.gaugeTicks {
-  position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(
-    to right, transparent 0, transparent calc(10% - 1px),
-    color-mix(in srgb, var(--ink-3) 45%, transparent) calc(10% - 1px),
-    color-mix(in srgb, var(--ink-3) 45%, transparent) 10%
-  );
-}
-.gaugeNeedle {
-  position: absolute; inset-block: -1px; inline-size: 0;
-  border-inline-start: 2px solid var(--ink);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 70%, transparent);
-}
-.gaugeNeedleOver { border-inline-start-color: var(--threat, var(--sev-critical)); }
-.gaugeSub {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
-
-/* Column 1: the map, and the picked item directly beneath it. */
-.mapCol { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; }
-.mapCol > :first-child { flex: 1 1 auto; min-height: 0; }
-/* The detail pane is capped so a long report can never squeeze the map. */
-.mapCol > .selected { flex: 0 0 auto; max-block-size: 38%; }
+.selNote { font-size: var(--text-2xs); color: var(--ink-2); line-height: 1.45; }
+/* Sentence case: a subtitle that wraps to two lines is a sentence, and the
+   industry caps exception covers labels and buttons only (DESIGN.md). */
+.selSub { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
 
 /* ── /industry/evidence — "says who" ────────────────────────────────────────
    Two distributions on one scale. The fenceline is inked, the comparison set
@@ -596,7 +762,7 @@
 .evCompare { display: flex; flex-direction: column; gap: var(--s-2); }
 .evRow { display: grid; grid-template-columns: 9.5rem 1fr 4.5rem; align-items: center; gap: var(--s-2); }
 .evTrack {
-  position: relative; height: 14px; border-radius: 2px;
+  position: relative; height: 14px; border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--line) 45%, transparent);
   overflow: visible;
 }
@@ -608,3 +774,17 @@
 .evLine { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--sev-threat, crimson); }
 .evRow > .num { text-align: right; font-size: var(--text-xs); color: var(--ink-2); }
 .evDistricts { display: flex; flex-direction: column; gap: var(--s-1); margin-block: var(--s-2); }
+/* Captions are sentences, so sentence case: the industry caps exception is for
+   labels and buttons (DESIGN.md), and on a map a paragraph of capitals was the
+   deck's worst offender. */
+.evCaption { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
+.mapCaption {
+  max-inline-size: 26rem;
+  padding: var(--s-2);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  line-height: 1.4;
+}

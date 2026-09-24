@@ -116,14 +116,24 @@ layers={(t) => [...SegmentLayer({ data: segs, theme: t, metric: 'p90', dualEncod
 
 ### `MonitorLayer`
 
-DRAQA reference towers. `data: Monitor[]`, `rings` (draw `radius_m` coverage, default true),
-`measure` (which `latest.exceeds` drives the alarm),
-`pulse` (feed `usePulse()`), `labels`, `sizePx`. Helper: `monitorExceeds(monitor, measure)`.
+Reference monitors and fenceline sensors. `data: Monitor[]`, `rings` (draw `radius_m`
+coverage, default true), `measure` (which `latest.exceeds` drives the alarm),
+`pulse` (feed `usePulse()`), `labels`, `sizePx`, `hoveredId`, `selectedId`.
+
+- `labelBy: 'code' | 'name'` — default `'code'` (`47-157-0058`); `'name'` prints the place
+  (`Harbor Avenue`), the words every panel and alert uses for the same instrument.
+- `emphasizeIds?: string[]` — those draw at full strength with their label; every other
+  monitor is muted, labelled only while hovered or selected (pass `hoveredId`), and never
+  pulses. Omitted = every monitor full strength (the old behaviour); `[]` mutes them all.
+
+Helper: `monitorExceeds(monitor, measure)`.
 
 ### `SiteLayer`
 
 Industry sites + emission points. `data: IndustrySite[]`, `emissionPoints`, `labels`,
-`branding` (brand emoji), `pulse`.
+`branding` (brand emoji), `pulse`, `footprint: 'fill' | 'outline'` (default `'fill'`;
+`'outline'` drops the wash, keeps the edge and the click target — for maps where CONTRACT
+§10b makes measurement the only filled thing).
 
 ### `ConcernLayer`
 
@@ -152,8 +162,33 @@ filtered**. Helper: `vehicleColorIndex(routes)` → `Map<vehicleId, index>`, so 
 
 ### `DispersionLayer` (in `layers/WindLayer.ts`)
 
-The consultant's modelled plume as banded, filled contours. `data: DispersionPlume` from
-`GET /wind/dispersion`, `bandCount`, `outline` (default true), `maxOpacity` (default 0.5).
+The modelled plume, in one of two registers — `style`:
+
+- **`'fill'`** (default — the gallery, and every caller before PLAN-refocus F6): banded
+  filled contours inside the detection envelope, dashed unfilled outline past it.
+  `bandCount`, `outline` (band edges, default true), `maxOpacity` (default 0.5).
+- **`'outline'`** — CONTRACT §10b for Aclima's model, from `GET /wind/dispersion?outline=1`
+  (`useDispersion({ …, outline: true })`). One hairline around the whole plume, solid to the
+  envelope and dashed past it; the centreline axis, solid then dashed; a pixel-sized **reach
+  tick** across the axis where it meets the envelope (at its end when the plume stops short);
+  the word `truncated` at the far end when the reach hit the 8,000 m model limit. **Never
+  filled.** Reads only the `kind` features and draws nothing without them — it never falls
+  back to a fill. The two outline parts are clipped at the axis's own envelope line and the
+  cut between them is dropped, so the register changes in one place, on the tick.
+  `pickable` + `onHover` / `onClick` pick the solid outline and axis (`info.object.properties`);
+  the dashed part never picks.
+
+`hasBeyondEnvelope(data)` says whether to print `BEYOND_ENVELOPE_NOTE` (either shape).
+`plumeOutlineGeometry(data)` returns the drawn runs, axis parts, ticks and truncated ends.
+
+### `FiledStudyLayer` (in `layers/WindLayer.ts`)
+
+The operator's filed permit study: `contours` (`DispersionModel.contours` verbatim),
+`bands: 'outer' | 'all'` (default `'outer'`, found by area). Dotted, `accent-2`, **no fill** —
+never the `beyond` dash, so with the comparison on the two outlines differ on two channels.
+
+Strokes for all three registers come from `PLUME_STROKE` (`lib/vizmeta`), which the legend's
+`PlumeSwatch` reads too.
 
 > **The wind visual is not a deck.gl layer.** Particle advection needs frame-to-frame canvas
 > history. Use `MapWindField` — see below.
@@ -169,7 +204,16 @@ identically over both backends.
 
 `field: WindField` (`GET /wind/field`) · `particles` (3–6k) · `keep` (fraction of alpha kept
 per frame — the trail; 0.94 medium, 0.98 smear, 0.85 dots) · `speedDomain` · `speedScale` ·
-`ramp: 'map' | 'intensity' | 'aqi'` · `opacity` · `lineWidth` · `minConfidence` · `running`.
+`ramp: 'map' | 'intensity' | 'aqi'` · `colorMode: 'ramp' | 'neutral'` · `colorToken` ·
+`opacity` · `lineWidth` · `minConfidence` · `running`.
+
+`colorMode="neutral"` paints every particle in `--ink-2` with speed on alpha. Use it on a
+map whose `--ramp-map-*` is the **measured** street ramp (industry: `--ramp-map-*` =
+`--ramp-intensity-*`), so the wind never reads as measured ink over ground nobody drove
+(CONTRACT §10b). The legend key is then a plain `--ink-2` line. Default `'ramp'` is unchanged.
+
+A camera move re-projects the particles and a new `viewKey` wipes the trails, so a pan or a
+fly-to never strokes the camera's own motion as streaks.
 
 ```tsx
 <BaseMap fullBleed={<MapWindField field={wind} particles={4200} />} layers={…} />
@@ -181,12 +225,12 @@ Only reach for this directly if you need a frame that is neither the map nor the
 Adds `projector: Projector` (build with `mapProjector(view, size)` or
 `makeScopeProjector({ site, rangeM, size, headingUp })`), `theme`, `viewKey` (pass
 `viewSignature(view)` — a camera move wipes the canvas rather than restarting the sim),
-`maxAge`, and `colorToken` (paint every particle one token with **speed carried by
+`maxAge`, `colorMode`, and `colorToken` (paint every particle one token with **speed carried by
 brightness** — the radar-scope idiom).
 
 Particle alpha is **skin-aware** and confidence **thins the draw rate, not the alpha**, so
 low-`n` / high-`dir_sd` cells genuinely show fewer streaks. `windSpeedLegend(theme, domain,
-ramp, colorToken)` returns `{ stops, lo, hi, gradient }` so speed colour is never unexplained.
+ramp, colorToken, colorMode)` returns `{ stops, lo, hi, gradient }` so speed colour is never unexplained.
 
 ### `ModelVerificationPanel` — "verify your consultant"
 
@@ -220,6 +264,7 @@ Each goes inside `<MapOverlay place=…>`.
 | `MapTooltip` | `x`, `y` (straight from `PickingInfo`), `title`, `subtitle`, `hero: { value, unit }`, `rows: TooltipRow[]`, `severity`, `visible`, `offset` |
 | `MapPopover` | `x`, `y`, `title`, `subtitle`, `children`, `actions: { label, onClick, primary? }[]`, `onClose`, `offset` |
 | `SegmentInspector` | `segment` (from picking), `detail` (`GET /segments/{id}` — unlocks the charts), `measure`, `measureCode`, `metric`, `plainLanguage`, `campaignValues` (for the percentile chart), `domain` (so the header swatch matches the map exactly), `onClose`, `children` |
+| `PlumeSwatch` | `register: 'model' \| 'beyond' \| 'filed'`, `width` (22). An inline legend mark drawn from `PLUME_STROKE`, the same table the plume layers draw with — put it beside the words, e.g. `BEYOND_ENVELOPE_NOTE` |
 
 ```tsx
 <MapOverlay place="top-right"><MapLegend scale={scale} measure={m} /></MapOverlay>
@@ -290,7 +335,11 @@ Alert bars over a window. `alerts: { id, label, code?, severity, startedAt, ende
 acknowledged? }[]` (`endedAt: null` = still up, drawn with a live edge) · `from` / `to` ·
 `rowHeight` · `maxRows` (default 8, rest fold into "+N more") · `selectedId` +
 `onSelect(id)` · `labels` (off gives a pure ribbon) · `margin`.
-Helper: `timelineFromAlerts(alerts)` converts `Alert[]` from the API.
+Helper: `timelineFromAlerts(alerts)` converts `Alert[]` from the API; rows are labelled by
+the alert's title (the four-letter kind codes are retired copy, PLAN-refocus I11).
+The gutter prints `code` when given, else the label. It widens to fit its longest label
+(92px minimum, as before; 140px cap), and a `"what · where"` label keeps its `where` whole
+and shortens only the `what`, so "Wind · site-wide" and "Reports · NNW" survive.
 
 ### `WindRose`
 `points: WindPoint[]` (binned internally) **or** `rose: RoseBin[]` (pre-binned, wins) ·
@@ -308,6 +357,8 @@ Single-bearing readout. `bearing` · `distanceM` · `size` · `severity` · `lab
 `cardinal` (show "ESE" as well as digits) · `vertical`.
 
 ### `RadarScope`
+**Retired from the industry deck (PLAN-refocus D8/I3); kept for the gallery until the backlog
+removes it. Its vocabulary is not product copy.**
 Threats plotted by bearing from a site — **with the observed wind advecting inside the dial.**
 
 | prop | type | notes |
@@ -348,7 +399,7 @@ header/plot/footer shell. Also `Legend` (`LegendSeries[]` — `shape: 'line' | '
   Ramps: `'aqi'` for public-health / any risk framing, `'intensity'` for analytical
   magnitude, `'map'` for the per-role road-grid alias. **Never mix aqi and intensity.**
 - **`geo`** — `haversine`, `bearingBetween`, `destination`, `circleRing`, `wedge`,
-  `toPolygons`, `geometryPositions`, `alongPath`, `pathMetrics`, `metersPerPixel`,
+  `toPolygons`, `geometryPositions`, `alongPath`, `pathMetrics`, `splitPathAt`, `metersPerPixel`,
   `fitZoom`, `bboxOfPositions`, `bboxCenter`, `expandBBox`, `bboxRing`, `lerpPosition`.
 - **`anim`** — `usePhase(ms)` (0→1 sawtooth), `usePulse(ms)` (triangle), `useNow()`
   (the demo's now as epoch ms, not the wall clock), `useReducedMotion()`,
@@ -358,7 +409,9 @@ header/plot/footer shell. Also `Legend` (`LegendSeries[]` — `shape: 'line' | '
 - **`windField`** — `buildFieldIndex(field)` (bilinear sampler + confidence from `n` /
   `dir_sd`), `cellConfidence`, `mercatorProjector`, `scopeProjector`.
 - **`vizmeta`** — `niceStep` / `niceCeil` / `niceTicks`, `SEVERITY_GLYPH`, `METRIC_HELP`,
-  `CONCERN_LABEL`, `CONCERN_EMOJI`, `ALERT_KIND_LABEL`, `ALERT_KIND_CODE`.
+  `CONCERN_LABEL`, `CONCERN_EMOJI`, `ALERT_KIND_LABEL`, `PLUME_STROKE`. (The four-letter
+  cockpit codes, `ALERT_KIND_CODE`, are gone — PLAN-refocus I11.) Severity words are
+  `SEVERITY_LABEL` in `@/core/measures` — Critical / Warning / Watch / Info — and nothing else.
 - **`glyphs`** — `GLYPH`, `icon`, `monitorGlyph`, `emissionGlyph`, `concernGlyph`.
 - **`useSize`** — `const [ref, size] = useSize<HTMLDivElement>()`. Returns the ref to attach
   **and** the observed `{ width, height }`; ResizeObserver-backed. Takes an optional fallback size.

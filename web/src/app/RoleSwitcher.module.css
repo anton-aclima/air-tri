@@ -181,31 +181,49 @@
   flex: none;
 }
 
+/* Every persona, wrapped: compact chips (first name, 20px avatar) so a door
+   with eight residents takes two short rows, not a column. */
 .personas {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-2);
+  gap: 6px;
   padding-top: var(--s-3);
   border-top: 1px solid var(--line);
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .personaBtn {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
-  padding: 2px var(--s-2) 2px 2px;
+  gap: 6px;
+  padding: 1px var(--s-2) 1px 1px;
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   color: var(--ink-2);
   font-size: var(--text-2xs);
+  line-height: 1;
   max-width: 100%;
   min-width: 0;
   transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.personaBtn:hover { border-color: var(--role-accent); color: var(--ink); }
+.personaBtn:hover,
+.personaBtn:focus-visible { border-color: var(--role-accent); color: var(--ink); }
+.personaBtn:focus-visible { outline: 1px solid var(--role-accent); outline-offset: 1px; }
+
+.personaBtn .personaAvatar { width: 20px; height: 20px; font-size: var(--text-3xs); }
 
 .personaName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The company, on a door that spans several (industry): the persona is the
+   choice of site there. Quieter than the name, never dropped for it. */
+.personaOrg {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-3xs);
+  white-space: nowrap;
+}
+.personaOrg::before { content: '·'; margin-right: 5px; }
 
 .personaHint {
   font-size: var(--text-3xs);

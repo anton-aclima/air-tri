@@ -18,6 +18,14 @@ export interface MapWindFieldProps {
   speedDomain?: [number, number];
   speedScale?: number;
   ramp?: 'map' | 'intensity' | 'aqi';
+  /**
+   * `'neutral'` paints every particle in `--ink-2` (or `colorToken`), speed
+   * on alpha — for a map whose ramp is the measured street ramp, so the wind
+   * never reads as measured ink (CONTRACT §10b). Default `'ramp'`.
+   */
+  colorMode?: 'ramp' | 'neutral';
+  /** One token for every particle instead of the ramp. See `WindFieldCanvas`. */
+  colorToken?: string;
   opacity?: number;
   lineWidth?: number;
   minConfidence?: number;

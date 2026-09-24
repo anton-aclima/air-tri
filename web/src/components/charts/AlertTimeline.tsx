@@ -2,7 +2,7 @@
  * AlertTimeline — how long has this been up?
  *
  * The industry interface needs duration to be a *shape*, not a timestamp you have
- * to subtract. One row per contact, a bar spanning start → end, and an open bar
+ * to subtract. One row per alert, a bar spanning start → end, and an open bar
  * with a live edge for anything still running. Severity carries colour AND a
  * glyph, so nothing depends on hue alone.
  *
@@ -21,7 +21,7 @@ import { hasStarted, isOngoing } from '@/core/events';
 import { fmtTime24, fmtDay, fmtDurationMin, fmtStamp } from '@/core/format';
 import { useNowCampaign } from '@/core/session';
 import { usePulse } from '../lib/anim';
-import { ALERT_KIND_CODE, SEVERITY_GLYPH } from '../lib/vizmeta';
+import { SEVERITY_GLYPH } from '../lib/vizmeta';
 import { ChartFrame, ChartTooltip, EmptyPlot, TableTwin, useChart } from './primitives';
 import type { Margins } from './primitives';
 import s from './chart.module.css';
@@ -30,6 +30,7 @@ import a from './AlertTimeline.module.css';
 export interface TimelineAlert {
   id: string;
   label: string;
+  /** A short row label for the gutter. Omitted, the label is shortened on a word break. */
   code?: string;
   severity: Severity;
   startedAt: string;
@@ -60,12 +61,17 @@ export interface AlertTimelineProps {
   style?: CSSProperties;
 }
 
-/** `GET /alerts` rows → timeline rows. */
+/**
+ * `GET /alerts` rows → timeline rows.
+ *
+ * No `code`: the gutter used to print the four-letter kind codes (EXCD, DOSE)
+ * from the retired radar dial, which PLAN-refocus I11 takes out of user copy.
+ * The row reads the alert's own title, shortened on a word break.
+ */
 export function timelineFromAlerts(alerts: Alert[]): TimelineAlert[] {
   return alerts.map((x) => ({
     id: x.id,
     label: x.title,
-    code: ALERT_KIND_CODE[x.kind] ?? x.kind.slice(0, 4).toUpperCase(),
     severity: x.severity,
     startedAt: x.started_at,
     endedAt: x.ended_at,
@@ -89,6 +95,36 @@ function shortLabel(label: string, max = 11): string {
   const stem = space >= max - 4 ? cut.slice(0, space) : cut.slice(0, max - 1);
   return `${stem.replace(/[\s,.;:-]+$/, '')}\u2026`;
 }
+
+/**
+ * `shortLabel` for a "what · where" row: the part after the last ` · ` is
+ * where the alert is ("NNW", "site-wide") and survives whole; only the part
+ * before it is shortened. Cutting from the right, as `shortLabel` alone does,
+ * kept the word everyone could guess and dropped the one that said where —
+ * "Reports ·…", "Wind · sit…".
+ */
+function fitLabel(label: string, max: number): string {
+  const clean = label.trim();
+  if (clean.length <= max) return clean;
+  const at = clean.lastIndexOf(' \u00b7 ');
+  if (at > 0) {
+    const tail = clean.slice(at + 3);
+    const room = max - tail.length - 3;
+    if (room >= 3) return `${shortLabel(clean.slice(0, at), room)} \u00b7 ${tail}`;
+  }
+  return shortLabel(clean, max);
+}
+
+/**
+ * The gutter's type: `--text-3xs` (10px) mono at 0.05em tracking — about
+ * 6.5px a character, rounded up so a measured-to-fit label never clips.
+ */
+const GUTTER_CHAR_PX = 6.6;
+/** Room around the gutter's text: the 8px gap to the bars and a little air. */
+const GUTTER_PAD_PX = 14;
+/** The gutter never narrows below the old fixed width, nor eats the plot. */
+const GUTTER_MIN_PX = 92;
+const GUTTER_MAX_PX = 140;
 
 /** Local-epoch ms of a naive timestamp: the axis `scaleTime` draws on. */
 const tMs = (t: string) => parseCampaign(t).getTime();
@@ -122,7 +158,16 @@ export function AlertTimeline(props: AlertTimelineProps) {
   const shown = rows.slice(0, maxRows);
   const hidden = rows.length - shown.length;
 
-  const labelW = labels ? 92 : 8;
+  // The gutter fits its labels, between the old fixed 92px and a cap, so a
+  // row's "where" is not cut to make room for nothing. Callers that pass a
+  // short `code` (the regulator) keep exactly the gutter they had.
+  const wanted = labels
+    ? Math.max(0, ...shown.map((r) => (r.code ?? r.label.trim()).length))
+    : 0;
+  const labelW = labels
+    ? Math.min(GUTTER_MAX_PX, Math.max(GUTTER_MIN_PX, Math.ceil(wanted * GUTTER_CHAR_PX) + GUTTER_PAD_PX))
+    : 8;
+  const labelChars = Math.max(4, Math.floor((labelW - GUTTER_PAD_PX) / GUTTER_CHAR_PX));
   const height = Math.max(58, shown.length * rowHeight + 26);
   const { rootRef, wrapRef, theme, width, innerW, margin: m } = useChart({
     height,
@@ -236,7 +281,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
                     className={s.markFocus}
                     tabIndex={onSelect ? 0 : -1}
                     role={onSelect ? 'button' : undefined}
-                    aria-label={`${r.label}, ${SEVERITY_LABEL[r.severity]}, ${live ? 'still up' : 'ended'}, ${fmtDurationMin((en - st) / 60000)}`}
+                    aria-label={`${r.label}, ${SEVERITY_LABEL[r.severity]}, ${live ? 'ongoing' : 'ended'}, ${fmtDurationMin((en - st) / 60000)}`}
                     onPointerEnter={() => setHover(r.id)}
                     onFocus={() => setHover(r.id)}
                     onClick={() => onSelect?.(r.id === selectedId ? null : r.id)}
@@ -253,7 +298,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
                         textAnchor="end"
                         fill={on ? theme.css('ink') : theme.css('ink-2')}
                       >
-                        {r.code ?? shortLabel(r.label)}
+                        {r.code ?? fitLabel(r.label, labelChars)}
                       </text>
                     )}
 
@@ -323,7 +368,9 @@ export function AlertTimeline(props: AlertTimelineProps) {
                 },
                 {
                   id: 'dur',
-                  label: hovered.endedAt ? 'lasted' : 'up for',
+                  // "ongoing", the Phase 2 word for begun-and-not-ended
+                  // (`isOngoing`); "up for" was the cockpit's (I11).
+                  label: hovered.endedAt ? 'lasted' : 'ongoing for',
                   value: fmtDurationMin(
                     ((hovered.endedAt ? tMs(hovered.endedAt) : now) - tMs(hovered.startedAt)) / 60000,
                   ),

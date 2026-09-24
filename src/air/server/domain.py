@@ -485,7 +485,7 @@ def evaluate_action_level(
     """Re-run one action level against recent readings; create/resolve alerts.
 
     Moving a threshold slider in the regulator UI lands here, and the alerts it
-    creates are what the industry RWR paints. Both directions work: raising a
+    creates are what the industry deck lists. Both directions work: raising a
     threshold resolves the alerts it no longer justifies.
     """
     al = one(conn, "SELECT * FROM action_level WHERE id=?", (action_level_id,))
@@ -663,7 +663,7 @@ def evaluate_action_level(
                     body=(
                         f"Monitors picked up higher than usual {plain} near "
                         f"{worst_alert['title'].split(' at ')[-1]}. If you are sensitive to air quality, "
-                        "consider keeping windows closed and limiting time outdoors until this clears. "
+                        "consider keeping windows closed and limiting time outdoors until levels fall back. "
                         "We are following up with the operator."
                     ),
                     measure=measure, alert_id=worst_alert["id"],

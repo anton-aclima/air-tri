@@ -386,7 +386,9 @@ entire room is monospace and reads as machine output rather than prose.
 - **Body** (400, `0.9375rem` / `--text-md`, 1.5): default. Dense console body drops to
   `0.8125rem` (`--text-sm`); reading measures cap at ~42ch in empty states.
 - **Label** (600, `0.625rem` / `--text-3xs`, `0.09em`, uppercase): panel titles, table
-  headers, stat labels, axis ticks, RWR micro-labels. The single most characteristic type
+  headers, stat labels, axis ticks, map-legend micro-labels. Labels and buttons only —
+  never a sentence or a paragraph in capitals (the industry map's all-caps key read as
+  shouting and was cut). The single most characteristic type
   object in the product.
 - **Numeral** (600, `--font-mono`, `tabular-nums`): every number, everywhere.
 
@@ -404,8 +406,10 @@ ticks is a bug.
 
 **The Caps Are Labels Rule.** Uppercase with `--tracking-caps` (`0.09em`) is reserved for
 micro-labels at `--text-3xs`. Never set a sentence in caps. Industry is the deliberate
-exception and inherits it as a *voice*: its buttons, chips, segmented items, and field labels
-all go uppercase at `--text-2xs`/`--text-3xs`, because terse machine shorthand is the room.
+exception for *controls only*: its buttons, chips, segmented items, and field labels go
+uppercase at `--text-2xs`/`--text-3xs`. Sentences, captions, legends and explanations stay
+sentence case in industry too — the deck's all-caps map key and disclaimer paragraphs were
+the "too busy" the owner saw (2026-09-23).
 
 **The Community Plain-Speech Rule.** Community overrides strip the caps treatment wherever it
 appears — panel titles become sentence case at `--text-sm`, stat labels become sentence case
@@ -419,9 +423,12 @@ four times.** Each room restructures it:
 
 - **Community** drops the rail entirely (`grid-template-columns: minmax(0, 1fr)`) and takes a
   taller 64px header. The page scrolls like a feed.
-- **Industry** narrows the rail to 56px and the header to 44px — a near-empty phosphor frame
-  with corner brackets around a scope.
-- **Regulator** keeps the 68px rail with a 48px header and a dense status strip.
+- **Industry** keeps the shared 68px rail, labelled in short words (Map · Alerts · Reports ·
+  Outreach · Evidence · Site), and a 44px header — a near-empty phosphor frame with corner
+  brackets around the map.
+- **Regulator** keeps the 68px rail with a 48px header. Neither industry nor regulator has a
+  header status strip any more (2026-09-23): the page carries the status, so the header
+  cannot contradict it.
 - **Admin** keeps the rail with a 52px header and a numeric status bar.
 
 The shell paints its room's texture from `--grid-overlay` on a `::before` at 90% opacity:
@@ -644,7 +651,13 @@ pale street is chronically a little dirty. Three stories in one glance. A basema
 casing keeps a 2px line crisp over any tile. Segments below the minimum pass count draw as
 "not enough data" rather than as a value.
 
-### The Radar Scope (signature)
+### The Radar Scope (retired from the industry deck, 2026-09-23)
+
+> **Retired (owner decision D8).** The deck is now map-led: the map carries the site, the
+> measured streets, the fenceline road, the wind particles and today's plume outline, and
+> the dial was a second geometry repeating the map's bearings. `RadarScope.tsx` stays in
+> `components/` only until the gallery stops using it. The description below is kept as
+> the record of what it was; do not rebuild it on the deck.
 
 Industry's plan-position indicator, readable from three metres without interpretation.
 Position encodes bearing and range from the site; shape encodes who is reporting; colour,
@@ -662,7 +675,7 @@ a *shape* rather than a paragraph.
 
 ### The Coverage Ring (signature)
 
-Regulator's tower-defense vocabulary. Reference monitors draw two concentric rings — outer at
+The regulator's visual signature (a look, never a word on screen — CONTRACT §10a.7). Reference monitors draw two concentric rings — outer at
 `radius_m`, inner at 55% — in `--tower` green, sweeping slowly while the instrument is online.
 The sweep is the regulator's alone. It exists on their towers and on the landing page's hub
 (`--dur-sweep`, 3200ms linear) and nowhere else.

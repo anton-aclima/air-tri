@@ -35,7 +35,9 @@ air-server = "air.server.__main__:main"
 | `models.py` | pydantic request bodies |
 | `windfield.py` | circular statistics, grid binning, wind roses, model verification (§8b) |
 | `sim.py` | the six scripted demo scenarios (CONTRACT §8) |
-| `advisor_rules.py` | deterministic fallback for `POST /advisor` |
+| `advisor_rules.py` | deterministic fallback for `POST /advisor`, keyed to the site's kind |
+| `advisor_copy.py` | the never-say / cockpit / attribution / action screen, run on the rules answer (tests) and on the model's reply before it is swapped in |
+| `naming.py` | F7 on the server: wind at the alert's start + the placebo-checked downwind test, or no site is named |
 | `routers/*.py` | one module per domain |
 | `_smoketest_seed.py` | **backend testing only** — tiny fixture, writes `data/air_smoketest.db` |
 

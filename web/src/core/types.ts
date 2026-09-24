@@ -680,12 +680,86 @@ export interface DispersionProps {
    */
   stability_coerced_from?: string;
   stability_note?: string;
+
+  /**
+   * Bands carry no `kind`; the `?outline=1` features do. Declared so a check
+   * on `properties.kind` narrows a `DispersionFeature` without a cast.
+   */
+  kind?: never;
 }
 
+/**
+ * `GET /wind/dispersion` without `outline` — bands only, exactly as before the
+ * outline style existed (the server has a test that this stays byte-identical).
+ */
 export type DispersionPlume = FeatureCollection<
   { type: 'Polygon'; coordinates: Position[][] },
   DispersionProps
 >;
+
+/**
+ * What every `?outline=1` feature carries, band or not: enough to draw and
+ * label it without looking up the band it came from.
+ */
+export interface DispersionOutlineBase {
+  site_id: string;
+  measure: MeasureCode;
+  ts: string;
+  wind_dir_deg: number;
+  stability: string;
+  /** Past this distance along the axis nothing has been measured. */
+  detection_envelope_m: number;
+  x_reach_m: number;
+  /** `x_reach_m` hit the kernel's 8,000 m limit: a clip, not a real reach. */
+  truncated: boolean;
+}
+
+/**
+ * The plume's OUTER edge (the union of every band), split at the detection
+ * envelope. CONTRACT §10b: `inside` is the Aclima model — a solid hairline,
+ * no fill; `beyond` is past the measurement range — dashed, no fill, with the
+ * legend line "beyond measurement range — model only". Neither is ever filled:
+ * measurement is the only filled thing on the map.
+ *
+ *   inside — from the plume's onset out to min(x_reach_m, detection_envelope_m)
+ *   beyond — from detection_envelope_m out to x_reach_m; ABSENT when the plume
+ *            ends inside the envelope (x_reach_m <= detection_envelope_m)
+ */
+export interface DispersionOutlineProps extends DispersionOutlineBase {
+  kind: 'outline';
+  part: 'inside' | 'beyond';
+}
+
+/**
+ * The centreline: from the emission-weighted source along the transport
+ * direction (`wind_dir_deg + 180`) out to `reach_m`. Solid to `envelope_m`,
+ * dashed after it, with a reach tick where it crosses the envelope — and the
+ * word "truncated" at the far end instead when `truncated`.
+ */
+export interface DispersionAxisProps extends DispersionOutlineBase {
+  kind: 'axis';
+  /** = `detection_envelope_m`, named for the tick it places. */
+  envelope_m: number;
+  /** = `x_reach_m`. */
+  reach_m: number;
+}
+
+export type DispersionBandFeature = Feature<{ type: 'Polygon'; coordinates: Position[][] }, DispersionProps>;
+export type DispersionOutlineFeature = Feature<{ type: 'Polygon'; coordinates: Position[][] }, DispersionOutlineProps>;
+export type DispersionAxisFeature = Feature<{ type: 'LineString'; coordinates: Position[] }, DispersionAxisProps>;
+export type DispersionFeature = DispersionBandFeature | DispersionOutlineFeature | DispersionAxisFeature;
+
+/**
+ * `GET /wind/dispersion?outline=1` — the same bands PLUS, per site, the
+ * outline parts and the axis. A `DispersionPlume` is assignable to it (bands
+ * are one member of the union), so a layer typed for this accepts either.
+ * Narrow with `isBandFeature` / `isOutlineFeature` / `isAxisFeature`
+ * (core/api), which narrow the geometry along with the properties.
+ */
+export interface DispersionPlumeOutlined {
+  type: 'FeatureCollection';
+  features: DispersionFeature[];
+}
 
 // ───────────────────────────────────────────────────────────── coverage
 
