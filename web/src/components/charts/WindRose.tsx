@@ -19,6 +19,7 @@ import { compassPoint, fmtNum } from '@/core/format';
 import { useTheme } from '../lib/theme';
 import { makeColorScale } from '../lib/scales';
 import { ChartFrame, EmptyPlot, Legend, TableTwin } from './primitives';
+import { petal, polar } from './roseGeometry';
 import type { LegendSeries } from './primitives';
 import s from './chart.module.css';
 import w from './WindRose.module.css';
@@ -52,19 +53,6 @@ export interface WindRoseProps {
 }
 
 const DEFAULT_BINS = [0, 1.5, 3, 5, 8];
-
-function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
-  const a = (deg * Math.PI) / 180;
-  return [cx + r * Math.sin(a), cy - r * Math.cos(a)];
-}
-
-function petal(cx: number, cy: number, r0: number, r1: number, a0: number, a1: number): string {
-  const [x0, y0] = polar(cx, cy, r1, a0);
-  const [x1, y1] = polar(cx, cy, r1, a1);
-  const [x2, y2] = polar(cx, cy, r0, a1);
-  const [x3, y3] = polar(cx, cy, r0, a0);
-  return `M ${x0} ${y0} A ${r1} ${r1} 0 0 1 ${x1} ${y1} L ${x2} ${y2} A ${r0} ${r0} 0 0 0 ${x3} ${y3} Z`;
-}
 
 export function WindRose(props: WindRoseProps) {
   const {

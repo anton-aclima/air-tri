@@ -25,13 +25,14 @@ import type { SegmentFeature } from '@/components'
 import type { CampaignTime } from '@/core/clock'
 import { relativeTime } from '@/core/format'
 import { bearingBetween, compassWords, distanceBetween, fmtDistanceImperial } from '@/core/format'
+import { useClimatology, useTouchdown } from '@/core/queries'
 import type { Concern, ConcernCluster, IndustrySite } from '@/core/types'
 
 import s from './community.module.css'
 import { RiskPill } from './parts'
 import {
-  KIND_WORD, PLUME_COPY, distanceFromHome, kindEmoji, kindLabel, nearWords, severityWord,
-  statusPlain,
+  KIND_WORD, PLUME_COPY, REPORT_MEASURE, distanceFromHome, kindEmoji, kindLabel, nearWords, severityWord,
+  statusPlain, useMyNeighborhood,
 } from './lib'
 import type { Position } from '@/core/types'
 
@@ -85,6 +86,10 @@ function oftenWords(persistence: number | null | undefined): string {
 
 export function Picked(props: PickedProps) {
   const { pick, onClear, now, home, concerns, clusters, segments, sites, measureName } = props
+  // The same whole-campaign query the Plume card holds, so a tapped place
+  // costs no request. Called before the early return: hooks cannot follow it.
+  const climate = useClimatology().data
+  const place = useMyNeighborhood()
   if (!pick) return null
 
   let body: React.ReactNode = null
@@ -145,13 +150,7 @@ export function Picked(props: PickedProps) {
           branch is careful to say the wind came from somewhere, never that
           somewhere did something.
         */}
-        <p className={s.pickNote}>
-          {c.suspected_site_id
-            ? PLUME_COPY.concern.attributed(
-                sites.find((x) => x.id === c.suspected_site_id)?.name ?? 'a place on the map',
-              )
-            : PLUME_COPY.concern.unattributed}
-        </p>
+        <ReportOrigin concern={c} sites={sites} />
 
         <p className={s.pickNote}>{statusPlain(c.status).hint}.</p>
 
@@ -210,6 +209,9 @@ export function Picked(props: PickedProps) {
     )
   } else if (pick.kind === 'site') {
     const site = sites.find((x) => x.id === pick.id)
+    const wind = climate?.sites
+      .find((x) => x.site_id === pick.id)
+      ?.districts.find((x) => x.district === place)
     heading = 'A place that reports its emissions'
     body = !site ? (
       <p className={s.pickNote}>That place is not in view any more.</p>
@@ -231,6 +233,24 @@ export function Picked(props: PickedProps) {
         />
         {site.operating_since ? (
           <Row label="Operating since" value={site.operating_since.slice(0, 4)} />
+        ) : null}
+
+        {/*
+          THE PLACE'S "USUALLY" LINE, here and not on the map. The map lost its
+          company labels (PLAN-refocus C5): a name printed beside a cloud reads
+          as "this is where it came from". Tapping a place is asking about it,
+          so this is where the wind sentence goes — the same words as the
+          Plume card, with the same caveat straight after it. No line at all
+          when the records do not cover this place and neighbourhood.
+        */}
+        {wind ? (
+          <>
+            <p className={s.pickNote}>
+              {PLUME_COPY.usually.fromHereOver(place)}{' '}
+              <strong>{PLUME_COPY.usually.often(wind.share)}</strong>.
+            </p>
+            <p className={s.pickNote}>{PLUME_COPY.usually.caveat}</p>
+          </>
         ) : null}
 
         {site.blurb ? (
@@ -340,4 +360,26 @@ function statusDot(status: string): string {
     case 'closed': return 'sev-ok'
     default: return 'actor-community'
   }
+}
+
+/**
+ * Where the air came from — named only under the site-naming rule (D7): the
+ * wind at the time carried from the site (`suspected_site_id`) AND that
+ * site's placebo-checked downwind test for this kind of air is
+ * `elevated_downwind`. The wind alone named a site on this card, noise
+ * reports included, while the deck and the server already refused to.
+ */
+function ReportOrigin({ concern: c, sites }: { concern: Concern; sites: IndustrySite[] }) {
+  const measure = REPORT_MEASURE[c.kind]
+  const td = useTouchdown(measure ? c.suspected_site_id : null, measure ? { measure } : {})
+  let text: string
+  if (!measure) text = PLUME_COPY.concern.notByWind
+  else if (!c.suspected_site_id) text = PLUME_COPY.concern.unattributed
+  else if (td.isPending) text = ''
+  else if (td.data?.site.state === 'elevated_downwind') {
+    text = PLUME_COPY.concern.attributed(
+      sites.find((x) => x.id === c.suspected_site_id)?.name ?? 'a place on the map',
+    )
+  } else text = PLUME_COPY.concern.unlinked
+  return text ? <p className={s.pickNote}>{text}</p> : null
 }

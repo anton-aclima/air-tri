@@ -168,6 +168,14 @@
   --map-water:     #BBD3DF;
   --map-green:     #DCE7CE;
   --map-urban:     #EDE7DD;
+  /* The resident's soft plume cloud (SoftPlumeLayer). A warm neutral of its
+     own, off every ramp: it used to be the intensity ramp's magenta
+     (≈#B74082), a step from --ramp-aqi-5 "very unhealthy", so a guess from
+     the wind was painted in the colour of a health finding. Not a slate grey
+     either — along the river a cool grey haze reads as more water. Umber sits
+     outside the AQI hues and away from --map-water, and at the layer's 2–8%
+     alpha it reads as a haze over the cream basemap, not a colour. */
+  --plume-soft:    #764F37;
   /* Residents read colour as public health, not as analytical magnitude, so the
      community road grid paints on the AQI ramp: green means clean, red means
      not. (7 stops; the 8th alias repeats the top so `--ramp-map-*` stays whole.) */
@@ -222,6 +230,9 @@
   --map-water:     #123047;
   --map-green:     #0F2016;
   --map-urban:     #0E141C;
+  /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
+     sand so a low alpha reads as haze on the dark basemap. See community. */
+  --plume-soft:    #CDB89A;
   --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
   --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
   --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
@@ -277,6 +288,9 @@
   --map-water:     #0B3247;
   --map-green:     #0D2116;
   --map-urban:     #0A0F13;
+  /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
+     sand so a low alpha reads as haze on the dark basemap. See community. */
+  --plume-soft:    #C8B597;
   --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
   --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
   --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
@@ -325,6 +339,9 @@
   --map-water:     #193864;
   --map-green:     #172C21;
   --map-urban:     #111825;
+  /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
+     sand so a low alpha reads as haze on the dark basemap. See community. */
+  --plume-soft:    #CDB99C;
   --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
   --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
   --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);

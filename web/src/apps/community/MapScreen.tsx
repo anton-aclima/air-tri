@@ -4,6 +4,10 @@
  * The road grid is the hero: every ~200 m of street we drove, coloured on the
  * public-health ramp so green really does mean clean. Neighbours' reports sit
  * on top as pins, and a group of them gets a halo.
+ *
+ * Industrial places are drawn as a footprint and a logo, with no name on the
+ * map (PLAN-refocus C5): a name beside a cloud reads as "that is where it came
+ * from", which this screen never gets to say. Tapping one names it.
  */
 
 import { Link } from '@tanstack/react-router'
@@ -16,6 +20,7 @@ import {
   kindEmoji,
   kindLabel,
   nearWords,
+  PLUME_COPY,
   PRIMARY_KINDS,
   severityWord,
   statusPlain,
@@ -25,7 +30,7 @@ import {
 import { DelayNote, FootNote, RiskPill, SimNote } from '@/apps/community/parts'
 import { Picked } from '@/apps/community/Picked'
 import { Plume, latestClusterOf } from '@/apps/community/Plume'
-import type { PlumeMode } from '@/apps/community/Plume'
+import type { CloudState, PlumeMode } from '@/apps/community/Plume'
 import type { MapPick } from '@/apps/community/Picked'
 import { Badge, Button, Chip, Empty, Toggle } from '@/app/ui'
 import {
@@ -37,17 +42,18 @@ import {
   MapOverlay,
   MapScale,
   MeasurePicker,
+  MiniRose,
   SegmentLayer,
   SiteLayer,
   REPORT_WINDOW_DAYS,
   SoftPlumeLayer,
   makeColorScale,
   pickedSite,
-  pointInRing,
   usePulse,
   windowReports,
 } from '@/components'
 import type { ConcernBubble, ReportWindowDays } from '@/components'
+import { isAxisFeature, isOutlineFeature } from '@/core/api'
 import { campaignMs } from '@/core/clock'
 import { happenedBy } from '@/core/events'
 import { relativeTime } from '@/core/format'
@@ -55,6 +61,7 @@ import { PICKABLE, plainName } from '@/core/measures'
 import {
   useActiveMeasure,
   useBootstrapSites,
+  useClimatology,
   useConcernClusters,
   useConcerns,
   useDispersion,
@@ -67,9 +74,27 @@ import type { ConcernKind, MeasureCode, Position } from '@/core/types'
 
 const NEAR_RADIUS_M = 1600
 
+/**
+ * Report rows before "Show all". Uncapped, the list was most of the rail
+ * (5,639 of 7,392 px at 1080 with the last 14 days' 37 reports; all 204 run
+ * to about four times that), so the groups and the key under it sat a long
+ * scroll away. Eight is the newest day or two, and every pin is still on the
+ * map.
+ */
+const LIST_CAP = 8
+
+/** Pin colour → what it means, in the order a report moves through them. */
+const PIN_KEY = [
+  ['actor-community', 'Nobody has answered it yet'],
+  ['actor-regulator', 'The air agency is looking into it'],
+  ['actor-industry', 'A company has replied'],
+  ['sev-ok', 'Closed by the agency'],
+] as const
+
 export function MapScreen() {
-  // Climatology is the default and the only mode that draws nothing. See
-  // `Plume` for why the live cloud is a tap behind rather than the front door.
+  // Climatology is the default: one wind rose in the map's corner and one
+  // sentence per place in the card. See `Plume` for why the cloud is a tap
+  // behind rather than the front door.
   const [plumeMode, setPlumeMode] = useState<PlumeMode>('usually')
   const now = useNowCampaign()
   const places = usePlaces()
@@ -104,18 +129,50 @@ export function MapScreen() {
   // the window's, which drops a group whose last report was noticed before it.
   const formedIds = useMemo(() => new Set(formed.map((g) => g.id)), [formed])
   const fleet = useFleet().data ?? []
-  // Only fetched when a cloud mode is on. `usually` is the default and draws
-  // nothing, so a resident who never taps never requests a modelled shape.
+  // Only fetched in the two cloud modes, so a resident who never taps never
+  // requests a modelled shape. `outline: true` because the soft cloud is
+  // drawn from each plume's `inside` part — onset to the measurement range,
+  // cut across the axis there (PLAN-refocus D4) — and a bands-only payload
+  // draws nothing at all.
   //
   // In `when` mode the fetch is pinned to the hour the cluster of reports
   // landed — the same cluster the card names. Without that the card said
   // "where the air was going when your neighbours reported" over a map drawing
-  // the plume for right now.
+  // the plume for another hour.
   const frozenAt = plumeMode === 'when' ? (latestClusterOf(clusters)?.last_at ?? undefined) : undefined
   const dispersion = useDispersion(
-    frozenAt ? { at: frozenAt } : {},
+    { ...(frozenAt ? { at: frozenAt } : {}), outline: true },
     { enabled: plumeMode !== 'usually' && (plumeMode !== 'when' || !!frozenAt) },
   )
+  /*
+    A timed query keeps the previous hour's payload on screen while the next
+    loads. In `now` that is right — the card's title names the hour drawn, so
+    during playback the two stay in step. In `when` it is not: the card names
+    ONE hour, the cluster's, and a cloud kept from another hour (the `now`
+    one, just after the switch) would sit under that sentence. So in `when`
+    nothing is drawn until that hour's own answer arrives.
+  */
+  const cloudData = plumeMode === 'when' && dispersion.isPlaceholderData ? undefined : dispersion.data
+  /*
+    What the cloud layer will actually draw, for the card to describe: the
+    `inside` parts, each with the axis it is built around (the layer skips an
+    inside part without one). Read from the payload rather than the query
+    state, so the card names the hour that is drawn, with its caveat, not the
+    one being fetched.
+  */
+  const cloud = useMemo<CloudState>(() => {
+    const feats = cloudData?.features ?? []
+    const axes = new Set(feats.filter(isAxisFeature).map((f) => f.properties.site_id))
+    const inside = feats.find(
+      (f) => isOutlineFeature(f) && f.properties.part === 'inside'
+        && axes.has(f.properties.site_id) && (f.geometry.coordinates[0]?.length ?? 0) >= 4,
+    )
+    if (inside) return { status: 'drawn', hour: inside.properties.ts }
+    return dispersion.isFetching ? { status: 'loading' } : { status: 'none' }
+  }, [cloudData, dispersion.isFetching])
+  // The rose under "Usually": the whole campaign's wind record, the same
+  // query the card already holds.
+  const climate = useClimatology().data
   /**
    * Industrial sites, shown to residents.
    *
@@ -160,6 +217,11 @@ export function MapScreen() {
 
   const [nearOnly, setNearOnly] = useState(false)
   const [kindFilter, setKindFilter] = useState<ConcernKind | null>(null)
+  const [showAll, setShowAll] = useState(false)
+  // A new filter or window starts from the short list again: "Show all" on
+  // 14 days must not quietly become all 204 rows after "Everything".
+  useEffect(() => { setShowAll(false) }, [reportDays, kindFilter, nearOnly])
+  const listTopRef = useRef<HTMLDivElement>(null)
   const [showCars, setShowCars] = useState(true)
   const [showSites, setShowSites] = useState(true)
   /**
@@ -190,40 +252,8 @@ export function MapScreen() {
 
   // Memoised: ConcernLayer caches its folding on this array's identity.
   const shown = useMemo(() => rows.map((r) => r.c), [rows])
-
-  /*
-    P6-E — "what we measured under the cloud", and how it degrades.
-
-    The count is only meaningful if enough of the neighbourhood was driven in
-    the window: hour-window coverage runs 90 to 407 of 1,307 segments, so this
-    can be computed from a handful of streets and read as though the whole area
-    had been checked. `Plume` holds the floor and shows the honest sentence
-    instead of a small number — the failure to avoid is not a wrong count, it
-    is a right count that sounds like coverage.
-
-    Memoised on the plume payload and the segment list rather than recomputed
-    per render: this is point-in-polygon over ~1,300 midpoints, and the time
-    cursor ticks.
-  */
-  const measuredStreets = useMemo(() => {
-    const feats = dispersion.data?.features ?? []
-    const segs = segments?.features ?? []
-    if (!feats.length || !segs.length) return null
-    // The OUTER band only. The bands nest, so testing all three would count
-    // the same street up to three times.
-    const outer = Math.max(...feats.map((f) => f.properties.band ?? 0))
-    const rings = feats
-      .filter((f) => (f.properties.band ?? 0) === outer)
-      .map((f) => f.geometry.coordinates[0] as unknown as Position[])
-    let n = 0
-    for (const seg of segs) {
-      const line = seg.geometry.coordinates
-      const mid = line[Math.floor(line.length / 2)]
-      if (!mid) continue
-      if (rings.some((r) => pointInRing(r, mid as Position))) n += 1
-    }
-    return n
-  }, [dispersion.data, segments])
+  // The cap is the list's, never the map's: every row still has its pin.
+  const listed = showAll ? rows : rows.slice(0, LIST_CAP)
 
   return (
     <div className={[s.page, s.pageWide].join(' ')}>
@@ -281,13 +311,14 @@ export function MapScreen() {
               return choose(null)
             }}
             layers={(t) => [
-              /* UNDER EVERYTHING, and only in the two cloud modes. `usually`
-                 draws nothing at all, which is the point of it being the
-                 default. The cloud is a guess and the coloured streets are
-                 measurements; a guess is never drawn on top of a measurement. */
+              /* UNDER EVERYTHING, and only in the two cloud modes; `usually`
+                 draws its rose as map furniture instead. The cloud is a guess
+                 and the coloured streets are measurements; a guess is never
+                 drawn on top of a measurement. The payload goes in whole: the
+                 layer picks out the parts inside the measurement range. */
               ...(plumeMode === 'usually'
                 ? []
-                : SoftPlumeLayer({ data: dispersion.data, theme: t })),
+                : SoftPlumeLayer({ data: cloudData, theme: t })),
               ...SegmentLayer({
                 data: segments,
                 theme: t,
@@ -307,13 +338,15 @@ export function MapScreen() {
                  back the topmost layer — drawn last, it would eat their clicks.
                  Emission points are off: stack-level detail is not a resident's
                  question, and pulsing stacks read as "emitting right now",
-                 which is a claim this screen does not get to make. */
+                 which is a claim this screen does not get to make. Names are
+                 off too (see the header): the logo badge stays, so a place is
+                 still findable and tappable, and its card names it. */
               ...(showSites
                 ? SiteLayer({
                     data: sites,
                     theme: t,
                     emissionPoints: false,
-                    labels: true,
+                    labels: false,
                     selectedId: pick?.kind === 'site' ? pick.id : null,
                   })
                 : []),
@@ -337,8 +370,20 @@ export function MapScreen() {
                 dualEncode="width"
                 plainLanguage
                 compact
-                title="How your street scores"
+                title="How your street scores · these three months"
               />
+              {/* "Usually" draws this and nothing else: the whole campaign's
+                  wind, under the street key and at no site, so it points from
+                  no company at any neighbourhood (PLAN-refocus D3). It sat in
+                  the bottom-left corner until a review found it on top of
+                  Ridgeline's badge at 1080 — the one mark left for that site
+                  once names came off the map. MiniRose renders nothing until
+                  the rose has loaded. */}
+              {plumeMode === 'usually' ? (
+                <div style={{ marginTop: 'var(--s-2)' }}>
+                  <MiniRose rose={climate?.rose} caption={PLUME_COPY.usually.mapKey} />
+                </div>
+              ) : null}
             </MapOverlay>
             <MapOverlay place="bottom-left">
               <MapScale units="imperial" />
@@ -372,16 +417,16 @@ export function MapScreen() {
 
           {/*
             THE FRONT DOOR, directly under whatever is picked and above the
-            filters. Climatology first: one stable sentence per place, no shape
-            drawn over anyone. The live cloud is a tab inside this card, not a
-            layer that arrives unasked.
+            filters. Climatology first: one stable sentence per place, and the
+            rose on the map. The cloud is a tab inside this card, not a layer
+            that arrives unasked.
           */}
           <Plume
             sites={sites}
             clusters={clusters}
             mode={plumeMode}
             onMode={setPlumeMode}
-            measuredStreets={measuredStreets}
+            cloud={cloud}
             now={now}
           />
 
@@ -423,6 +468,25 @@ export function MapScreen() {
               <Toggle checked={showCars} onChange={setShowCars} label="Show where our cars were" />
               <Toggle checked={showSites} onChange={setShowSites} label="Show industrial places" />
             </div>
+            {/* The pin colours carry the most consequential fact on this
+                screen — whether anybody has picked the report up — so the key
+                sits with the pin filters, in plain words. It was a panel on
+                the map, where at 1080 it covered a quarter of the streets the
+                page is about. Kept in step with `concernStatusToken` in
+                ConcernLayer.ts. */}
+            <div className={s.pinKeyRail}>
+              <span className={s.pinKeyRailTitle}>What the pin colours mean</span>
+              {PIN_KEY.map(([token, what]) => (
+                <span key={token} className={s.pinKeyRow}>
+                  <span
+                    className={s.pinKeySwatch}
+                    style={{ color: `var(--${token})` }}
+                    aria-hidden
+                  />
+                  <span>{what}</span>
+                </span>
+              ))}
+            </div>
             <div className={s.railFoot}>
               <DelayNote minutes={delayMin} />
             </div>
@@ -433,7 +497,7 @@ export function MapScreen() {
               {shown.length} {shown.length === 1 ? 'report' : 'reports'}
               {nearOnly ? ` near ${places.homeName}` : ''}
             </h2>
-            <div className={s.railList}>
+            <div className={s.railList} ref={listTopRef}>
               {shown.length === 0 ? (
                 <Empty
                   icon="report"
@@ -441,7 +505,7 @@ export function MapScreen() {
                   children="No reports match that filter. Try widening it."
                 />
               ) : null}
-              {rows.map(({ c, d }) => (
+              {listed.map(({ c, d }) => (
                 <div
                   key={c.id}
                   className={[
@@ -499,6 +563,23 @@ export function MapScreen() {
                 </div>
               ))}
             </div>
+            {rows.length > LIST_CAP ? (
+              <div className={s.railFoot}>
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  onClick={() => {
+                    // "Show fewer" from the bottom of a long list: bring the
+                    // shortened list back into view rather than leave the rail
+                    // scrolled past it.
+                    if (showAll) listTopRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+                    setShowAll(!showAll)
+                  }}
+                >
+                  {showAll ? 'Show fewer' : `Show all ${rows.length}`}
+                </Button>
+              </div>
+            ) : null}
           </section>
 
           {clusters.length ? (
@@ -550,40 +631,20 @@ export function MapScreen() {
               air was bad there more often, not just worse once.
             </div>
 
-            {/* The pin colours carry the most consequential fact on this screen
-                — whether anybody has picked the report up — and until now they
-                were explained nowhere at all. They are the actor hues, which is
-                an insider concept; say it in plain words instead. Kept in step
-                with `concernStatusToken` in ConcernLayer.ts. */}
+            {/* The colour key for the pins is in the Filter card, with the pin filters. */}
             <div className={s.railSubLabel}>The pins are your neighbours’ reports</div>
-            <div className={s.pinKey}>
-              {[
-                ['actor-community', 'Nobody has answered it yet'],
-                ['actor-regulator', 'The air agency is looking into it'],
-                ['actor-industry', 'A company has replied'],
-                ['sev-ok', 'Closed by the agency'],
-              ].map(([token, what]) => (
-                <span key={token} className={s.pinKeyRow}>
-                  <span
-                    className={s.pinKeySwatch}
-                    style={{ color: `var(--${token})` }}
-                    aria-hidden
-                  />
-                  <span>{what}</span>
-                </span>
-              ))}
-            </div>
-            <div className={s.railSubLabel}>The outlined blocks are industrial places</div>
             <div className={s.railFoot} style={{ marginBlockEnd: 'var(--s-3)' }}>
-              Where they are, not a finding about them. Tap one to read what it is and who runs
-              it. Air moves with the wind, so being near something is not evidence it caused
-              anything.
-            </div>
-
-            <div className={s.railFoot}>
               The shape inside a pin is what was reported — a smell, a noise, smoke. A bigger pin
               means the person who reported it said it was worse. A ring around several pins means
-              they became a group. Tap anything to read it.
+              they became a group. Its colour says whether anybody has answered: the key is with
+              the pin filters above.
+            </div>
+
+            <div className={s.railSubLabel}>The outlined blocks are industrial places</div>
+            <div className={s.railFoot}>
+              Where they are, not a finding about them. Tap one to read its name, what it is and
+              who runs it. Air moves with the wind, so being near something is not evidence it
+              caused anything.
             </div>
           </section>
         </div>

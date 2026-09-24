@@ -38,6 +38,8 @@ export const TOKENS = [
   'bandit-community', 'bandit-regulator',
   // terrain — the basemap's own palette, never borrowed from a semantic hue
   'map-water', 'map-green', 'map-urban',
+  // the resident's soft plume cloud — a warm neutral off every ramp (C7)
+  'plume-soft',
   // shape / motion
   'radius-card', 'font-mono', 'font-body', 'font-heading', 'grid-overlay',
 ] as const;
@@ -54,6 +56,9 @@ const NEUTRAL: Record<string, string> = {
   'surface-raised': '#1F2833', line: '#232E3C', 'line-strong': '#334154',
   ink: '#E6EDF3', 'ink-2': '#9BAAB9', 'ink-3': '#6B7B8C', 'ink-inv': '#080B10',
   accent: '#00D3A7', 'accent-ink': '#00160F', 'accent-soft': '#06302A', 'accent-2': '#7CA9FF',
+  // Mirrored because an empty token parses to transparent, and a cloud that
+  // silently vanishes outside a role subtree reads as "no plume", not a bug.
+  'plume-soft': '#CDB99C',
 };
 
 /** Tokens that only exist inside one role skin get a role-independent stand-in. */

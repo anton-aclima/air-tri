@@ -334,7 +334,6 @@ export function MapScreen() {
                 measure={measure ?? null}
                 metric={metric}
                 dualEncode="width"
-                title={`${measureCode.toUpperCase()} — measured road grid`}
               />
             </MapOverlay>
 

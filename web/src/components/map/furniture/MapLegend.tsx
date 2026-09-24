@@ -45,7 +45,7 @@ export function MapLegend(props: MapLegendProps) {
   const {
     scale, domain, measure, metric = 'median', dualEncode = 'width',
     plainLanguage = false, showNoData = true, compact = false,
-    className, style,
+    title, className, style,
   } = props;
 
   const ref = useRef<HTMLDivElement>(null);
@@ -93,8 +93,10 @@ export function MapLegend(props: MapLegendProps) {
       style={style}
     >
       <div className={s.between}>
-        <span className={s.title} style={{ fontSize: 'var(--text-sm)' }}>{name}</span>
-        <span className={s.metricChip}>{METRIC_LABEL_SHORT[metric]}</span>
+        <span className={s.title} style={{ fontSize: 'var(--text-sm)' }}>{title ?? name}</span>
+        {/* A resident's map carries no metric jargon: the all-caps RISK chip
+            was a label for analysts. */}
+        {plainLanguage ? null : <span className={s.metricChip}>{METRIC_LABEL_SHORT[metric]}</span>}
       </div>
 
       <div className={s.ramp} style={{ background: gradient }} role="img"

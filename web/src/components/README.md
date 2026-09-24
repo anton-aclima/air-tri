@@ -190,6 +190,15 @@ never the `beyond` dash, so with the comparison on the two outlines differ on tw
 Strokes for all three registers come from `PLUME_STROKE` (`lib/vizmeta`), which the legend's
 `PlumeSwatch` reads too.
 
+### `SoftPlumeLayer` — the resident's cloud
+
+`data` (**`GET /wind/dispersion?outline=1`** — `useDispersion({ …, outline: true })`), `theme`,
+`visible`, `intensity` (multiplies every shell's alpha). Fills each site's `kind: 'outline'`,
+`part: 'inside'` polygon with ten nested, rounded shells (none is the served ring) that fade from the source to nothing before the
+detection envelope (1.5 km, or 4 km in stable air); **nothing past the envelope, no stroke, no
+band `level`**. A bands-only payload draws nothing — it never falls back to the 8 km bands.
+Colour is `--plume-soft`, a warm neutral off every ramp.
+
 > **The wind visual is not a deck.gl layer.** Particle advection needs frame-to-frame canvas
 > history. Use `MapWindField` — see below.
 
@@ -258,6 +267,7 @@ Each goes inside `<MapOverlay place=…>`.
 | `MapLegend` | `scale` (pass the same `ColorScale` the layer got and domain/stops follow), `domain`, `measure`, `metric`, `dualEncode`, `plainLanguage`, `showNoData`, `compact`, `title` |
 | `MapScale` | `zoom` / `latitude` (override the context), `maxWidth` (110), `units: 'metric' \| 'imperial' \| 'both'` |
 | `NorthCompass` | `bearing`, `pitch`, `onReset`, `size`, `alwaysVisible` (default false — hidden when north-up), `readout` |
+| `MiniRose` | `rose` (`WindClimatology.rose` or any `{ dir_deg, freq }[]`; any unit — petals scale to the largest sector), `size` (64), `caption` (a short line beside it), `label` (accessible name; default names the most common direction in words), `className`, `style`. **Outline only, 16 sectors, no numbers** — the community map's "Usually" key, tied to no company. Renders nothing until the rose has data |
 | `LayerToggles` | `items: { id, label, enabled, color?, keyShape?: 'line' \| 'dot', count?, disabled? }[]`, `onToggle(id, next)`, `title` |
 | `MeasurePicker` | `measures`, `value`, `onChange`, `variant: 'segmented' \| 'chips' \| 'select'`, `plainLanguage`, `showUnit`, `showHue`, `disabled`, `label` |
 | `MetricPicker` | `value`, `onChange`, `metrics` (community should pass `['risk']` only), `variant`, `longLabels`, `label` |

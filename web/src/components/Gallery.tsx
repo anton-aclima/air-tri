@@ -32,6 +32,7 @@ import { MapLegend } from './map/furniture/MapLegend';
 import { MeasurePicker, MetricPicker } from './map/furniture/Pickers';
 import { MapScale } from './map/furniture/MapScale';
 import { NorthCompass } from './map/furniture/NorthCompass';
+import { MiniRose } from './map/furniture/MiniRose';
 import { MapTooltip, MapPopover } from './map/furniture/MapTooltip';
 import { LayerToggles } from './map/furniture/LayerToggles';
 import { SegmentInspector } from './map/furniture/SegmentInspector';
@@ -586,6 +587,13 @@ function RolePanel(props: {
               nObs={fx.MODEL_VERIFICATION.n_obs}
               title="Assumed vs observed"
               showTable={false}
+            />
+          </Card>
+
+          <Card label="MiniRose · map furniture, no numbers" center>
+            <MiniRose
+              rose={fx.MODEL_VERIFICATION.observed_wind}
+              caption="Where the wind came from, last three months"
             />
           </Card>
 

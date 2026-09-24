@@ -1093,17 +1093,15 @@ button.railRow:hover .railRowName { color: var(--accent); }
 
 /* ── the pin key ───────────────────────────────────────────────────────────
    Pin colour carries whether anyone has answered, which is the most consequential
-   fact on the screen and was previously explained nowhere. */
-.pinKey {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
+   fact on the screen and was previously explained nowhere. It floats on the map
+   under the street key, in the same panel treatment as the map's own furniture
+   (components/map/furniture .panel), so the two read as one legend. */
 .pinKeyRow {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
 }
 .pinKeySwatch {
   inline-size: 12px;
@@ -1126,16 +1124,42 @@ button.railRow:hover .railRowName { color: var(--accent); }
 }
 .railSubLabel:first-of-type { margin-block-start: 0; }
 
-/* The non-dismissible limits under the live cloud. Deliberately plain: this is
-   not a warning banner to be dismissed, it is part of the sentence. */
-.plumeLimits {
+/* The one caveat under the cloud, and the "Usually" caveat under the shares.
+   Deliberately plain: this is not a warning banner to be dismissed, it is part
+   of the sentence — so it is set like the lead, one step darker, and never
+   boxed. */
+.cloudCaveat {
   margin: var(--s-2) 0 0;
-  padding-left: 1.1rem;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
   font-size: var(--text-xs);
   color: var(--ink-2);
   line-height: 1.45;
 }
-.plumeLimits li::marker { color: var(--ink-3); }
+
+/* One place in the "Usually" card: its logo beside its name, not a row above
+   it. `railRow` is a single column, which is what stacked them. */
+.windList { margin-block: var(--s-3) 0; }
+.windRow {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+.windRow > span { min-width: 0; display: block; }
+.windRowLogo { font-size: 1.1rem; line-height: 1.3; text-align: center; }
+
+/* The map's bottom-left corner: the wind rose (in "Usually") beside the scale,
+   bottoms aligned so the two read as one piece of furniture. */
+
+/* The pin-colour key, in the Filter card (moved off the map). */
+.pinKeyRail {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+.pinKeyRailTitle { font-size: var(--text-xs); color: var(--ink-3); }

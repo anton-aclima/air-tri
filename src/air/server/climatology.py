@@ -19,7 +19,10 @@ Three reasons, in order of how much they matter.
    sprint they screenshotted it in.
 3. **No cone touches anyone.** The whole narrative lands without drawing a
    shape over a named neighbourhood, which is the one place this product could
-   put a boundary into a house listing.
+   put a boundary into a house listing. That is a rule about CONES, not a reason
+   to draw nothing: the community map's "Usually" mode shows the campaign's wind
+   rose beside the scale (docs/PLAN-refocus.md D3) — a picture of the wind, tied
+   to no company and pointing at no street.
 
 WHAT IS AND IS NOT CLAIMED
 --------------------------

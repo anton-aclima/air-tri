@@ -92,6 +92,8 @@ export { MapScale } from './map/furniture/MapScale';
 export type { MapScaleProps } from './map/furniture/MapScale';
 export { NorthCompass } from './map/furniture/NorthCompass';
 export type { NorthCompassProps } from './map/furniture/NorthCompass';
+export { MiniRose } from './map/furniture/MiniRose';
+export type { MiniRoseProps, MiniRoseBin } from './map/furniture/MiniRose';
 export { MapTooltip, MapPopover } from './map/furniture/MapTooltip';
 export type { MapTooltipProps, MapPopoverProps, TooltipRow } from './map/furniture/MapTooltip';
 export { LayerToggles } from './map/furniture/LayerToggles';

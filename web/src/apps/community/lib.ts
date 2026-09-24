@@ -10,6 +10,7 @@
 import { useMemo } from 'react'
 
 import { CONCERN_EMOJI, CONCERN_LABEL } from '@/components'
+import { campaignMs } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
 import { hasStarted, isOngoing } from '@/core/events'
 import { distanceBetween, fmtDistanceImperial } from '@/core/format'
@@ -368,15 +369,20 @@ export function trendWords(pct: number | null | undefined): string {
 
 /** One sentence a resident can act on, keyed off the headline risk score. */
 export function adviceFor(risk: number | null | undefined): string {
+  // What was measured, over what window — never advice and never an
+  // all-clear. The score is the street picture for the stat window (the whole
+  // campaign by default), not the latest hour, so nothing here says "today"
+  // or "right now". Health guidance is the air agency's to give: the upper
+  // bands point to its notices instead of inventing their own.
   if (risk == null) return 'We do not have enough measurements yet to say.'
-  if (risk < 20) return 'Nothing unusual in the air on your streets right now.'
-  if (risk < 40) return 'Fine for most people. Open a window if you like.'
-  if (risk < 55)
-    return 'If you have asthma or a heart condition, take it easy outdoors today.'
+  if (risk < 20) return 'The streets near you have scored clean over these three months.'
+  if (risk < 40) return 'Most streets near you have scored fair over these three months.'
+  if (risk < 55) return 'Some streets near you have scored elevated over these three months.'
   if (risk < 70)
-    return 'Sensitive groups should keep outdoor time short. Everyone else, go easy.'
-  if (risk < 85) return 'Keep windows closed and limit time outdoors if you can.'
-  return 'Stay indoors with windows closed if that is possible for you.'
+    return 'Several streets near you have scored high over these three months. The air agency posts advice when it is needed.'
+  if (risk < 85)
+    return 'Many streets near you have scored high over these three months. Check the notices from the air agency.'
+  return 'The streets near you have scored very high over these three months. Check the notices from the air agency.'
 }
 
 // ─────────────────────────────────────────────────── the wind, in plain words
@@ -409,6 +415,19 @@ export const PLUME_COPY = {
     title: 'Which way the wind usually blows',
     lead: (place: string) =>
       `Over the last three months, here is how often the wind blew from each of these places toward ${place}.`,
+    /**
+     * The caption under the map's wind rose. The rose is the whole campaign's
+     * wind record, drawn in a corner beside the scale and at no site, so it
+     * says where the wind came from and nothing about who is upwind of whom.
+     */
+    // No time claim: in replay 'the last three months' would include hours
+    // after the moment on screen. It is the campaign's usual wind.
+    mapKey: 'Where the wind usually comes from',
+    /** One place's line, before `often(share)`. The wind is the subject. */
+    fromHere: (place: string) => `the wind blew from here toward ${place}`,
+    /** The tapped place's line on its own card, where the lead is not above it. */
+    fromHereOver: (place: string) =>
+      `Over the last three months, the wind blew from here toward ${place}`,
     /** Deliberately coarse. A resident does not need three significant figures. */
     often: (share: number): string => {
       if (!Number.isFinite(share) || share <= 0) return 'almost never'
@@ -426,27 +445,33 @@ export const PLUME_COPY = {
       'This is about the wind, not about what anyone put into it. A place being upwind of you does not mean it sent anything your way — it means that if it did, this is where the air was going.',
     source: (hours: number) =>
       `From ${hours.toLocaleString()} hours of weather records across the whole three months.`,
+    none: 'We do not have enough weather records yet to say.',
   },
 
-  /** The live cloud, one tap behind. */
+  /**
+   * The cloud, one tap behind. `hour` is the hour the drawn cloud was worked
+   * out for (the payload's own `ts`), so the title names what is on the map
+   * even while the next hour loads. Past tense and no "right now" or "this
+   * hour": a model of an hour is never the present (PLAN-refocus C4, D5).
+   */
   now: {
-    title: 'Where the air is going right now',
-    lead: 'A rough picture of where the air from each place is heading this hour.',
-    /**
-     * Non-dismissible. This block is the price of drawing the cloud at all —
-     * if it can be closed, the cloud outlives it on someone's screen.
-     */
-    notSaying: [
-      'This is a guess from the wind, not a measurement. Nobody has measured the air inside this shape.',
-      'It has no edge. The real air does not stop where the colour fades, and being just outside it does not mean you are clear.',
-      'It does not say anything was released. It shows where air from that place would go if something were.',
-    ],
-    /** What we DID measure, under the cloud. Degrades to honesty, not to a number. */
-    measured: (streets: number) =>
-      `We measured ${streets} ${streets === 1 ? 'street' : 'streets'} under this shape in the last hour.`,
-    tooThin:
-      'We have not driven enough of your streets at this hour to say what the air was actually like under it.',
+    title: (hour: string | null) =>
+      hour ? `Where the wind was carrying air · ${hour}` : 'Where the wind was carrying air',
+    lead: 'Where air from each place would have been carried, worked out from the wind in that hour.',
+    /** Said instead of the lead's promise when nothing could be drawn. */
+    none: 'Nothing is drawn: we could not work out the wind for that hour.',
   },
+
+  /**
+   * The one caveat under the cloud, in both cloud modes (PLAN-refocus D5).
+   * Always shown and never dismissible: if it can be closed, the cloud
+   * outlives it on somebody's screen. It replaced three bullets whose
+   * boundary words ("inside this shape", "just outside it") drew the edge
+   * they were denying. This one denies an edge without naming one, and never
+   * says where anything stops.
+   */
+  cloudCaveat:
+    'A guess from the wind, not a measurement. It has no edge, and it does not mean anything was released.',
 
   /** Frozen on the hour a group of neighbours reported. */
   when: {
@@ -467,12 +492,41 @@ export const PLUME_COPY = {
       `When this was reported, the wind was blowing from ${site} toward here. That is why it is named — it is where the air came from, not a finding that ${site} caused it.`,
     unattributed:
       'We could not connect this to any of the industrial places on the map. The wind was not coming from any of them at the time, or we did not have enough wind readings that hour to tell.',
-  },
-
-  /** The three states named once, for the key. */
-  epistemic: {
-    measured: 'Measured — our cars drove this and recorded it.',
-    modelled: 'A guess from the wind — nobody measured inside this shape.',
-    unknown: 'Not measured — we have not driven here enough to say.',
+    /** The wind came from a site, but that site's measured downwind test for
+     *  this kind of air is not elevated — so it is not named (D7). */
+    unlinked:
+      'The wind was coming from one of the industrial places on the map, but our street measurements do not show that place\'s air reaching this far, so we do not name it.',
+    /** Sounds, shaking and light are not carried by the wind the way air is. */
+    notByWind:
+      'We do not link sounds, shaking or light to a place by the wind. The report stays on the map for everyone to see.',
   },
 } as const
+
+/**
+ * Which measured test can back naming a site for a report of this kind — the
+ * server's `naming.REPORT_MEASURE`, kept in step. A kind that is not here is
+ * never linked by the wind (CONTRACT §10b, "Naming a site").
+ */
+export const REPORT_MEASURE: Partial<Record<string, 'no2' | 'pm25'>> = {
+  smell: 'no2', health: 'no2', other: 'no2', smoke: 'pm25', dust: 'pm25',
+}
+
+/**
+ * "a day ago", "3 hours ago" — the community's words for an age. The shared
+ * formatter writes "1 d ago", an abbreviated unit, which the community's
+ * plain-language rule keeps off a resident's screen.
+ */
+export function agoWords(then: string | Date | null | undefined, now: string | Date): string {
+  if (!then) return 'recently'
+  const t = typeof then === 'string' ? campaignMs(then) : then.getTime()
+  const n = typeof now === 'string' ? campaignMs(now) : now.getTime()
+  const mins = Math.max(0, Math.round((n - t) / 60_000))
+  const say = (k: number, one: string, many: string) => (k === 1 ? `a${one === 'hour' ? 'n' : ''} ${one} ago` : `${k} ${many} ago`)
+  if (mins < 2) return 'just now'
+  if (mins < 60) return `${mins} minutes ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return say(hours, 'hour', 'hours')
+  const days = Math.round(hours / 24)
+  if (days < 14) return say(days, 'day', 'days')
+  return say(Math.round(days / 7), 'week', 'weeks')
+}

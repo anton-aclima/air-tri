@@ -162,7 +162,7 @@ export function Feed() {
             <RiskDial
               risk={risk}
               size={148}
-              label="Today"
+              label="Your streets"
               footer={
                 <div className={s.todayKicker} style={{ textAlign: 'center' }}>
                   {places.homeName}
