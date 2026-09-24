@@ -35,14 +35,21 @@
  *  2. **`level` is discarded at this boundary** — see `bandAlpha`. It is a
  *     modelled contour label, and putting it on a resident's screen would
  *     assert a measured concentration at their address. CONTRACT §10a rule 1.
- *  3. **Nothing is drawn below `minZoom`, and the alpha is very low.** Both
- *     guard the same failure: three sites merging into one "everywhere is
- *     affected" wash, which is a different and much worse claim than any of
- *     them makes alone. Seen in the browser at zoom 12.4, well ABOVE the
- *     cutoff — each site contributes six shells, so where three plumes
- *     overlap the alpha compounds to 1-(1-a)^n and the left half of the map
- *     went solid. The per-shell peak is 0.075 for that reason: it is chosen
- *     for what three overlapping plumes look like, not one.
+ *  3. **The alpha is very low, at every zoom.** It guards one failure: three
+ *     sites merging into an "everywhere is affected" wash, which is a
+ *     different and much worse claim than any of them makes alone. Each site
+ *     contributes six shells, so where three plumes overlap the alpha
+ *     compounds to 1-(1-a)^n; at 0.18 the left half of the map went solid.
+ *     The per-shell peak is 0.075 because it is chosen for what three
+ *     overlapping plumes look like, not one.
+ *
+ *     There used to be a zoom cutoff too (nothing below z11.5). It was a
+ *     guard for the old HeatmapLayer, whose radius was in PIXELS, and it was
+ *     kept after the switch as a "second guard". It guarded nothing: these
+ *     polygons are in METRES, so zooming out makes the cloud a smaller share
+ *     of the frame (~4% at z10.8 against ~40% at z12.4), and the share of the
+ *     neighbourhood it covers is the same at every zoom. All the cutoff did
+ *     was make the cloud vanish when you zoomed out, which read as a bug.
  */
 
 import { PolygonLayer } from '@deck.gl/layers';
@@ -55,9 +62,6 @@ export interface SoftPlumeLayerProps {
   /** GeoJSON from `GET /wind/dispersion`. */
   data: DispersionPlume | null | undefined;
   theme: Theme;
-  /** Below this the cloud is not drawn at all. See rule 3. */
-  minZoom?: number;
-  zoom?: number;
   visible?: boolean;
   /** Peak alpha where all bands overlap. Low: this is a guess, not a finding. */
   intensity?: number;
@@ -175,12 +179,11 @@ function buildShells(features: PlumeFeature[], intensity: number): Shell[] {
 
 export function SoftPlumeLayer(props: SoftPlumeLayerProps): LayersList {
   const {
-    id = 'soft-plume', data, theme, minZoom = 11.5, zoom = 99,
-    visible = true, intensity = 1,
+    id = 'soft-plume', data, theme, visible = true, intensity = 1,
   } = props;
 
   const features = data?.features ?? [];
-  if (!features.length || !visible || zoom < minZoom) return [];
+  if (!features.length || !visible) return [];
 
   const shells = softShells(features, intensity);
   if (!shells.length) return [];

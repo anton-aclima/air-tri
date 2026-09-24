@@ -200,6 +200,8 @@
   scrollbar-width: none;
 }
 .pills::-webkit-scrollbar { display: none; }
+.pillsWrap { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.pillsWrap > .pillCta { flex: none; }
 
 .pill {
   display: inline-flex;
@@ -230,6 +232,16 @@
 }
 .pillCta:hover { background: var(--accent-2); color: var(--ink-inv); filter: brightness(1.07); }
 .pillCta.pillActive { background: var(--accent-2); color: var(--ink-inv); }
+
+/* Narrow: labels are the meaning, icons are decoration. Drop the decoration.
+   AFTER the base .pill rule on purpose — same specificity, so it has to come
+   later to win (it sat above it once, and the padding never applied). */
+@media (max-width: 1200px) {
+  .pill > svg { display: none; }
+  .pill { padding: 0 var(--s-3); }
+  /* If the track still overflows, say so: a hard cut reads as a broken word. */
+  .pills { mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); }
+}
 
 /* ───────────────────────────────────────────────────────────────────  rail */
 
@@ -447,7 +459,15 @@
   white-space: nowrap;
 }
 
-.personaKbd { margin-left: var(--s-1); opacity: 0.7; }
+/* The ⌘K hint lives in the tooltip; the org line is already in the page.
+   Both were header width the nav needed (docs/PLAN-refocus.md F4). */
+.personaKbd { display: none; }
+.personaOrg { display: none; }
+@media (max-width: 1280px) {
+  .personaText { display: none; }
+  .persona { padding: 3px; }
+  .shell[data-role='community'] .persona { padding: 4px; }
+}
 
 .shell[data-role='community'] .persona { padding: 4px var(--s-3) 4px 4px; }
 .shell[data-role='industry'] .persona { border-radius: var(--r-xs); }

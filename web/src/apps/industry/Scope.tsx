@@ -126,7 +126,10 @@ export function Scope() {
     () => (alertsQ.data ?? []).filter((a: Alert) => LIVE_STATUSES.has(a.status)),
     [alertsQ.data],
   )
-  const all = useMemo(() => toContacts(live), [live])
+  // Only alerts with a place relative to the site. The one without (measured
+  // wind vs the dispersion study) is the wind panel's, and on a range-sorted
+  // list it read "000° · 0 m".
+  const all = useMemo(() => toContacts(live).filter((c) => c.sited), [live])
   // One row per real threat: a watch and a warning from the same instrument are
   // the same problem counted twice.
   const { contacts, folded } = useMemo(() => foldContacts(all), [all])

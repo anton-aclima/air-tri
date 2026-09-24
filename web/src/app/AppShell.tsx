@@ -101,7 +101,9 @@ function PersonaChip({ meta }: { meta: RoleMeta }) {
       type="button"
       className={s.persona}
       onClick={toggleSwitcher}
-      title="Switch persona (⌘K)"
+      // Below 1280 the chip is the avatar alone, so the name travels here.
+      title={`${user?.name ?? 'Pick a persona'} — switch persona (⌘K)`}
+      aria-label={`${user?.name ?? 'Pick a persona'}, switch persona`}
     >
       <Avatar user={user} name={user?.name ?? meta.label} size="sm" />
       <span className={s.personaText}>
@@ -155,7 +157,7 @@ function RegulatorStrip() {
   return (
     <div className={s.strip}>
       <StripItem
-        label="Towers"
+        label="Monitors"
         value={total ? `${online ?? 0}/${total}` : DASH}
         tone={total && online === total ? 'ok' : total ? 'warn' : undefined}
       />
@@ -294,22 +296,29 @@ function NavRail({ meta, pathname }: { meta: RoleMeta; pathname: string }) {
 
 function NavPills({ meta, pathname }: { meta: RoleMeta; pathname: string }) {
   const active = activeNav(meta.role, pathname)
+  const pill = (item: RoleMeta['nav'][number]) => (
+    <Link
+      key={item.to}
+      to={item.to}
+      className={clsx(
+        s.pill,
+        active?.to === item.to && s.pillActive,
+        item.cta && s.pillCta,
+      )}
+    >
+      <Icon name={item.icon} size={16} />
+      {item.label}
+    </Link>
+  )
+  // The call to action lives OUTSIDE the scrolling pill track. Inside it, the
+  // track's overflow-x clipped "Report a concern" to a third of its width at
+  // 1080 — the one button this whole interface exists to put in reach.
   return (
-    <nav className={s.pills} aria-label="Community sections">
-      {meta.nav.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          className={clsx(
-            s.pill,
-            active?.to === item.to && s.pillActive,
-            item.cta && s.pillCta,
-          )}
-        >
-          <Icon name={item.icon} size={16} />
-          {item.label}
-        </Link>
-      ))}
+    <nav className={s.pillsWrap} aria-label="Community sections">
+      <div className={s.pills}>
+        {meta.nav.filter((i) => !i.cta).map(pill)}
+      </div>
+      {meta.nav.filter((i) => i.cta).map(pill)}
     </nav>
   )
 }

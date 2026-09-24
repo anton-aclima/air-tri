@@ -37,7 +37,13 @@ export interface RoleMeta {
   org: string
   /** One line, on the landing door. */
   tagline: string
-  /** The visual narrative we are holding (CONTRACT §6). */
+  /**
+   * The visual direction this interface is designed around (CONTRACT §6).
+   * INTERNAL — never render it. It is a brief for whoever styles the room,
+   * not copy: "tower defence" and "flight deck" printed on the Landing page
+   * and in the persona picker read as the product taking its own metaphor
+   * literally, which is the opposite of what a metaphor is for.
+   */
   narrative: string
   /** Two or three sentences, on the landing door. */
   blurb: string
@@ -66,7 +72,7 @@ export const ROLES: Record<Role, RoleMeta> = {
     narrative: 'social feed',
     blurb:
       'Residents report what they smell, hear and see, corroborate each other, and watch what the agency and the operators actually say back. Plain words, no units, no acronyms.',
-    wants: ['Report a concern', 'See what neighbours reported', 'Know if it is safe today'],
+    wants: ['Report a concern', 'See what neighbours reported', 'See what the air did on my street'],
     accentVar: 'var(--actor-community)',
     icon: 'people',
     landing: '/community',
@@ -84,10 +90,10 @@ export const ROLES: Record<Role, RoleMeta> = {
     role: 'regulator',
     label: 'Regulator',
     org: 'Delta Regional Air Quality Authority',
-    tagline: 'Where is it over the line, and who is doing it?',
+    tagline: 'What my monitors report, and what the streets around them add.',
     narrative: 'tower defence',
     blurb:
-      'Reference monitors are the towers. Our fleet extends their reach down every street. Action levels are the tripwires. Exact concentrations, persistence, dispersion — and one button to warn the public.',
+      'What your reference monitors report, what the fleet measures on every street between them, where each site\'s plume is modelled to go, and what residents are reporting — with one button to warn the public.',
     wants: ['Watch the action levels', 'Extend the network', 'Push an advisory'],
     accentVar: 'var(--actor-regulator)',
     icon: 'tower',
@@ -96,9 +102,9 @@ export const ROLES: Record<Role, RoleMeta> = {
     hotkey: '2',
     nav: [
       { to: '/regulator', label: 'Watchfloor', code: 'WATCH', icon: 'shield', hint: 'Network status at a glance' },
-      { to: '/regulator/map', label: 'Map', code: 'MAP', icon: 'map', hint: 'Towers, fleet, road grid' },
+      { to: '/regulator/map', label: 'Map', code: 'MAP', icon: 'map', hint: 'Monitors, fleet, road grid' },
       { to: '/regulator/alerts', label: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Exceedances and exposures' },
-      { to: '/regulator/thresholds', label: 'Action levels', code: 'THRS', icon: 'threshold', hint: 'The tripwires you own' },
+      { to: '/regulator/thresholds', label: 'Action levels', code: 'THRS', icon: 'threshold', hint: 'The action levels you set' },
       { to: '/regulator/analysis', label: 'Analysis', code: 'ANLY', icon: 'analysis', hint: 'Diurnal, dispersion, ranking' },
     ],
   },
@@ -110,7 +116,7 @@ export const ROLES: Record<Role, RoleMeta> = {
     tagline: 'How hard can I run without crossing a line?',
     narrative: 'flight deck',
     blurb:
-      'Instruments, not a dashboard. Where it is, how far, how long, and one recommended action — beside two gauges that say how hard you can still run. Operate at the top of your community-and-regulator-safe envelope.',
+      'Run at the top of your operating envelope — the regulator\'s action levels on your own fenceline roads, measured street by street — alongside what is downwind of you now and what residents are saying.',
     wants: ['Watch the margin', 'Answer the community', 'Protect the headroom'],
     accentVar: 'var(--actor-industry)',
     icon: 'radar',
@@ -131,10 +137,10 @@ export const ROLES: Record<Role, RoleMeta> = {
     role: 'admin',
     label: 'Aclima',
     org: 'Aclima',
-    tagline: 'Draw the campaign. Drive it. Referee it.',
+    tagline: 'Draw the campaign. Drive it. Keep the shared record.',
     narrative: 'drafting table',
     blurb:
-      'The drafting table: campaign boundary, drive plan, fleet, generation parameters, and the full oversight log of every move all three sides have made.',
+      'Campaign boundary, drive plan, fleet, the morning mission brief, and the full log of every move all three sides have made.',
     wants: ['Plan the campaign', 'Tune the drive plan', 'Run the demo'],
     accentVar: 'var(--actor-aclima)',
     icon: 'aclima',

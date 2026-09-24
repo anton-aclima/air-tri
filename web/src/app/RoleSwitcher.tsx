@@ -56,7 +56,6 @@ function Door({
         </span>
       </span>
 
-      <span className={s.narrative}>{meta.narrative}</span>
       <span className={s.tagline}>{meta.tagline}</span>
       <span className={s.blurb}>{meta.blurb}</span>
 

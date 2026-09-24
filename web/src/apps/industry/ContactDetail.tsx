@@ -38,7 +38,7 @@ import { useSession } from '@/core/session'
 import type { Alert, Concern, SegmentProps } from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Sev, Tag, shortTitle, styles as s, upFor, useAdvisor, useNowTick,
+  Caps, Panel, Readout, Sev, Tag, isSited, shortTitle, styles as s, upFor, useAdvisor, useNowTick,
   useCampaignWindow, useSiteLock,
   useStableWindow,
 } from './lib'
@@ -64,7 +64,8 @@ export function ContactDetail({ alertId }: { alertId: string }) {
     return <div className={`${s.page} ${s.detailPage}`}><div className={s.err}>Acquiring contact…</div></div>
   }
 
-  const bearing = alert.bearing_deg ?? null
+  const sited = isSited(alert)
+  const bearing = sited ? alert.bearing_deg ?? null : null
   const plumeToward = wind?.dir_deg != null ? (wind.dir_deg + 180) % 360 : null
   const offset = bearing != null && plumeToward != null
     ? Math.abs(((plumeToward - bearing + 540) % 360) - 180)
@@ -96,8 +97,8 @@ export function ContactDetail({ alertId }: { alertId: string }) {
           </div>
         </div>
         <div className={s.bannerStats}>
-          <Readout label="Bearing" value={fmtBearing(bearing)} />
-          <Readout label="Range" value={fmtDistance(alert.distance_m ?? null, 1)} />
+          <Readout label="Bearing" value={sited ? fmtBearing(bearing) : 'site-wide'} />
+          <Readout label="Range" value={sited ? fmtDistance(alert.distance_m ?? null, 1) : '—'} />
           <Readout
             label={alert.ended_at ? 'Was up' : 'Up for'}
             value={upFor(alert, now)}
@@ -162,6 +163,14 @@ export function ContactDetail({ alertId }: { alertId: string }) {
           </Panel>
 
           <Panel title="Geometry">
+            {!sited ? (
+              <div className={s.geoText}>
+                <span className={s.geoLine}>
+                  This alert is about the site as a whole, not a place near it, so it has no
+                  direction from your campus.
+                </span>
+              </div>
+            ) : (
             <div className={s.geo}>
               <CompassBearing
                 bearing={bearing ?? 0}
@@ -190,6 +199,7 @@ export function ContactDetail({ alertId }: { alertId: string }) {
                 </span>
               </div>
             </div>
+            )}
           </Panel>
 
           <RespondPanel alert={alert} siteId={site?.id ?? null} />

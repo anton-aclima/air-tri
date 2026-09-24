@@ -270,11 +270,7 @@ export function MapScreen() {
                  measurements; a guess is never drawn on top of a measurement. */
               ...(plumeMode === 'usually'
                 ? []
-                : SoftPlumeLayer({
-                    data: dispersion.data,
-                    theme: t,
-                    zoom: mapView?.zoom ?? 12.4,
-                  })),
+                : SoftPlumeLayer({ data: dispersion.data, theme: t })),
               ...SegmentLayer({
                 data: segments,
                 theme: t,

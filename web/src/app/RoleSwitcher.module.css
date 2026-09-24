@@ -148,20 +148,6 @@
 
 .hotkey { margin-left: auto; align-self: flex-start; }
 
-.narrative {
-  display: inline-flex;
-  align-self: flex-start;
-  align-items: center;
-  gap: var(--s-2);
-  padding: 2px var(--s-2);
-  border-radius: var(--r-pill);
-  border: 1px solid color-mix(in srgb, var(--role-accent) 35%, transparent);
-  color: var(--role-accent);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  font-weight: var(--weight-semi);
-}
 
 .tagline {
   font-family: var(--font-heading);

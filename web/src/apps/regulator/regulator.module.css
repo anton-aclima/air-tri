@@ -64,6 +64,12 @@
   .watchBody, .mapBody, .alertsBody, .thrBody, .anaBody {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The 1400px rule's `span 2` survived into the single column and created
+     an implicit second one: the diurnal clock was crammed into 164px. */
+  .anaRank { grid-column: auto; grid-row: auto; }
+  /* One column cannot share a fixed height five ways (each chart got an 85px
+     window). Stopgap until the Network screen: let this body scroll. */
+  .anaBody { grid-template-rows: none; grid-auto-rows: minmax(300px, auto); overflow-y: auto; }
 }
 
 .stack { display: grid; grid-auto-rows: min-content; gap: var(--s-2); min-height: 0; overflow: auto; }
@@ -146,11 +152,18 @@
   border-radius: var(--radius-card);
   background: linear-gradient(180deg, var(--surface-2), var(--surface));
   overflow: hidden;
+  /* When the readouts do not fit beside a readable headline, they drop to
+     their own row instead of squeezing it to one word per line. */
+  flex-wrap: wrap;
+  row-gap: var(--s-2);
 }
 .verdictOver { border-color: color-mix(in srgb, var(--invader) 65%, transparent); }
 .verdictClear { border-color: color-mix(in srgb, var(--tower) 45%, transparent); }
 
-.verdictMark { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+/* The word keeps its width and the headline yields — at 1080 the word used to
+   shrink its column and print up to 131px over the headline beside it.
+   Stopgap: the Network screen (docs/PLAN-refocus.md R1) removes the big word. */
+.verdictMark { display: flex; align-items: center; gap: var(--s-3); flex: none; }
 .verdictGlyph { font-size: var(--text-2xl); line-height: 1; width: 1.3em; text-align: center; }
 .verdictWord {
   font-family: var(--font-mono);
@@ -166,13 +179,18 @@
 .fleetInk { color: var(--fleet); }
 .accentInk { color: var(--accent); }
 
-.verdictLines { display: flex; flex-direction: column; gap: 3px; min-width: 0; justify-content: center; }
+/* 380px, not less: below it the readouts stayed on the headline's row and
+   squeezed it to three lines, which the two-line clamp then cut off. */
+.verdictLines { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 380px; justify-content: center; }
 .verdictHead {
   font-family: var(--font-mono);
   font-size: var(--text-md);
   color: var(--ink);
   letter-spacing: var(--tracking-wide);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Wraps to two lines rather than ellipsizing the one sentence that says
+     what is going on. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .verdictStats { display: flex; align-items: stretch; gap: var(--s-5); margin-left: auto; }
 

@@ -76,6 +76,14 @@ export function useSiteLock(): IndustrySite | undefined {
 
 export interface Contact {
   alert: Alert
+  /**
+   * False when the alert has no direction from the site — the
+   * dispersion-study-vs-wind alert is about the site as a whole and is placed
+   * on its centroid, so the server returns bearing 0 and distance 0. Those are
+   * not "000° · 0 m", they are "here": it belongs in the wind panel, not on a
+   * list sorted by range.
+   */
+  sited: boolean
   bearing: number
   distance: number
   code: string
@@ -85,11 +93,25 @@ export interface Contact {
 
 const SEV_ORDER: Severity[] = ['critical', 'warning', 'watch', 'info']
 
+/** Closer than this to the site centroid, a bearing is meaningless. */
+const SITE_WIDE_M = 50
+
+/**
+ * Does this alert have a direction from the site? The dispersion-study-vs-wind
+ * alert is about the site as a whole and is placed on its centroid, so the
+ * server returns bearing 0 and distance 0 — which are "here", not "000° · 0 m".
+ * One rule, used by every surface that prints a bearing.
+ */
+export function isSited(a: Alert): boolean {
+  return a.bearing_deg != null && a.distance_m != null && a.distance_m > SITE_WIDE_M
+}
+
 /** Threat-first ordering: severity, then range. Nothing else. */
 export function toContacts(alerts: Alert[] | undefined): Contact[] {
   return (alerts ?? [])
     .map((a) => ({
       alert: a,
+      sited: isSited(a),
       bearing: a.bearing_deg ?? 0,
       distance: a.distance_m ?? 0,
       code: ALERT_KIND_CODE[a.kind] ?? a.kind.slice(0, 4).toUpperCase(),
@@ -124,8 +146,7 @@ export function contactLine(c: Contact, now?: Date): string {
   const measure = c.alert.measure ? c.alert.measure.toUpperCase() : c.kindLabel
   return [
     measure,
-    fmtBearing(c.bearing),
-    fmtDistance(c.distance, 1),
+    ...(c.sited ? [fmtBearing(c.bearing), fmtDistance(c.distance, 1)] : ['site-wide']),
     `up ${upFor(c.alert, now)}`,
   ].join('  ·  ')
 }

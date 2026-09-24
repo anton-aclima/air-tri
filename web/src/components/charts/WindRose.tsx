@@ -143,16 +143,20 @@ export function WindRose(props: WindRoseProps) {
 
   const gridRings = [0.33, 0.66, 1].map((k) => maxFreq * 1.08 * k);
 
-  /** The comparison rose as one closed outline — a shape, not more petals. */
-  const compareOutline = useMemo(() => {
+  /**
+   * The comparison rose as one closed outline — a shape, not more petals.
+   * Plain computation, not `useMemo`: it sat after the empty-data early return,
+   * so the hook count changed between renders (rules-of-hooks), and sixteen
+   * points do not need memoising.
+   */
+  const compareOutline = (() => {
     if (!compare?.length) return null;
     const pts = [...compare]
       .sort((a, b) => a.dir_deg - b.dir_deg)
       .map((b) => polar(cx, cy, rr(b.freq), b.dir_deg));
     if (pts.length < 3) return null;
     return `M ${pts.map(([px, py]) => `${px.toFixed(1)} ${py.toFixed(1)}`).join(' L ')} Z`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compare, cx, cy, maxFreq, rMax]);
+  })();
 
   const legend: LegendSeries[] = compare?.length
     ? [

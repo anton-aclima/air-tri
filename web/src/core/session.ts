@@ -269,8 +269,19 @@ export const useSession = create<SessionState>()(
     {
       name: 'air.session.v1',
       storage: createJSONStorage(() => localStorage),
-      version: 1,
-      // Transient chrome state is never persisted.
+      // v2: the time cursor is no longer persisted. A cursor saved on Aug 12
+      // silently reopened every screen on Aug 12 the next day, with nothing on
+      // screen saying the demo was not at its latest data. The migration drops
+      // any cursor a v1 session saved (those are UTC strings, too — see
+      // docs/PLAN-refocus.md F1).
+      version: 2,
+      migrate: (persisted, version) => {
+        const st = (persisted ?? {}) as Partial<SessionState>
+        if (version < 2 && st.time) st.time = { ...st.time, cursor: null, playing: false }
+        return st as SessionState
+      },
+      // Transient chrome state is never persisted, and neither is the moment
+      // the demo is looking at: a reload always opens at the latest data.
       partialize: (s) => ({
         role: s.role,
         personaByRole: s.personaByRole,
@@ -280,7 +291,7 @@ export const useSession = create<SessionState>()(
         measure: s.measure,
         metric: s.metric,
         statWindow: s.statWindow,
-        time: { ...s.time, playing: false },
+        time: { ...s.time, playing: false, cursor: null },
       }),
     },
   ),

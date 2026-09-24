@@ -50,7 +50,7 @@ export function Contacts() {
   const rows = useMemo(
     () => contacts.map((c) => ({
       id: c.alert.id,
-      label: `${c.code} ${c.alert.measure ? c.alert.measure.toUpperCase() : ''} ${fmtBearing(c.bearing).split(' ')[1]}`.trim(),
+      label: `${c.code} ${c.alert.measure ? c.alert.measure.toUpperCase() : ''} ${c.sited ? fmtBearing(c.bearing).split(' ')[1] : 'site-wide'}`.trim(),
       code: c.code,
       severity: c.alert.severity,
       startedAt: c.alert.started_at,
@@ -129,8 +129,8 @@ export function Contacts() {
                     {fmtStamp(c.alert.started_at)}
                   </span>
                 </span>
-                <span className={`${s.contactNum} num`}>{fmtBearing(c.bearing).split(' ')[1]}</span>
-                <span className={`${s.contactNum} num`}>{fmtDistance(c.distance, 1)}</span>
+                <span className={`${s.contactNum} num`}>{c.sited ? fmtBearing(c.bearing).split(' ')[1] : 'site-wide'}</span>
+                <span className={`${s.contactNum} num`}>{c.sited ? fmtDistance(c.distance, 1) : ''}</span>
                 <span className={`${s.contactAge} num`}>{relativeShort(c.alert.started_at, now)}</span>
               </button>
             ))}

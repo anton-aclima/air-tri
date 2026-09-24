@@ -69,7 +69,7 @@ function Standoff() {
         </g>
       ))}
 
-      {/* Aclima: the arbitrator */}
+      {/* Aclima: the shared measurement all three sides read */}
       <g>
         <circle className={s.pulseCircle} cx={HUB.x} cy={HUB.y} r={46} />
         <circle className={s.hubRing} cx={HUB.x} cy={HUB.y} r={64} />
@@ -88,11 +88,14 @@ function Standoff() {
           />
         </g>
         <circle className={s.hubCore} cx={HUB.x} cy={HUB.y} r={44} />
-        <text className={s.hubLabel} x={HUB.x} y={HUB.y - 2} textAnchor="middle">
+        <text className={s.hubLabel} x={HUB.x} y={HUB.y - 7} textAnchor="middle">
           Aclima
         </text>
-        <text className={s.hubSub} x={HUB.x} y={HUB.y + 14} textAnchor="middle">
-          arbitrator
+        {/* Two lines: one line of "shared measurement" is twice the width of
+            the disc and was struck through by both rings. */}
+        <text className={s.hubSub} x={HUB.x} y={HUB.y + 6} textAnchor="middle" style={{ letterSpacing: '0.04em' }}>
+          <tspan x={HUB.x}>shared</tspan>
+          <tspan x={HUB.x} dy={10}>measurement</tspan>
         </text>
       </g>
 
@@ -150,7 +153,6 @@ function Door({ meta, onEnter }: { meta: RoleMeta; onEnter: (role: Role) => void
       </span>
       <span className={s.doorTagline}>{meta.tagline}</span>
       <span className={s.doorFoot}>
-        <span className={s.doorNarrative}>{meta.narrative}</span>
         <span className={s.enter}>
           Enter <Icon name="chevron" size={12} />
         </span>
@@ -216,8 +218,9 @@ export function Landing() {
 
           <p className={s.lede}>
             A fleet drives every street, over and over, and every 200-metre road segment gets a
-            number. One dataset, rendered four ways: a feed for residents, a watchfloor for the
-            agency, a radar scope for the operator, and a drafting table for us.
+            number. One dataset, seen four ways: what residents are reporting, what the streets
+            between the agency's monitors add, how hard an operator can run, and how the campaign
+            is planned.
           </p>
 
           <div className={s.metaRow}>

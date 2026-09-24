@@ -414,7 +414,7 @@
 .doorFoot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--s-2);
   font-size: var(--text-3xs);
   letter-spacing: var(--tracking-caps);
@@ -422,7 +422,5 @@
   font-weight: var(--weight-semi);
   color: var(--role-accent);
 }
-
-.doorNarrative { color: var(--ink-3); }
 
 .enter { display: inline-flex; align-items: center; gap: var(--s-1); }

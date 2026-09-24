@@ -126,7 +126,7 @@ export function Selected(props: SelectedProps) {
             }
           />
         ) : null}
-        <Where distanceM={c.distance} bearing={c.bearing} />
+        {c.sited ? <Where distanceM={c.distance} bearing={c.bearing} /> : <Row label="Where" value="site-wide" />}
         <Row label="Up for" value={relativeShort(c.alert.started_at, now)} />
         {c.alert.recommendation ? (
           <p className={s.reportQuote}>{c.alert.recommendation}</p>
