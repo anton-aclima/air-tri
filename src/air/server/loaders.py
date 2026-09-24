@@ -6,7 +6,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from air.server import cache, geo, shapes
+from air.server import cache, config, geo, shapes
 from air.server.db import one, rows
 
 
@@ -28,19 +28,26 @@ def spike_thresholds(conn: sqlite3.Connection, campaign_id: str) -> dict[str, fl
     return cache.put(key, out)
 
 
-def latest_readings(conn: sqlite3.Connection, campaign_id: str) -> dict[str, dict[str, Any]]:
-    """{monitor_id: {measure: {value, ts, exceeds}}} — one query, window function."""
+def latest_readings(
+    conn: sqlite3.Connection, campaign_id: str, *, at: str | None = None
+) -> dict[str, dict[str, Any]]:
+    """{monitor_id: {measure: {value, ts, exceeds}}} — one query, window function.
+
+    `at` makes it the latest reading AS OF that moment. Without it this is the
+    newest row in the table, which is the end of the data whatever the screen
+    is showing."""
     thresholds = spike_thresholds(conn, campaign_id)
     out: dict[str, dict[str, Any]] = {}
+    bound = "AND r.ts <= ?" if at else ""
     for r in rows(
         conn,
-        """SELECT monitor_id, measure, value, ts FROM (
+        f"""SELECT monitor_id, measure, value, ts FROM (
                SELECT r.monitor_id, r.measure, r.value, r.ts,
                       ROW_NUMBER() OVER (PARTITION BY r.monitor_id, r.measure ORDER BY r.ts DESC) rn
                  FROM monitor_reading r JOIN monitor m ON m.id = r.monitor_id
-                WHERE m.campaign_id = ? AND r.qc = 'valid'
+                WHERE m.campaign_id = ? AND r.qc = 'valid' {bound}
              ) WHERE rn = 1""",
-        (campaign_id,),
+        (campaign_id, at) if at else (campaign_id,),
     ):
         t = thresholds.get(r["measure"])
         out.setdefault(r["monitor_id"], {})[r["measure"]] = {
@@ -59,6 +66,7 @@ def load_monitors(
     owner_type: str | None = None,
     grade: str | None = None,
     site_id: str | None = None,
+    at: str | None = None,
 ) -> list[dict[str, Any]]:
     sql = ["SELECT * FROM monitor WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
@@ -75,7 +83,7 @@ def load_monitors(
         sql.append("AND site_id = ?")
         params.append(site_id)
     sql.append("ORDER BY owner_type, name")
-    latest = latest_readings(conn, campaign_id)
+    latest = latest_readings(conn, campaign_id, at=at)
     return [shapes.monitor(r, latest.get(r["id"], {})) for r in rows(conn, " ".join(sql), params)]
 
 
@@ -101,6 +109,43 @@ def load_sites(
     return [shapes.industry_site(s, points.get(s["id"], [])) for s in sites]
 
 
+def cluster_members(conn: sqlite3.Connection, cluster_ids: list[str]) -> dict[str, list[sqlite3.Row]]:
+    """{cluster_id: [member rows]} — the stamps a cluster is recounted from."""
+    if not cluster_ids:
+        return {}
+    marks = ",".join("?" * len(cluster_ids))
+    out: dict[str, list[sqlite3.Row]] = {}
+    for m in rows(
+        conn,
+        f"SELECT cluster_id, created_at, occurred_at, kind FROM concern WHERE cluster_id IN ({marks})",
+        tuple(cluster_ids),
+    ):
+        out.setdefault(m["cluster_id"], []).append(m)
+    return out
+
+
+def cluster_as_of(
+    stored_count: int, members: list[sqlite3.Row], until: str
+) -> tuple[int, list[sqlite3.Row]] | None:
+    """A cluster as it stood at `until`: (count, members posted by then), or
+    None when it had not formed yet.
+
+    THE one recount rule — /clusters and the `cluster_id` on every report
+    served with `until` both come through here, so a report is never labelled
+    part of a group that /clusters says did not exist. The stored row is the
+    cluster's final shape; members posted after `until` come off its count, and
+    below CLUSTER_MIN_COUNT it had not formed. With every member posted the row
+    stands as stored. `clusterAsOf` in web/src/apps/community/lib.ts is the same
+    rule, so a bounded row passes through it unchanged."""
+    posted = [m for m in members if m["created_at"] <= until]
+    if len(posted) == len(members):
+        return stored_count, posted
+    count = stored_count - (len(members) - len(posted))
+    if count < config.CLUSTER_MIN_COUNT or not posted:
+        return None
+    return count, posted
+
+
 def load_concerns(
     conn: sqlite3.Connection,
     campaign_id: str,
@@ -109,11 +154,28 @@ def load_concerns(
     status: str | None = None,
     kind: str | None = None,
     since: str | None = None,
+    until: str | None = None,
     cluster_id: str | None = None,
     near: tuple[float, float, float] | None = None,
     limit: int = 500,
     with_responses: bool = True,
 ) -> list[dict[str, Any]]:
+    """`until` is an upper bound on `created_at` — "filed by then" — applied
+    before the LIMIT, so a replayed moment gets its own newest N, not the end
+    of the data's newest N filtered down to nothing (docs/PLAN-refocus.md F2).
+
+    With `until`, everything that rides on a report is served as it stood then
+    too, not only the report list:
+
+    - `cluster_id` is null while the cluster had not formed (`cluster_as_of`).
+      At Jun 17 08:30 two of cl-01's reports were posted and /clusters did not
+      list it, yet both came back with cluster_id='cl-01-2026', and the feed
+      card said "Part of a group of nearby reports" over a group of two. With
+      the `cluster_id` filter, a cluster that had not formed has no members.
+    - `responses` are the ones filed by then. At Jun 17 09:00 cn-0100-0009
+      carried a Jun 18 mitigation reply and a Jul 11 regulator finding.
+
+    `status` is the final one: only it is stored, so it cannot be rebuilt."""
     sql = ["SELECT * FROM concern WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
     if concern_id:
@@ -128,6 +190,9 @@ def load_concerns(
     if since:
         sql.append("AND created_at >= ?")
         params.append(since)
+    if until:
+        sql.append("AND created_at <= ?")
+        params.append(until)
     if cluster_id:
         sql.append("AND cluster_id = ?")
         params.append(cluster_id)
@@ -145,12 +210,13 @@ def load_concerns(
     marks = ",".join("?" * len(ids))
     responses: dict[str, list] = {}
     if with_responses:
+        filed = "AND cr.created_at <= ?" if until else ""
         for r in rows(
             conn,
             f"""SELECT cr.*, o.name AS org_name FROM concern_response cr
                   LEFT JOIN org o ON o.id = cr.org_id
-                 WHERE cr.concern_id IN ({marks}) ORDER BY cr.created_at""",
-            tuple(ids),
+                 WHERE cr.concern_id IN ({marks}) {filed} ORDER BY cr.created_at""",
+            (*ids, until) if until else tuple(ids),
         ):
             responses.setdefault(r["concern_id"], []).append(shapes.concern_response(r))
 
@@ -164,10 +230,31 @@ def load_concerns(
     # `conn` is passed so the serialiser can snap coordinates to the road grid.
     # Every reader of the API comes through here, which is the point: there is
     # no path that serves a house-precision report coordinate.
-    return [
+    out = [
         shapes.concern(c, authors.get(c["author_id"]), responses.get(c["id"], []), conn=conn)
         for c in found
     ]
+    if until:
+        clusters = sorted({c["cluster_id"] for c in out if c["cluster_id"]})
+        if clusters:
+            cmarks = ",".join("?" * len(clusters))
+            stored = {
+                r["id"]: r["count"]
+                for r in rows(
+                    conn, f"SELECT id, count FROM concern_cluster WHERE id IN ({cmarks})", tuple(clusters)
+                )
+            }
+            members = cluster_members(conn, clusters)
+            formed = {
+                k for k in clusters
+                if cluster_as_of(stored.get(k, len(members.get(k, []))), members.get(k, []), until)
+            }
+            for c in out:
+                if c["cluster_id"] and c["cluster_id"] not in formed:
+                    c["cluster_id"] = None
+            if cluster_id:
+                out = [c for c in out if c["cluster_id"] == cluster_id]
+    return out
 
 
 def load_posts(
@@ -178,6 +265,7 @@ def load_posts(
     site_id: str | None = None,
     kind: str | None = None,
     concern_id: str | None = None,
+    until: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     sql = [
@@ -198,6 +286,9 @@ def load_posts(
     if concern_id:
         sql.append("AND p.concern_id = ?")
         params.append(concern_id)
+    if until:
+        sql.append("AND p.created_at <= ?")
+        params.append(until)
     sql.append("ORDER BY p.pinned DESC, p.created_at DESC LIMIT ?")
     params.append(max(1, min(limit, 2000)))
     return [shapes.site_post(r) for r in rows(conn, " ".join(sql), params)]
@@ -210,13 +301,18 @@ def load_advisories(
     audience: str | None = None,
     active_only: bool = False,
     now: str | None = None,
+    until: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     sql = ["SELECT * FROM advisory WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
     if active_only and now:
-        sql.append("AND (expires_at IS NULL OR expires_at >= ?)")
+        # `>`: sim.py expires a notice by setting expires_at to now.
+        sql.append("AND (expires_at IS NULL OR expires_at > ?)")
         params.append(now)
+    if until:
+        sql.append("AND created_at <= ?")
+        params.append(until)
     sql.append("ORDER BY pinned DESC, created_at DESC LIMIT ?")
     params.append(max(1, min(limit, 2000)))
     out = [shapes.advisory(r) for r in rows(conn, " ".join(sql), params)]
@@ -236,8 +332,13 @@ def load_alerts(
     kind: str | None = None,
     site_id: str | None = None,
     since: str | None = None,
+    until: str | None = None,
     limit: int = 300,
 ) -> list[dict[str, Any]]:
+    """`until` bounds the moment each alert entered the record
+    (`shapes.ALERT_BEGUN_SQL`: `started_at`, or `created_at` for a concern
+    cluster) before the LIMIT, and is also the moment each alert's `ongoing`
+    is judged at, so the flag and the list agree."""
     sql = ["SELECT * FROM alert WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
     if alert_id:
@@ -255,9 +356,12 @@ def load_alerts(
     if since:
         sql.append("AND started_at >= ?")
         params.append(since)
+    if until:
+        sql.append(f"AND {shapes.ALERT_BEGUN_SQL} <= ?")
+        params.append(until)
     sql.append("ORDER BY started_at DESC LIMIT ?")
     params.append(max(1, min(limit, 3000)))
-    out = [shapes.alert(r) for r in rows(conn, " ".join(sql), params)]
+    out = [shapes.alert(r, until) for r in rows(conn, " ".join(sql), params)]
     if role:
         out = [a for a in out if role in a["audience"]]
     return out
@@ -301,6 +405,7 @@ def load_mitigations(
     site_id: str | None = None,
     concern_id: str | None = None,
     alert_id: str | None = None,
+    until: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     sql = [
@@ -317,9 +422,14 @@ def load_mitigations(
     if alert_id:
         sql.append("AND m.alert_id = ?")
         params.append(alert_id)
+    if until:
+        sql.append("AND m.created_at <= ?")
+        params.append(until)
     sql.append("ORDER BY m.created_at DESC LIMIT ?")
     params.append(max(1, min(limit, 2000)))
-    return [shapes.mitigation(r) for r in rows(conn, " ".join(sql), params)]
+    # `until` is also the moment the status is told at: completed after it
+    # means still in progress then (shapes.mitigation).
+    return [shapes.mitigation(r, until) for r in rows(conn, " ".join(sql), params)]
 
 
 # ── mobile wind + dispersion models (CONTRACT §8b) ────────────────────────────

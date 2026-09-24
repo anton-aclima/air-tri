@@ -36,7 +36,14 @@ def fleet(
         delay = max(delay, config.COMMUNITY_FLEET_DELAY_MIN)
     delay = max(0, delay)
 
-    reference = at or domain.data_now(conn, cid)
+    # Through `as_of`, like every read keyed on the clock. It was `at or
+    # data_now`, raw: `at=garbage` made `shift` return None, so the cutoff was
+    # the string 'garbage' and `p.ts <= 'garbage'` held for every ping, and an
+    # `at` past the end was not clamped. Either way the community got AC-05 at
+    # 18:06 — four hours NEWER than the regulator's view at the build instant,
+    # with the payload still saying delay_min=180 (non-negotiable 5). Past the
+    # end is the end; garbage is a 422.
+    reference = domain.as_of(conn, cid, at)
     effective = timeutil.shift(reference, minutes=-delay) or reference
 
     out: list[dict[str, Any]] = []

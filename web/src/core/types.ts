@@ -315,7 +315,13 @@ export interface ConcernCluster {
   count: number;
   kinds: ConcernKind[];
   first_at: string;
+  /** When the last member was NOTICED (occurred_at) — hours before it was posted. */
   last_at: string;
+  /**
+   * When the last member was POSTED (max created_at). The moment the cluster,
+   * as counted here, existed on the server — what a timeline jump must land on.
+   */
+  last_posted_at?: string | null;
   status: string;
   site_id: string | null;
 }
@@ -413,6 +419,13 @@ export interface Alert {
   recommendation: string | null;
   audience: Role[];
   created_at: string;
+  /**
+   * Begun and not ended at the request's `at` (the end of the data when none
+   * was sent), computed by the server. The same test as `isOngoing` in
+   * core/events, which is the one to use when the moment on screen may have
+   * moved since the fetch. `status` cannot answer this: it is the final status.
+   */
+  ongoing?: boolean;
   /** Populated only when the request supplied `site_id` — this is the RWR geometry. */
   bearing_deg?: number;
   distance_m?: number;
@@ -421,6 +434,12 @@ export interface Alert {
   concerns?: Concern[];
   mitigations?: Mitigation[];
   acknowledged_by?: { user_id: string; name: string; note: string | null; created_at: string }[];
+  /**
+   * Detail only (`GET /alerts/{id}?at`): the alert had not begun by the moment
+   * asked about. Served 200 with this flag rather than 404, so a page opened in
+   * replay can say "not raised yet" instead of "not found".
+   */
+  not_started?: boolean
 }
 
 // ───────────────────────────────────────────────────────────── fleet
@@ -1079,6 +1098,8 @@ export interface CoverageMask {
 
 export interface CommunityStats {
   window: StatWindow;
+  /** Passes driven up to the moment asked about (`at`), not the whole campaign. */
+  passes_to_date?: number;
   /** 0–100 headline. Never show a unit next to this. */
   overall_risk: number;
   overall_label: string;

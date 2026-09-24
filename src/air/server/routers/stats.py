@@ -26,18 +26,47 @@ def _weighted(pairs: list[tuple[float | None, float]]) -> float | None:
     return None if den <= 0 else num / den
 
 
-@router.get("/stats/community")
-def community_stats(
-    window: str = "all", campaign_id: str | None = None, conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, Any]:
-    cid = resolve_campaign(conn, campaign_id)
-    key = ("stats_community", cid, window)
+def _daily_risk(conn: sqlite3.Connection, cid: str) -> dict[str, Any]:
+    """Every `date:` window's risk as (sum, count) per measure, plus the windows
+    newest-first. The 7-day trend is an AVG over seven of these; pooling the
+    integer sums gives exactly the AVG SQLite returned, and it means the trend
+    can follow the clock without 22 AVG queries (~140 ms cold) per moment."""
+    key = ("stats_daily_risk", cid)
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    sums: dict[str, dict[str, tuple[int, int]]] = {}
+    windows: set[str] = set()
+    for r in rows(
+        conn,
+        """SELECT measure, window, SUM(risk) AS s, COUNT(risk) AS n FROM segment_stat
+            WHERE campaign_id=? AND window LIKE 'date:%' GROUP BY measure, window""",
+        (cid,),
+    ):
+        windows.add(r["window"])
+        if r["n"]:
+            sums.setdefault(r["measure"], {})[r["window"]] = (r["s"], r["n"])
+    return cache.put(key, {"windows": sorted(windows, reverse=True), "sums": sums})
+
+
+def _mean_risk(daily: dict[str, Any], measure: str, windows: list[str]) -> float | None:
+    per = daily["sums"].get(measure, {})
+    got = [per[w] for w in windows if w in per]
+    n = sum(c for _, c in got)
+    return sum(v for v, _ in got) / n if n else None
+
+
+def _community_streets(conn: sqlite3.Connection, cid: str, window: str) -> dict[str, Any]:
+    """The street picture for `window`: risk and persistence per measure, the
+    composite, the worst and best streets, km and passes. None of it follows
+    the clock — street colours stay whole-campaign (docs/PLAN-refocus.md D2) —
+    so it is cached once per window, not once per moment."""
+    key = ("stats_community_streets", cid, window)
     hit = cache.get(key)
     if hit is not None:
         return hit
 
     mdefs = domain.measures(conn)
-    now = domain.data_now(conn, cid)
 
     # Length-weighted mean risk + persistence per measure for the requested window.
     agg = rows(
@@ -54,29 +83,6 @@ def community_stats(
         (cid, window),
     )
 
-    # Trend: last 7 days of 'date:' windows vs the 7 before that.
-    dates = [
-        r["window"]
-        for r in rows(
-            conn,
-            """SELECT DISTINCT window FROM segment_stat
-                WHERE campaign_id=? AND window LIKE 'date:%' ORDER BY window DESC LIMIT 14""",
-            (cid,),
-        )
-    ]
-    recent, prior = dates[:7], dates[7:14]
-
-    def mean_risk(measure: str, windows: list[str]) -> float | None:
-        if not windows:
-            return None
-        marks = ",".join("?" * len(windows))
-        return scalar(
-            conn,
-            f"""SELECT AVG(risk) FROM segment_stat
-                 WHERE campaign_id=? AND measure=? AND window IN ({marks}) AND risk IS NOT NULL""",
-            (cid, measure, *windows),
-        )
-
     by_measure: list[dict[str, Any]] = []
     composite: dict[str, Any] | None = None
     for r in agg:
@@ -91,44 +97,22 @@ def community_stats(
         # onto a derived index that names no pollutant.
         if md.get("family") == "composite":
             risk = (r["risk_num"] / r["risk_den"]) if r["risk_den"] else None
-            a, b = mean_risk(code, recent), mean_risk(code, prior)
-            composite = {
-                "risk": round(risk) if risk is not None else 0,
-                "trend": round(100.0 * (a - b) / b, 1) if (a is not None and b) else 0.0,
-            }
+            composite = {"measure": code, "risk": round(risk) if risk is not None else 0}
             continue
         risk = (r["risk_num"] / r["risk_den"]) if r["risk_den"] else None
         if risk is None:
             risk = domain.risk_from_scale(md.get("scale"), r["median"])
         persistence = (r["pers_num"] / r["pers_den"]) if r["pers_den"] else None
-        a, b = mean_risk(code, recent), mean_risk(code, prior)
-        trend = round(100.0 * (a - b) / b, 1) if (a is not None and b) else 0.0
         by_measure.append(
             {
                 "measure": code,
                 "plain_name": md.get("plain_name") or md.get("label") or code,
                 "risk": round(risk) if risk is not None else 0,
                 "label": domain.risk_label(risk),
-                "trend_pct": trend,
                 "persistence": round(persistence, 3) if persistence is not None else 0.0,
             }
         )
     by_measure.sort(key=lambda m: m["risk"], reverse=True)
-
-    # The headline is the composite when there is one. The old behaviour -- a max
-    # over every measure's risk -- was an undefended max over ladders that are not
-    # calibrated against each other (CO returns 92 at its NAAQS where PM2.5
-    # returns 25 at its annual one), so it reported whichever measure happened to
-    # have the steepest curve. Falling back to it is still better than reporting
-    # nothing, but only as a fallback.
-    if composite is not None:
-        overall = composite["risk"]
-        overall_trend = composite["trend"]
-    else:
-        overall = max((m["risk"] for m in by_measure), default=0)
-        overall_trend = round(
-            sum(m["trend_pct"] for m in by_measure) / len(by_measure), 1
-        ) if by_measure else 0.0
 
     worst_measure = by_measure[0]["measure"] if by_measure else "no2"
     streets = rows(
@@ -150,26 +134,11 @@ def community_stats(
             {"segment_id": r["segment_id"], "name": r["name"], "risk": r["risk"], "district": r["district"]}
         )
 
-    payload = {
-        "window": window,
-        "overall_risk": overall,
-        "overall_label": domain.risk_label(overall),
-        "trend_pct": overall_trend,
+    return cache.put(key, {
         "by_measure": by_measure,
+        "composite": composite,
         "worst_streets": ranked[:TOP_N],
         "best_streets": list(reversed(ranked[-TOP_N:])) if len(ranked) > TOP_N else [],
-        "concern_count_7d": scalar(
-            conn,
-            "SELECT COUNT(*) FROM concern WHERE campaign_id=? AND created_at >= ?",
-            (cid, timeutil.shift(now, days=-7) or timeutil.ago(days=7)),
-            0,
-        ),
-        "advisory_count_active": scalar(
-            conn,
-            """SELECT COUNT(*) FROM advisory WHERE campaign_id=?
-                AND (expires_at IS NULL OR expires_at >= ?)""",
-            (cid, now), 0,
-        ),
         "monitored_km": round(
             (scalar(conn, "SELECT SUM(length_m) FROM road_segment WHERE campaign_id=?", (cid,), 0) or 0) / 1000.0, 1
         ),
@@ -181,8 +150,100 @@ def community_stats(
                 WHERE campaign_id=? AND window='all' AND measure=?""",
             (cid, worst_measure), 0,
         ),
+    })
+
+
+@router.get("/stats/community")
+def community_stats(
+    window: str = "all",
+    at: str | None = None,
+    campaign_id: str | None = None,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """`at` is the stat's now (replay rewinds events, D2). What follows it is
+    what a resident reads as the present: reports this week, advisories in
+    force, and the trend (the 7 newest days by then vs the 7 before). The day
+    that contains `at` counts whole, as the last day does at the end of the
+    data, whose drives already run past the build instant. The street picture
+    is the whole `window` either way (`_community_streets`)."""
+    cid = resolve_campaign(conn, campaign_id)
+    now = domain.as_of(conn, cid, at)
+    base = _community_streets(conn, cid, window)
+    daily = _daily_risk(conn, cid)
+
+    # Trend: last 7 days of 'date:' windows by `now` vs the 7 before that.
+    dates = [w for w in daily["windows"] if w <= f"date:{now[:10]}"][:14]
+    recent, prior = dates[:7], dates[7:14]
+
+    def trend(measure: str) -> float:
+        a, b = _mean_risk(daily, measure, recent), _mean_risk(daily, measure, prior)
+        return round(100.0 * (a - b) / b, 1) if (a is not None and b) else 0.0
+
+    by_measure = [
+        {
+            "measure": m["measure"],
+            "plain_name": m["plain_name"],
+            "risk": m["risk"],
+            "label": m["label"],
+            "trend_pct": trend(m["measure"]),
+            "persistence": m["persistence"],
+        }
+        for m in base["by_measure"]
+    ]
+
+    # The headline is the composite when there is one. The old behaviour -- a max
+    # over every measure's risk -- was an undefended max over ladders that are not
+    # calibrated against each other (CO returns 92 at its NAAQS where PM2.5
+    # returns 25 at its annual one), so it reported whichever measure happened to
+    # have the steepest curve. Falling back to it is still better than reporting
+    # nothing, but only as a fallback.
+    composite = base["composite"]
+    if composite is not None:
+        overall = composite["risk"]
+        overall_trend = trend(composite["measure"])
+    else:
+        overall = max((m["risk"] for m in by_measure), default=0)
+        overall_trend = round(
+            sum(m["trend_pct"] for m in by_measure) / len(by_measure), 1
+        ) if by_measure else 0.0
+
+    return {
+        "window": window,
+        "overall_risk": overall,
+        "overall_label": domain.risk_label(overall),
+        "trend_pct": overall_trend,
+        "by_measure": by_measure,
+        "worst_streets": base["worst_streets"],
+        "best_streets": base["best_streets"],
+        # "Reports this week": filed in the 7 days up to `now`, not after it.
+        "concern_count_7d": scalar(
+            conn,
+            "SELECT COUNT(*) FROM concern WHERE campaign_id=? AND created_at >= ? AND created_at <= ?",
+            (cid, timeutil.shift(now, days=-7) or timeutil.ago(days=7), now),
+            0,
+        ),
+        # In force: issued by `now` and expiring AFTER it. `>=` counted a notice
+        # expiring at `now` — which is how sim.py expires them ("all clear"
+        # sets expires_at to now) — so with a frozen now it never left the
+        # count. Same test as `inForce` in web/src/apps/community/lib.ts.
+        "advisory_count_active": scalar(
+            conn,
+            """SELECT COUNT(*) FROM advisory WHERE campaign_id=? AND created_at <= ?
+                AND (expires_at IS NULL OR expires_at > ?)""",
+            (cid, now, now), 0,
+        ),
+        "monitored_km": base["monitored_km"],
+        "passes_total": base["passes_total"],
+        # Passes driven by `now`. `passes_total` is the whole record, which the
+        # street colours are built from (D2) — the right number beside them,
+        # the wrong one for "so far" at a replayed moment: at Aug 12 it
+        # already counted the 16 days of driving still to come. Outside the
+        # cached street block because it follows the clock; a covering-index
+        # range count on ix_pass_time, 1.6 ms over all 56,673 passes.
+        "passes_to_date": scalar(
+            conn, "SELECT COUNT(*) FROM segment_pass WHERE campaign_id=? AND ts<=?", (cid, now), 0
+        ),
     }
-    return cache.put(key, payload)
 
 
 @router.get("/stats/campaign")

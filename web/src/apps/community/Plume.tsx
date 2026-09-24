@@ -29,6 +29,7 @@ import s from '@/apps/community/community.module.css'
 import { PLUME_COPY, useMyNeighborhood } from '@/apps/community/lib'
 import { FootNote } from '@/apps/community/parts'
 import { Segmented } from '@/app/ui'
+import type { CampaignTime } from '@/core/clock'
 import { relativeTime } from '@/core/format'
 import { useClimatology } from '@/core/queries'
 import type { ConcernCluster, IndustrySite } from '@/core/types'
@@ -55,7 +56,8 @@ export interface PlumeProps {
   onMode: (m: PlumeMode) => void
   /** Streets measured under the live cloud this hour, or null when not asked. */
   measuredStreets: number | null
-  now: Date
+  /** The demo's now — every age on the card is measured from it. */
+  now: CampaignTime
 }
 
 /**

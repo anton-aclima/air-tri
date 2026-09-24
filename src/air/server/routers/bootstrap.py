@@ -13,11 +13,6 @@ from air.server.db import get_db, jload, one, resolve_campaign, rows
 router = APIRouter(tags=["core"])
 
 
-def _generated_at(conn: sqlite3.Connection) -> str | None:
-    row = one(conn, "SELECT value FROM setting WHERE key = 'datagen.now'", ())
-    return row["value"] if row else None
-
-
 @router.get("/bootstrap")
 def bootstrap(
     campaign_id: str | None = None, conn: sqlite3.Connection = Depends(get_db)
@@ -26,7 +21,8 @@ def bootstrap(
     key = ("bootstrap", cid)
     hit = cache.get(key)
     if hit is not None:
-        return {**hit, "flags": {**hit["flags"], "now": timeutil.now_iso()}}
+        t = timeutil.now_iso()
+        return {**hit, "flags": {**hit["flags"], "now": t, "generated_at": t}}
 
     camp = one(conn, "SELECT * FROM campaign WHERE id = ?", (cid,))
     payload = {
@@ -49,12 +45,15 @@ def bootstrap(
             "community_fleet_delay_min": config.COMMUNITY_FLEET_DELAY_MIN,
             "simulated": True,
             "now": timeutil.now_iso(),
-            # The instant the dataset was generated. Everything in the database
-            # stops here, so a client whose wall clock has run past it is asking
-            # for a window with nothing in it -- which looks like broken queries
-            # rather than the end of the data. The simulation panel uses this to
-            # say so out loud and to offer to pin "now" back to it.
-            "generated_at": _generated_at(conn),
+            # The instant the dataset was generated, which is the end of the
+            # clock's bounds on every client. It is `timeutil.now()`, the same
+            # instant as `now` and as every read bound and write stamp. It used
+            # to read `setting('datagen.now')` itself and be null without one,
+            # so on data/air_smoketest.db the client took `bounds.end` from
+            # `now` (the wall clock then, Sep 24) while the server served
+            # Aug 27, and every age read about four weeks. timeutil owns the
+            # one fallback (the newest reading or pass).
+            "generated_at": timeutil.now_iso(),
         },
     }
     cache.put(key, payload)

@@ -21,6 +21,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { scaleLinear } from 'd3-scale';
 import { curveCardinalClosed, lineRadial } from 'd3-shape';
 import type { MeasureDef, SeriesPoint } from '@/core/types';
+import { parseCampaign } from '@/core/clock';
 import { fmtNum, fmtHourLabel } from '@/core/format';
 import { plainName, unitFor } from '@/core/measures';
 import { useTheme } from '../lib/theme';
@@ -113,7 +114,8 @@ function toValues(points: DiurnalClockProps['points']): (number | null)[] {
     } else if (/^\d{1,2}$/.test(label)) {
       hour = Number(label) % 24;
     } else {
-      const d = new Date(label);
+      // Naive campaign time: the digits' hour, whatever the viewer's zone.
+      const d = parseCampaign(label);
       if (!Number.isNaN(d.getTime())) hour = d.getHours();
     }
     if (hour === null) return;

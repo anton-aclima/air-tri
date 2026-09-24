@@ -357,9 +357,11 @@ is `insufficient_data`. The rules engine does the same thing deterministically.
 12. **`GET /feed`** includes the `reading` FeedItem variant (capped at the 5 most
     recent exceeding readings) in addition to the four the contract lists. Turn it
     off with `include_readings=false`.
-13. **Timestamps** written by this server are `YYYY-MM-DDTHH:MM:SSZ` (UTC).
-    Reads parse anything ISO-ish, so mismatched datagen output still works, but
-    matching this format keeps lexicographic range queries exact.
+13. **Timestamps** are naive campaign time, `YYYY-MM-DDTHH:MM:SS` — no `Z`, the
+    digits datagen writes (America/Chicago). Reads accept a `Z` or offset and
+    drop it rather than converting it: the digits are the truth. (Until
+    2026-09-23 this server wrote `...Z` UTC while the data was naive, and every
+    server-stamped row displayed shifted by the viewer's UTC offset.)
 14. **`GET /wind/field`** adds a `grid` key (lattice origin, step, `nx`/`ny`,
     ordering) beyond `WindField`. Superset; it saves the particle overlay from
     inferring the lattice from rounded coordinates.
@@ -373,10 +375,25 @@ is `insufficient_data`. The rules engine does the same thing deterministically.
 17. **Two extra scenario helpers** are exposed for the Demo Director:
     `POST /admin/simulate` returns the computed verification inline for
     `model_divergence`, and `GET /admin/scenarios` now lists six scenarios.
-18. **"Now"** for anything meaning *latest data* is `domain.data_now()` —
-    `max(latest reading, latest pass, latest wind, campaign end, wall clock)` —
-    because demo data is anchored to the campaign end date. Rows written by this
-    server use wall clock.
+18. **"Now" is the build instant, frozen**: `timeutil.now()` =
+    `setting('datagen.now')`, and `domain.data_now()` returns it. Every write is
+    stamped with it too. It is not the latest timestamp in the data (wind and
+    in-progress drives run past it on purpose) and never the wall clock. A
+    database with no build stamp (the smoke-test fixture) gets ONE fallback,
+    in `timeutil`, for writes, reads and `flags.generated_at` alike: the newest
+    reading or pass. Event lists — `/feed`, `/concerns`, `/clusters`,
+    `/stats/community`, `/alerts` — take `at` as an upper bound applied before
+    their LIMIT; `/alerts/{id}`, `/monitors` (the `latest` block), `/fleet`,
+    `/wind/current`, `/wind/dispersion` and `/coverage/calibration` take it as
+    the moment they are served as of. Every one goes through `domain.as_of`: no
+    `at` is the end, past the end is the end, and anything unparseable is a 422.
+    Replayed reads also rebuild what rides on a row: a report's `cluster_id` is
+    null until its cluster had formed, its `responses` are the ones filed by
+    then, and a mitigation completed later reads as in progress. A concern
+    cluster alert enters the record when it was raised (`created_at`), not when
+    its episode was first noticed. `/alerts/{id}` for an alert that had not
+    begun is served with `not_started: true`, not a 404. See the "Phase 2
+    contract" in `docs/PLAN-refocus.md`.
 
 ## Environment
 

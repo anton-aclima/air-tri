@@ -20,17 +20,22 @@ import {
 } from '@/components'
 import { CONCERN_LABEL } from '@/components'
 import type { ConcernBubble, MapView } from '@/components'
-import { fmtNum, fmtTime, relativeShort } from '@/core/format'
+import { campaignMs, fromCampaignMs } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { happenedBy, isOngoing, isOpenCase } from '@/core/events'
+import { fmtDateTime, fmtDay, fmtNum, fmtTime, relativeShort } from '@/core/format'
 import { useLiveEvents } from '@/core/live'
 import { severityVar } from '@/core/measures'
 import {
   useActivity, useAdvisories, useAlerts, useBootstrapSites, useCampaignBoundary,
   useCampaignInfo, useClusters, useConcerns, useFeed, useMonitors, usePosts, useSegments,
 } from '@/core/queries'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { Concern, Role } from '@/core/types'
 
 import {
-  ACTOR_VAR, Caps, Sheet, TitleBlock, actorStyle, campaignView, styles as s, useNowTick,
+  ACTOR_VAR, Caps, Sheet, TitleBlock, actorStyle, campaignView, mitigationStatusAt, stampedBy,
+  styles as s,
 } from './lib'
 
 type LaneKey = 'community' | 'industry' | 'regulator'
@@ -59,12 +64,35 @@ export function Oversight() {
   const feed = useFeed({ role: 'admin', limit: 60 })
   const advisories = useAdvisories()
   const alerts = useAlerts({ role: 'admin' })
-  const activity = useActivity({ limit: 200 })
+  // The whole log (the server's cap). It is cut to the demo's now below, in
+  // the browser, because `/activity` has no upper time bound — and a browser
+  // filter after a LIMIT keeps only the newest rows: at 200 the oldest one
+  // left was Jul 19, so replaying June emptied the log.
+  const activity = useActivity({ limit: 2000 })
   const sites = useBootstrapSites()
   const monitors = useMonitors()
   const events = useLiveEvents()
-  const now = useNowTick(20_000)
+  const now = useNowCampaign()
+  const replaying = useSession((st) => st.time.cursor)
   const pulse = usePulse(2600)
+
+  // ── what had happened by the moment on screen (D2) ────────────────────
+  // Every list on this sheet is cut here, once, so the lanes, the ledger, the
+  // map and the log can never disagree about what exists yet. The concern,
+  // alert and feed hooks already send the cursor as `at`, which the server
+  // applies before its LIMIT; posts, advisories, the activity log and the
+  // live ring have no such bound, and the cut is what keeps them honest. A
+  // concern exists once it was FILED (`created_at`), though its lane places
+  // it where it OCCURRED. Clusters come as the server formed them by `at`:
+  // "formed" is its rule, not something to guess from `first_at` here.
+  const concernsNow = useMemo(() => happenedBy(concerns.data, now), [concerns.data, now])
+  const clustersNow = useMemo(() => clusters.data ?? [], [clusters.data])
+  const postsNow = useMemo(() => happenedBy(posts.data, now), [posts.data, now])
+  const feedNow = useMemo(() => stampedBy(feed.data, now, (i) => i.at), [feed.data, now])
+  const advisoriesNow = useMemo(() => happenedBy(advisories.data, now), [advisories.data, now])
+  const alertsNow = useMemo(() => happenedBy(alerts.data, now), [alerts.data, now])
+  const activityNow = useMemo(() => stampedBy(activity.data, now, (a) => a.ts), [activity.data, now])
+  const eventsNow = useMemo(() => stampedBy(events, now, (e) => e.at), [events, now])
 
   const [focus, setFocus] = useState<string | null>(null)
   const [show, setShow] = useState({ grid: true, concerns: true, sites: true, monitors: true })
@@ -75,17 +103,17 @@ export function Oversight() {
   const [actorFilter, setActorFilter] = useState<Role | null>(null)
 
   const cluster = useMemo(
-    () => (clusters.data ?? []).find((c) => c.id === focus) ?? null,
-    [clusters.data, focus],
+    () => clustersNow.find((c) => c.id === focus) ?? null,
+    [clustersNow, focus],
   )
 
   // ── the three lanes ────────────────────────────────────────────────────
   const laneConcerns = useMemo<Concern[]>(() => {
-    const all = concerns.data ?? []
+    const all = concernsNow
     return (cluster ? all.filter((c) => c.cluster_id === cluster.id) : all)
       .slice()
       .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
-  }, [concerns.data, cluster])
+  }, [concernsNow, cluster])
 
   const concernIds = useMemo(
     () => new Set(laneConcerns.map((c) => c.id)),
@@ -112,7 +140,7 @@ export function Oversight() {
 
   const industry = useMemo<Entry[]>(() => {
     const out: Entry[] = []
-    for (const p of posts.data ?? []) {
+    for (const p of postsNow) {
       if (cluster && !(p.concern_id && concernIds.has(p.concern_id))) continue
       out.push({
         id: p.id,
@@ -122,7 +150,7 @@ export function Oversight() {
         tags: [p.org_name ?? 'operator', p.kind, p.concern_id ? 'answers a concern' : 'unsolicited'],
       })
     }
-    for (const item of feed.data ?? []) {
+    for (const item of feedNow) {
       if (item.type !== 'mitigation') continue
       const m = item.mitigation
       if (cluster && !(m.concern_id && concernIds.has(m.concern_id)) && m.cluster_id !== cluster.id) continue
@@ -133,7 +161,7 @@ export function Oversight() {
         body: m.body,
         tags: [
           item.site?.name ?? 'site',
-          `mitigation · ${m.status}`,
+          `mitigation · ${mitigationStatusAt(m, now).replace('_', ' ')}`,
           m.expected_reduction_pct != null ? `−${fmtNum(m.expected_reduction_pct, 0)}% expected` : '',
         ].filter(Boolean),
       })
@@ -149,11 +177,11 @@ export function Oversight() {
         return true
       })
       .sort((a, b) => b.at.localeCompare(a.at))
-  }, [posts.data, feed.data, cluster, concernIds])
+  }, [postsNow, feedNow, cluster, concernIds, now])
 
   const regulator = useMemo<Entry[]>(() => {
     const out: Entry[] = []
-    for (const a of advisories.data ?? []) {
+    for (const a of advisoriesNow) {
       out.push({
         id: a.id,
         at: a.created_at,
@@ -163,7 +191,7 @@ export function Oversight() {
         severityVar: severityVar(a.severity),
       })
     }
-    for (const act of activity.data ?? []) {
+    for (const act of activityNow) {
       if (act.verb !== 'action_level.updated' && act.verb !== 'action_level.created') continue
       out.push({
         id: `act-${act.id}`,
@@ -173,7 +201,7 @@ export function Oversight() {
         tags: ['action level', act.verb.split('.')[1]],
       })
     }
-    for (const a of alerts.data ?? []) {
+    for (const a of alertsNow) {
       if (cluster && a.site_id && cluster.site_id && a.site_id !== cluster.site_id) continue
       if (a.kind !== 'concern_cluster' && cluster) continue
       out.push({
@@ -183,18 +211,24 @@ export function Oversight() {
         body: a.recommendation,
         tags: [a.kind.replace(/_/g, ' '), a.severity, a.status],
         severityVar: severityVar(a.severity),
-        ghost: a.status === 'resolved',
+        // Greyed once it had ENDED by the moment on screen. The status is the
+        // final one, so replaying showed an alert as resolved on the day it
+        // began; the tag above still carries that final status.
+        ghost: !isOngoing(a, now),
       })
     }
     return out.sort((a, b) => b.at.localeCompare(a.at))
-  }, [advisories.data, activity.data, alerts.data, cluster])
+  }, [advisoriesNow, activityNow, alertsNow, cluster, now])
 
   // ── the shared clock under the lanes ──────────────────────────────────
+  // On the campaign axis (core/clock), the one every other comparison uses:
+  // `Date.parse` read the naive rows in the viewer's zone, and the 14 activity
+  // rows the old server stamped `Z` (wall clock, a month past the data) as UTC.
   const marks = useMemo(() => {
     const all: { at: number; role: LaneKey }[] = []
-    for (const e of community) all.push({ at: Date.parse(e.at), role: 'community' })
-    for (const e of industry) all.push({ at: Date.parse(e.at), role: 'industry' })
-    for (const e of regulator) all.push({ at: Date.parse(e.at), role: 'regulator' })
+    for (const e of community) all.push({ at: campaignMs(e.at), role: 'community' })
+    for (const e of industry) all.push({ at: campaignMs(e.at), role: 'industry' })
+    for (const e of regulator) all.push({ at: campaignMs(e.at), role: 'regulator' })
     return all.filter((m) => Number.isFinite(m.at)).sort((a, b) => a.at - b.at)
   }, [community, industry, regulator])
 
@@ -205,45 +239,49 @@ export function Oversight() {
     return { lo, hi: hi > lo ? hi : lo + 3_600_000 }
   }, [marks])
 
-  const proposed = (concerns.data ?? []).filter((c) => c.status === 'mitigation_proposed')
+  const proposed = concernsNow.filter((c) => c.status === 'mitigation_proposed')
+
+  // Only the final status is stored, so a replayed past wears the statuses of
+  // the end of the data. Said once, in the subtitle, rather than on every chip.
+  const asOf = replaying ? ` · As of ${fmtDateTime(replaying)}; statuses are as at the end of the data.` : ''
 
   const ticker = useMemo(() => {
-    const rows = (activity.data ?? [])
+    const rows = activityNow
       .filter((a) => !actorFilter || a.actor_role === actorFilter)
       .slice(0, 120)
     return rows
-  }, [activity.data, actorFilter])
+  }, [activityNow, actorFilter])
 
   return (
     <div className={`${s.page} ${s.rowsOversight}`}>
       <TitleBlock
         sheet="oversight"
         subtitle={
-          cluster
+          (cluster
             ? `Focused on ${cluster.label ?? cluster.id} · ${cluster.count} reports within ${fmtNum(cluster.radius_m, 0)} m`
-            : 'Every concern, every operator post, every regulatory action — one clock, three columns.'
+            : 'Every concern, every operator post, every regulatory action — one clock, three columns.') + asOf
         }
         cells={[
-          { label: 'concerns', value: fmtNum(concerns.data?.length ?? null, 0) },
-          { label: 'operator posts', value: fmtNum(posts.data?.length ?? null, 0) },
+          { label: 'concerns', value: fmtNum(concerns.data ? concernsNow.length : null, 0) },
+          { label: 'operator posts', value: fmtNum(posts.data ? postsNow.length : null, 0) },
           { label: 'reg. actions', value: fmtNum(regulator.length, 0) },
-          { label: 'live events', value: fmtNum(events.length, 0), tone: 'accent' },
+          { label: 'live events', value: fmtNum(eventsNow.length, 0), tone: 'accent' },
         ]}
       />
 
       {/* ── the ledger: what each side has put on the table ─────────── */}
       <div className={s.ledger}>
-        <LedgerCell role="community" label="concerns filed" value={fmtNum(concerns.data?.length ?? null, 0)}
-          foot={`${(concerns.data ?? []).filter((c) => c.status !== 'resolved' && c.status !== 'closed').length} still open`} />
-        <LedgerCell role="community" label="clusters formed" value={fmtNum(clusters.data?.length ?? null, 0)}
+        <LedgerCell role="community" label="concerns filed" value={fmtNum(concerns.data ? concernsNow.length : null, 0)}
+          foot={`${concernsNow.filter((c) => isOpenCase(c, now)).length} still open`} />
+        <LedgerCell role="community" label="clusters formed" value={fmtNum(clusters.data ? clustersNow.length : null, 0)}
           foot="≥3 within 600 m / 24 h" />
         <LedgerCell role="industry" label="sites claimed" value={fmtNum(sites.length, 0)}
           foot={`${sites.filter((x) => x.claimed_by_user_id).length} with an operator`} />
         <LedgerCell role="industry" label="posts + mitigations" value={fmtNum(industry.length, 0)}
           foot={`${proposed.length} concerns answered`} />
-        <LedgerCell role="regulator" label="alerts raised" value={fmtNum(alerts.data?.length ?? null, 0)}
-          foot={`${(alerts.data ?? []).filter((a) => a.status === 'active').length} active`} />
-        <LedgerCell role="regulator" label="advisories" value={fmtNum(advisories.data?.length ?? null, 0)}
+        <LedgerCell role="regulator" label="alerts raised" value={fmtNum(alerts.data ? alertsNow.length : null, 0)}
+          foot={`${alertsNow.filter((a) => isOngoing(a, now)).length} ongoing`} />
+        <LedgerCell role="regulator" label="advisories" value={fmtNum(advisories.data ? advisoriesNow.length : null, 0)}
           foot={`${monitors.data?.length ?? 0} reference monitors`} />
       </div>
 
@@ -277,8 +315,8 @@ export function Oversight() {
                   : []),
                 ...(show.concerns
                   ? ConcernLayer({
-                      data: concerns.data,
-                      clusters: clusters.data,
+                      data: concernsNow,
+                      clusters: clustersNow,
                       theme,
                       pulse,
                       labels: true,
@@ -306,7 +344,7 @@ export function Oversight() {
                   title="Everything"
                   items={[
                     { id: 'grid', label: 'Road grid', enabled: show.grid, keyShape: 'line' },
-                    { id: 'concerns', label: 'Concerns', enabled: show.concerns, color: ACTOR_VAR.community, keyShape: 'dot', count: concerns.data?.length },
+                    { id: 'concerns', label: 'Concerns', enabled: show.concerns, color: ACTOR_VAR.community, keyShape: 'dot', count: concernsNow.length },
                     { id: 'sites', label: 'Claimed sites', enabled: show.sites, color: ACTOR_VAR.industry, keyShape: 'dot', count: sites.length },
                     { id: 'monitors', label: 'Reference net', enabled: show.monitors, color: ACTOR_VAR.regulator, keyShape: 'dot', count: monitors.data?.length },
                   ]}
@@ -331,7 +369,7 @@ export function Oversight() {
               >
                 everything
               </button>
-              {(clusters.data ?? []).map((c) => (
+              {clustersNow.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -429,7 +467,7 @@ function Lane({
   title: string
   subtitle: string
   entries: Entry[]
-  now: Date
+  now: CampaignTime
 }) {
   return (
     <div className={s.lane} style={actorStyle(role)}>
@@ -483,6 +521,9 @@ function TimeAxis({
   if (!span) return <div className={s.timeAxis} />
   const width = span.hi - span.lo
   const ticks = 6
+  // Campaign-axis ms back to naive time for the formatter. Past a couple of
+  // days the tick is a date: six times of day across ninety days said nothing.
+  const label = (ms: number) => (width > 2 * 86_400_000 ? fmtDay : fmtTime)(fromCampaignMs(ms))
   return (
     <div className={s.timeAxis} aria-hidden>
       {Array.from({ length: ticks + 1 }, (_, i) => {
@@ -495,7 +536,7 @@ function TimeAxis({
               className={s.timeLabel}
               style={{ left: `${Math.min(97, Math.max(3, left))}%` }}
             >
-              {fmtTime(new Date(t))}
+              {label(t)}
             </span>
           </span>
         )

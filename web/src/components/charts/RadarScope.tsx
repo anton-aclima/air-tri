@@ -39,6 +39,7 @@ import type {
 } from '@/core/types';
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures';
 import { fmtBearing, fmtDistance, fmtElapsed } from '@/core/format';
+import { useNowCampaign } from '@/core/session';
 import { useTheme } from '../lib/theme';
 import { ALERT_KIND_CODE, SEVERITY_GLYPH } from '../lib/vizmeta';
 import { niceCeil } from '../lib/vizmeta';
@@ -169,6 +170,9 @@ export function RadarScope(props: RadarScopeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const theme = useTheme(rootRef);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  // "Up for" is measured to the demo's now — from the wall clock every contact
+  // read "up for" weeks.
+  const now = useNowCampaign();
 
   const cx = size / 2;
   const cy = size / 2;
@@ -567,7 +571,7 @@ export function RadarScope(props: RadarScopeProps) {
           {activeContact.startedAt && (
             <div>
               <dt>UP FOR</dt>
-              <dd>{fmtElapsed(activeContact.startedAt)}</dd>
+              <dd>{fmtElapsed(activeContact.startedAt, now)}</dd>
             </div>
           )}
         </dl>

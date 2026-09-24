@@ -58,10 +58,19 @@ and read it, or run unpiped and check `$?`.
   404. Use the `api` and `json_ok` fixtures; `json_ok` checks the content type
   for exactly this reason.
 
-There is one `xfail(strict=True)`: non-negotiable #5 (community fleet delay) is
-applied to the payload label but not to the data. See the marker for the
-diagnosis. `strict=True` means fixing it reports as a failure here, which is
-the reminder to remove the marker.
+There are no expected failures. The last one (non-negotiable #5, the community
+fleet delay) was fixed by the one clock below and its marker removed.
+
+## Time: one clock, naive, frozen
+
+Every timestamp is **naive campaign time** — `YYYY-MM-DDTHH:MM:SS`, no `Z`, the
+digits datagen writes. The demo's **now is the build instant** and never moves:
+server `timeutil.now()` = `setting('datagen.now')`; client `time.cursor === null`
+means *paused at the end of the data*. Never `toISOString()` for a campaign time
+and never `Date.now()`/`new Date()` for "now" — use `web/src/core/clock.ts` and
+the session helpers. The full contract is the "Phase 2 contract" section of
+`docs/PLAN-refocus.md`. This is why `--now` still matters: it sets the instant
+the whole product is frozen at.
 
 ## The touchdown estimator
 
@@ -99,6 +108,10 @@ believing anything about server state — vite mirrors browser console errors in
 Live demo, runbook and the two things that broke on the way: `docs/DEPLOY.md`.
 
 ## Current work
+
+`docs/PLAN-refocus.md` is the resume point for the owner's zoom-out review:
+four surfaces redesigned (time control, community, regulator, industry), the
+owner's 13 decisions (§6a), and the order of work (§5).
 
 `docs/PLAN-sense.md` is the resume point for the measure-selection and
 `aclima_sense` work — design decisions, task boxes, and the four places the

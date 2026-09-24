@@ -235,7 +235,7 @@ All take `className` / `style`. Most take `title` / `subtitle` / `aside` / `show
 Multi-series lines with thresholds and exceedance shading.
 `series: { id, label, color?, points, band?, dashed? }[]` · `thresholds: { id, label, value,
 severity?, shade? }[]` · `height` · `unit` · `decimals` · `yDomain` · `yZero` (default true) ·
-`brushable` + `brush` + `onBrush(range)` · `exceedanceSeriesId` · `xFormat(d)` · `margin`.
+`brushable` + `brush` + `onBrush(range)` (naive campaign times) · `exceedanceSeriesId` · `xFormat(d)` · `margin`.
 ```tsx
 <TimeSeries series={[{ id: 'no2', label: 'NO₂', points }]} thresholds={[{ id: 'naaqs', label: 'NAAQS 1-h', value: 100 }]} unit="ppb" />
 ```
@@ -350,8 +350,11 @@ header/plot/footer shell. Also `Legend` (`LegendSeries[]` — `shape: 'line' | '
 - **`geo`** — `haversine`, `bearingBetween`, `destination`, `circleRing`, `wedge`,
   `toPolygons`, `geometryPositions`, `alongPath`, `pathMetrics`, `metersPerPixel`,
   `fitZoom`, `bboxOfPositions`, `bboxCenter`, `expandBBox`, `bboxRing`, `lerpPosition`.
-- **`anim`** — `usePhase(ms)` (0→1 sawtooth), `usePulse(ms)` (triangle), `useNow()`,
-  `useReducedMotion()`, `useFleetAnimation(positions)`.
+- **`anim`** — `usePhase(ms)` (0→1 sawtooth), `usePulse(ms)` (triangle), `useNow()`
+  (the demo's now as epoch ms, not the wall clock), `useReducedMotion()`,
+  `useFleetAnimation(positions)`.
+- **`reports`** — `useWindowedReports(concerns, clusters, days)`: the last
+  `REPORT_WINDOW_DAYS` ending at the demo's now, the same instant row ages use.
 - **`windField`** — `buildFieldIndex(field)` (bilinear sampler + confidence from `n` /
   `dir_sd`), `cellConfidence`, `mercatorProjector`, `scopeProjector`.
 - **`vizmeta`** — `niceStep` / `niceCeil` / `niceTicks`, `SEVERITY_GLYPH`, `METRIC_HELP`,

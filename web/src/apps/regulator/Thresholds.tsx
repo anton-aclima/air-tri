@@ -25,16 +25,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Distribution } from '@/components'
 import { Button, Input, Slider, Toggle } from '@/app/ui'
-import { fmtNum, relativeShort } from '@/core/format'
+import type { CampaignTime } from '@/core/clock'
+import { fmtNum } from '@/core/format'
 import { severityVar } from '@/core/measures'
 import { useActionLevels, useAlerts, useSegments, useUpdateActionLevel } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 import type { ActionLevel, ActionLevelKind, Alert, MeasureCode, SegmentCollection } from '@/core/types'
 
 import { PushComposer, subjectFromLevel } from './Push'
 import {
-  Caps, KIND_CODE, KIND_LABEL, Panel, Readout, Sev, Tag, Unit, fmtRatio, levelUnit, liveAlerts,
-  overBy, shortWhere, sliderRange, sortLevels, sourceTag, SOURCE_TAG_LABEL, styles as s,
-  towerMeasures, towersFor, useMeasureMap, useNowTick, useTowers,
+  Caps, KIND_CODE, KIND_LABEL, Panel, Readout, Sev, Tag, Unit, fmtRatio, levelSetWhen, levelUnit,
+  liveAlerts, overBy, shortWhere, sliderRange, sortLevels, sourceTag, SOURCE_TAG_LABEL,
+  styles as s, towerMeasures, towersFor, useMeasureMap, useTowers,
 } from './lib'
 
 /** `PUT /action-levels/{id}` answers with what the edit did. Not on the wire type. */
@@ -54,8 +56,16 @@ const SEEDED = new Map<string, number>()
 
 const DEBOUNCE_MS = 260
 
+/**
+ * How long the ledger flashes what an edit raised or cleared. Real seconds, on
+ * a timer, not campaign time: this is an animation, and the demo's clock is
+ * paused at the end of the data. (It read `Date.now()` during render, so the
+ * flash only ended on whatever render happened to come next.)
+ */
+const FLASH_MS = 6000
+
 export function Thresholds() {
-  const now = useNowTick()
+  const now = useNowCampaign()
   const levelsQ = useActionLevels()
   const update = useUpdateActionLevel()
   const alertsQ = useAlerts({})
@@ -70,7 +80,11 @@ export function Thresholds() {
   /** Optimistic overlay: the slider must move at 60 fps, not at HTTP speed. */
   const [draft, setDraft] = useState<Record<string, Partial<ActionLevel>>>({})
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  useEffect(() => () => { for (const t of Object.values(timers.current)) clearTimeout(t) }, [])
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => {
+    for (const t of Object.values(timers.current)) clearTimeout(t)
+    clearTimeout(flashTimer.current)
+  }, [])
 
   const levels = useMemo(
     () => server.map((l) => ({ ...l, ...(draft[l.id] ?? {}) })),
@@ -80,7 +94,7 @@ export function Thresholds() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = levels.find((l) => l.id === selectedId) ?? levels[0]
 
-  const [lastEval, setLastEval] = useState<{ levelId: string; evaluation: Evaluation; at: number } | null>(null)
+  const [lastEval, setLastEval] = useState<{ levelId: string; evaluation: Evaluation; fresh: boolean } | null>(null)
 
   const commit = (l: ActionLevel, patch: Partial<ActionLevel>) => {
     const next = { ...l, ...patch }
@@ -108,7 +122,14 @@ export function Thresholds() {
         {
           onSuccess: (res) => {
             const ev = (res as UpdateResult).evaluation
-            if (ev) setLastEval({ levelId: l.id, evaluation: ev, at: Date.now() })
+            if (ev) {
+              setLastEval({ levelId: l.id, evaluation: ev, fresh: true })
+              clearTimeout(flashTimer.current)
+              flashTimer.current = setTimeout(
+                () => setLastEval((e) => (e ? { ...e, fresh: false } : e)),
+                FLASH_MS,
+              )
+            }
             // The server row is authoritative once it lands.
             setDraft((d) => { const { [l.id]: _drop, ...rest } = d; return rest })
           },
@@ -128,7 +149,10 @@ export function Thresholds() {
     return seed != null && Math.abs(seed - l.threshold) > 1e-9
   })
 
-  const live = useMemo(() => liveAlerts(alertsQ.data), [alertsQ.data])
+  // Live at the demo's now, not by status. An edit's new alerts are stamped at
+  // the end of the data with no `ended_at`, so at the end they count the moment
+  // they land; replayed to an earlier hour, they have not happened yet.
+  const live = useMemo(() => liveAlerts(alertsQ.data, now), [alertsQ.data, now])
   const canSee = useMemo(() => towerMeasures(towers), [towers])
 
   const spikes = sortLevels(levels.filter((l) => l.kind === 'spike'))
@@ -396,11 +420,11 @@ function Consequence({
 }: {
   level: ActionLevel
   live: Alert[]
-  lastEval: { evaluation: Evaluation; at: number } | null
+  lastEval: { evaluation: Evaluation; fresh: boolean } | null
   towerCount: number
   towerTotal: number
   pending: boolean
-  now: Date
+  now: CampaignTime
 }) {
   const towers = useTowers().data ?? []
   const towerIds = useMemo(() => new Set(towers.map((m) => m.id)), [towers])
@@ -432,7 +456,7 @@ function Consequence({
 
   const created = lastEval?.evaluation.alerts_created.length ?? 0
   const resolved = lastEval?.evaluation.alerts_resolved.length ?? 0
-  const fresh = lastEval != null && Date.now() - lastEval.at < 6000
+  const fresh = lastEval?.fresh ?? false
 
   return (
     <>
@@ -579,7 +603,7 @@ function Consequence({
 
       <Panel
         title="Act on it"
-        aside={<Caps>{relativeShort(level.updated_at ?? new Date().toISOString(), now)}</Caps>}
+        aside={<Caps>{levelSetWhen(level, now)}</Caps>}
       >
         <PushComposer subject={subjectFromLevel(level, [...hits].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0])} compact />
       </Panel>

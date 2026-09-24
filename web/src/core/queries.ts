@@ -8,13 +8,24 @@
  * Conventions
  *   · Hooks accept `(params?, opts?)`. `opts` is spread last, so a caller can
  *     always override `enabled`, `staleTime`, `refetchInterval`, `select`.
- *   · Hooks that are time-aware default to the session time cursor.
+ *   · Hooks that are time-aware default to the session's clock: series take
+ *     `from`/`to` from `timeRange`, and the event lists (concerns, clusters,
+ *     alerts, feed, community stats) send `at: timeParam(time)` so the server
+ *     cuts at the moment on screen before its LIMIT (D2). Include the key
+ *     `at` yourself to override; `{ at: undefined }` asks for the whole record
+ *     up to the end of the data — the timeline's event ticks need that.
+ *   · Every hook keyed on the clock waits for the clock's bounds (`timed`).
+ *     Before the bootstrap lands there is no "now" to ask about, and asking
+ *     anyway sent the wall clock: `/wind?to=2026-09-23T19:00` on a campaign
+ *     that ends Aug 28, whose empty answer then sat on screen as the
+ *     placeholder for the real one.
  *   · Nothing throws on a missing backend: queries just sit in `isError` and
  *     screens render their empty state.
  */
 
 import {
   QueryClient,
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -67,7 +78,6 @@ import type {
   SegmentDetail,
   SimScenario,
   SitePost,
-  StatWindow,
   User,
   Vehicle,
   WindField,
@@ -75,6 +85,9 @@ import type {
   WindPoint,
 } from '@/core/types'
 import { fleetDelayFor, timeParam, timeRange, useSession } from '@/core/session'
+import type { TimeState } from '@/core/session'
+import { addHours } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
 import { findMeasure, measuresOf } from '@/core/measures'
 import type { MeasureFamily } from '@/core/measures'
 
@@ -105,8 +118,8 @@ export const STALE = {
   // Modelled surfaces over the whole record. They move on a rebuild.
   coverageAnalysis: 30 * 60_000,
   climatology: 30 * 60_000,
-  // One day's brief. It changes when the demo cursor crosses midnight, and the
-  // query key carries the date, so nothing needs to go stale in between.
+  // One day's brief. It changes when the demo cursor crosses 07:00, the issue
+  // hour, and the query key carries the day, so nothing goes stale in between.
   brief: 30 * 60_000,
   envelope: 10 * 60_000,
   touchdown: 10 * 60_000,
@@ -143,7 +156,7 @@ export const qk = {
   monitors: {
     all: ['monitors'] as const,
     list: (params: api.MonitorsParams) => ['monitors', 'list', params] as const,
-    detail: (id: string) => ['monitors', 'detail', id] as const,
+    detail: (id: string, at?: string) => ['monitors', 'detail', id, at ?? null] as const,
     readings: (id: string, params: api.MonitorReadingsParams) =>
       ['monitors', 'readings', id, params] as const,
   },
@@ -154,7 +167,10 @@ export const qk = {
     detail: (id: string) => ['concerns', 'detail', id] as const,
   },
 
-  clusters: { all: ['clusters'] as const },
+  clusters: {
+    all: ['clusters'] as const,
+    list: (params: api.ClustersParams) => ['clusters', 'list', params] as const,
+  },
 
   sites: {
     all: ['sites'] as const,
@@ -169,7 +185,7 @@ export const qk = {
     interception: ['coverage-analysis', 'interception'] as const,
     residency: ['coverage-analysis', 'residency'] as const,
     siting: (n: number) => ['coverage-analysis', 'siting', n] as const,
-    calibration: ['coverage-analysis', 'calibration'] as const,
+    calibration: (at?: string) => ['coverage-analysis', 'calibration', at ?? null] as const,
   },
 
   brief: {
@@ -210,7 +226,8 @@ export const qk = {
   alerts: {
     all: ['alerts'] as const,
     list: (params: api.AlertsParams) => ['alerts', 'list', params] as const,
-    detail: (id: string, siteId?: string) => ['alerts', 'detail', id, siteId ?? null] as const,
+    detail: (id: string, siteId?: string, at?: string) =>
+      ['alerts', 'detail', id, siteId ?? null, at ?? null] as const,
   },
 
   actionLevels: { all: ['action-levels'] as const },
@@ -242,7 +259,7 @@ export const qk = {
 
   stats: {
     all: ['stats'] as const,
-    community: (params: { window?: StatWindow }) => ['stats', 'community', params] as const,
+    community: (params: api.CommunityStatsParams) => ['stats', 'community', params] as const,
     campaign: ['stats', 'campaign'] as const,
   },
 
@@ -276,8 +293,43 @@ export function createQueryClient(): QueryClient {
   })
 }
 
+/**
+ * For hooks keyed on the demo clock. While the cursor plays or is scrubbed,
+ * every step is a new key; without this the layer blanks between steps and the
+ * map flickers. Not a global default: on an entity change (one alert's page to
+ * another's) showing the previous entity's data would be wrong, not smooth.
+ */
+const TIMED = { placeholderData: keepPreviousData } as const
+
+/**
+ * The `at` an event-list hook sends: the caller's when they included the key
+ * (even as `undefined`, which means the whole record), else the session's.
+ * `params.at ?? …` could not tell "no opinion" from "no bound".
+ */
+function atFor(params: { at?: string }, time: TimeState): string | undefined {
+  return 'at' in params ? params.at : timeParam(time)
+}
+
 /** Options every hook accepts. Spread last — callers always win. */
 export type QueryOpts<T> = Partial<Omit<UseQueryOptions<T, Error, T>, 'queryKey' | 'queryFn'>>
+
+/** The clock has its limits: the bootstrap has landed and set `time.bounds`. */
+const useClockReady = (): boolean => useSession((s) => s.time.bounds != null)
+
+/**
+ * Options for a hook keyed on the clock: `TIMED`, the hook's own defaults, the
+ * caller's options — and never enabled before the clock has its bounds,
+ * whatever the caller says. Until then `nowCampaign` has only the wall clock
+ * to offer; measured on a fresh /industry load, that fired
+ * `/wind/field?to=2026-09-23T19:00` and `/wind?to=…` a month past the data
+ * before the right pair, and the empty answers were kept on screen as the
+ * placeholder for the real ones. The caller's `enabled` still applies — this
+ * only ever narrows it.
+ */
+function timed<T>(ready: boolean, own: QueryOpts<T> = {}, opts?: QueryOpts<T>): QueryOpts<T> {
+  const theirs = opts?.enabled !== undefined ? opts.enabled : own.enabled
+  return { ...TIMED, ...own, ...opts, enabled: ready ? (theirs ?? true) : false }
+}
 
 function useApiQuery<T>(
   queryKey: readonly unknown[],
@@ -436,24 +488,36 @@ export function useSelectedSegment(opts?: QueryOpts<SegmentDetail>) {
 
 // ══════════════════════════════════════════════════════════════════ monitors
 
+/**
+ * Monitors with their `latest` reading as of the moment on screen. `at`
+ * defaults to the clock: without it, paused at Aug 12, every tower, fenceline
+ * and "over the line" badge read its Aug 28 13:00 value, and the community
+ * status page disagreed with the feed about one instrument at one moment.
+ */
 export function useMonitors(
   params: api.MonitorsParams = {},
   opts?: QueryOpts<Monitor[]>,
 ): UseQueryResult<Monitor[], Error> {
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const merged: api.MonitorsParams = { ...params, at: atFor(params, time) }
   return useApiQuery(
-    qk.monitors.list(params),
-    (signal) => api.listMonitors(params, signal),
+    qk.monitors.list(merged),
+    (signal) => api.listMonitors(merged, signal),
     STALE.monitors,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
 export function useMonitor(id: string | null | undefined, opts?: QueryOpts<Monitor>) {
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const at = timeParam(time)
   return useApiQuery(
-    qk.monitors.detail(id ?? ''),
-    (signal) => api.getMonitor(id as string, signal),
+    qk.monitors.detail(id ?? '', at),
+    (signal) => api.getMonitor(id as string, at, signal),
     STALE.monitors,
-    { enabled: !!id, ...opts },
+    timed(ready, { enabled: !!id }, opts),
   )
 }
 
@@ -467,6 +531,7 @@ export function useMonitorReadings(
   opts?: QueryOpts<MonitorReadings>,
 ): UseQueryResult<MonitorReadings, Error> {
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const sessionMeasure = useSession((s) => s.measure)
   const range = timeRange(time)
   const merged: api.MonitorReadingsParams = {
@@ -479,21 +544,25 @@ export function useMonitorReadings(
     qk.monitors.readings(id ?? '', merged),
     (signal) => api.getMonitorReadings(id as string, merged, signal),
     STALE.readings,
-    { enabled: !!id, ...opts },
+    timed(ready, { enabled: !!id }, opts),
   )
 }
 
 // ══════════════════════════════════════════════════════════════════ concerns
 
+/** Reports filed by the moment on screen. `at` defaults to the clock. */
 export function useConcerns(
   params: api.ConcernsParams = {},
   opts?: QueryOpts<Concern[]>,
 ): UseQueryResult<Concern[], Error> {
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const merged: api.ConcernsParams = { ...params, at: atFor(params, time) }
   return useApiQuery(
-    qk.concerns.list(params),
-    (signal) => api.listConcerns(params, signal),
+    qk.concerns.list(merged),
+    (signal) => api.listConcerns(merged, signal),
     STALE.concerns,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
@@ -506,16 +575,23 @@ export function useConcern(id: string | null | undefined, opts?: QueryOpts<Conce
   )
 }
 
-/** Auto-formed clusters (≥3 concerns / 600 m / 24 h) — loop #1. */
+/**
+ * Auto-formed clusters (≥3 concerns / 600 m / 24 h) — loop #1 — that had
+ * formed by the moment on screen. A string is the campaign id, as before.
+ */
 export function useConcernClusters(
-  campaignId?: string,
+  params: api.ClustersParams | string = {},
   opts?: QueryOpts<ConcernCluster[]>,
 ): UseQueryResult<ConcernCluster[], Error> {
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const given: api.ClustersParams = typeof params === 'string' ? { campaign_id: params } : params
+  const merged: api.ClustersParams = { ...given, at: atFor(given, time) }
   return useApiQuery(
-    qk.clusters.all,
-    (signal) => api.listClusters(campaignId, signal),
+    qk.clusters.list(merged),
+    (signal) => api.listClusters(merged, signal),
     STALE.clusters,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
@@ -564,33 +640,50 @@ export function useAdvisories(
 // ════════════════════════════════════════════════════════════ the alert bus
 
 /**
- * Alerts. Defaults `role` to the active persona's role. Pass `site_id` to get
- * `bearing_deg` + `distance_m` — that is the RWR geometry the scope draws.
+ * Alerts that had begun by the moment on screen. Defaults `role` to the active
+ * persona's role and `at` to the clock. Pass `site_id` to get `bearing_deg` +
+ * `distance_m`. "Live" is `isOngoing(alert, now)` (core/events), not
+ * `status === 'active'`: the status is the final one and cannot say when an
+ * alert ended.
  */
 export function useAlerts(
   params: api.AlertsParams = {},
   opts?: QueryOpts<Alert[]>,
 ): UseQueryResult<Alert[], Error> {
   const role = useSession((s) => s.role)
-  const merged: api.AlertsParams = { role: params.role ?? role ?? undefined, ...params }
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const merged: api.AlertsParams = {
+    role: params.role ?? role ?? undefined, ...params, at: atFor(params, time),
+  }
   return useApiQuery(
     qk.alerts.list(merged),
     (signal) => api.listAlerts(merged, signal),
     STALE.alerts,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
+/**
+ * One alert as of the moment on screen, so a detail opened in replay agrees
+ * with the row it was opened from. Without `at` the server picked the related
+ * reports as of the end of the data; at Aug 12 both it returned for
+ * al-no2-0034-006 were filed Aug 17, the browser's `happenedBy` dropped them,
+ * and the one report that did exist then was never shown.
+ */
 export function useAlert(
   id: string | null | undefined,
   siteId?: string,
   opts?: QueryOpts<Alert>,
 ): UseQueryResult<Alert, Error> {
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const at = timeParam(time)
   return useApiQuery(
-    qk.alerts.detail(id ?? '', siteId),
-    (signal) => api.getAlert(id as string, siteId, signal),
+    qk.alerts.detail(id ?? '', siteId, at),
+    (signal) => api.getAlert(id as string, siteId, at, signal),
     STALE.alerts,
-    { enabled: !!id, ...opts },
+    timed(ready, { enabled: !!id }, opts),
   )
 }
 
@@ -601,14 +694,26 @@ export function useActionLevels(opts?: QueryOpts<ActionLevel[]>): UseQueryResult
 
 // ══════════════════════════════════════════════════════════════════════ feed
 
-/** Merged social feed. Defaults `role` to the active persona's role. */
+/**
+ * Merged social feed as of the moment on screen. Defaults `role` to the active
+ * persona's role and `at` to the clock.
+ */
 export function useFeed(
   params: api.FeedParams = {},
   opts?: QueryOpts<FeedItem[]>,
 ): UseQueryResult<FeedItem[], Error> {
   const role = useSession((s) => s.role)
-  const merged: api.FeedParams = { role: params.role ?? role ?? undefined, ...params }
-  return useApiQuery(qk.feed.list(merged), (signal) => api.getFeed(merged, signal), STALE.feed, opts)
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const merged: api.FeedParams = {
+    role: params.role ?? role ?? undefined, ...params, at: atFor(params, time),
+  }
+  return useApiQuery(
+    qk.feed.list(merged),
+    (signal) => api.getFeed(merged, signal),
+    STALE.feed,
+    timed(ready, {}, opts),
+  )
 }
 
 // ═════════════════════════════════════════════════════════════════════ fleet
@@ -624,16 +729,16 @@ export function useFleet(
 ): UseQueryResult<FleetPosition[], Error> {
   const role = useSession((s) => s.role)
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const configured = useFlags()?.community_fleet_delay_min
   const merged: api.FleetParams = {
     at: params.at ?? timeParam(time),
     delay_min: params.delay_min ?? fleetDelayFor(role, configured),
     ...(params.campaign_id ? { campaign_id: params.campaign_id } : {}),
   }
-  return useApiQuery(qk.fleet.list(merged), (signal) => api.getFleet(merged, signal), STALE.fleet, {
-    refetchInterval: time.cursor ? false : 5_000,
-    ...opts,
-  })
+  // At the end of the data the clock is paused (D1): nothing to poll for.
+  return useApiQuery(qk.fleet.list(merged), (signal) => api.getFleet(merged, signal), STALE.fleet,
+    timed(ready, {}, opts))
 }
 
 export function useVehicles(opts?: QueryOpts<Vehicle[]>): UseQueryResult<Vehicle[], Error> {
@@ -672,13 +777,15 @@ export function useWind(
   opts?: QueryOpts<WindPoint[]>,
 ): UseQueryResult<WindPoint[], Error> {
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const range = timeRange(time)
   const merged: api.WindParams = {
     from: params.from ?? range.from,
     to: params.to ?? range.to,
     ...(params.campaign_id ? { campaign_id: params.campaign_id } : {}),
   }
-  return useApiQuery(qk.wind.list(merged), (signal) => api.getWind(merged, signal), STALE.wind, opts)
+  return useApiQuery(qk.wind.list(merged), (signal) => api.getWind(merged, signal), STALE.wind,
+    timed(ready, {}, opts))
 }
 
 /** The most recent wind observation at or before the time cursor. */
@@ -694,12 +801,13 @@ export function useDispersion(
   opts?: QueryOpts<DispersionPlume>,
 ): UseQueryResult<DispersionPlume, Error> {
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const merged: api.DispersionParams = { at: params.at ?? timeParam(time), ...params }
   return useApiQuery(
     qk.wind.dispersion(merged),
     (signal) => api.getDispersion(merged, signal),
     STALE.dispersion,
-    { enabled: !!merged.site_id, ...opts },
+    timed(ready, { enabled: !!merged.site_id }, opts),
   )
 }
 
@@ -715,6 +823,7 @@ export function useMobileWind(
   opts?: QueryOpts<MobileWindObs[]>,
 ): UseQueryResult<MobileWindObs[], Error> {
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const range = timeRange(time)
   const merged: api.MobileWindParams = {
     from: params.from ?? range.from,
@@ -728,7 +837,7 @@ export function useMobileWind(
     qk.wind.mobile(merged),
     (signal) => api.getMobileWind(merged, signal),
     STALE.mobileWind,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
@@ -738,6 +847,7 @@ export function useWindField(
   opts?: QueryOpts<WindField>,
 ): UseQueryResult<WindField, Error> {
   const time = useSession((s) => s.time)
+  const ready = useClockReady()
   const range = timeRange(time)
   const merged: api.WindFieldParams = {
     from: params.from ?? range.from,
@@ -749,7 +859,7 @@ export function useWindField(
     qk.wind.field(merged),
     (signal) => api.getWindField(merged, signal),
     STALE.windField,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 
@@ -811,31 +921,67 @@ export function useSiting(limit = 10, opts?: QueryOpts<Siting>) {
   )
 }
 
+/**
+ * Anchor ages as of the moment on screen. Measured from the end of the data,
+ * a June cursor printed "anchored 11 d" for a calibration done Aug 18.
+ */
 export function useCalibration(opts?: QueryOpts<Calibration>) {
-  return useApiQuery(qk.coverageAnalysis.calibration, api.getCalibration, STALE.coverageAnalysis, opts)
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const at = timeParam(time)
+  return useApiQuery(
+    qk.coverageAnalysis.calibration(at),
+    (signal) => api.getCalibration(at, signal),
+    STALE.coverageAnalysis,
+    timed(ready, {}, opts),
+  )
 }
 
 // ═════════════════════════════════════════════════════════ mission brief
 
+/** The hour the brief is issued (`brief.ISSUE_HOUR` on the server). */
+const BRIEF_ISSUE_HOUR = 7
+
 /**
- * **The fleet lead's 07:00 read.** Keyed on the demo cursor's DATE, not its
- * instant — a playing cursor ticks every second, and the brief only changes
- * when the day does. Moving the cursor back a day re-issues the forecast, so
- * the five-day strip visibly redraws: the plan changed because the wind did.
+ * The day whose brief was the latest one out at `t`: its own date from 07:00,
+ * the day before until then. Paused at Aug 12 03:00, the date alone opened
+ * "Issued 2026-08-12 07:00" — a brief four hours in the future — and planned
+ * the day from it.
+ */
+function briefDay(t: CampaignTime): string {
+  const day = t.slice(0, 10)
+  const hour = Number(t.slice(11, 13))
+  return hour < BRIEF_ISSUE_HOUR ? addHours(`${day}T00:00:00`, -24).slice(0, 10) : day
+}
+
+/**
+ * **The fleet lead's 07:00 read.** Keyed on the brief's DAY, not the cursor's
+ * instant — a playing cursor ticks four times a second, and the brief only
+ * changes when a new one is issued. Moving the cursor back a day re-issues the
+ * forecast, so the five-day strip visibly redraws: the plan changed because
+ * the wind did.
  */
 export function useMissionBrief(
   siteId?: string | null,
   opts?: QueryOpts<MissionBrief>,
 ): UseQueryResult<MissionBrief, Error> {
   const cursor = useSession((s) => s.time.cursor)
-  const date = cursor ? cursor.slice(0, 10) : null
+  const end = useSession((s) => s.time.bounds?.end ?? null)
+  // At the end of the data the day is the end's own brief day — one key for
+  // "Aug 28" whether you stepped onto it or paused there — and the request
+  // sends no date, so the server picks its default day, unless the data ends
+  // before that day's 07:00 issue. Waits for the bounds, so the first render
+  // does not fetch once under null and again under the date.
+  const at = cursor ?? end
+  const date = at ? briefDay(at) : null
+  const send = date !== null && (cursor !== null || date !== end?.slice(0, 10))
   return useApiQuery(
     qk.brief.of(date, siteId ?? null),
     (signal) => api.getMissionBrief({
-      ...(date ? { date } : {}), ...(siteId ? { site_id: siteId } : {}),
+      ...(send && date ? { date } : {}), ...(siteId ? { site_id: siteId } : {}),
     }, signal),
     STALE.brief,
-    opts,
+    { enabled: date !== null, ...opts },
   )
 }
 
@@ -929,18 +1075,26 @@ export function useCoverage(
 
 // ═════════════════════════════════════════════════════════════════════ stats
 
-/** Headline risk scores, trend, worst/best streets. Community-facing. */
+/**
+ * Headline risk scores, trend, worst/best streets. Community-facing. The
+ * report counts ("N reports from neighbours this week") are as of `at`, which
+ * defaults to the clock — measured from the wall clock they read 0.
+ */
 export function useCommunityStats(
-  params: { window?: StatWindow } = {},
+  params: api.CommunityStatsParams = {},
   opts?: QueryOpts<CommunityStats>,
 ): UseQueryResult<CommunityStats, Error> {
   const statWindow = useSession((s) => s.statWindow)
-  const merged = { window: params.window ?? statWindow }
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const merged: api.CommunityStatsParams = {
+    ...params, window: params.window ?? statWindow, at: atFor(params, time),
+  }
   return useApiQuery(
     qk.stats.community(merged),
     (signal) => api.getCommunityStats(merged, signal),
     STALE.stats,
-    opts,
+    timed(ready, {}, opts),
   )
 }
 

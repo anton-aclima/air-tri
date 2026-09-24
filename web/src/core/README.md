@@ -14,6 +14,8 @@ core/
   queries.ts    TanStack Query hooks + query keys + mutations
   live.ts       SSE subscription → cache invalidation + toasts + live pulse
   session.ts    zustand UI state (role, persona, selection, map view, TIME CURSOR)
+  clock.ts      naive campaign time: build, parse, compare, add hours
+  events.ts     what had happened by the moment on screen: hasStarted, isOngoing…
   measures.ts   MeasureDef → formatted value, risk, ramp colour, band label
   format.ts     dates, relative times, distances, bearings, numbers
   roles.ts      role metadata: label, org, narrative, accent, nav, landing route
@@ -34,6 +36,7 @@ Import with the `@/` alias: `import { useAlerts } from '@/core/queries'`.
 | Two ramps, never mixed | `rampVar('aqi'…)` for health, `rampVar('map'…)` for magnitude |
 | All numerals mono + tabular | the global `.num` class (in `design/base.css`), or `<Stat>` |
 | `SIMULATED DATA` always visible | the shell mounts `<SimulatedBadge />` in every skin |
+| One clock: naive campaign time, and "now" is the demo's, never the wall's | `core/clock`, `useNowCampaign()` — see §5, "The clock" |
 
 ---
 
@@ -96,17 +99,18 @@ useSelectedSegment()            // whatever is selected in the session
 useMonitors({ owner_type?, grade?, site_id? })   useMonitor(id)
 useMonitorReadings(id, { measure?, from?, to?, interval? })   // defaults to the time cursor
 
-useConcerns({ status?, kind?, since?, near?, cluster_id?, limit? })
-useConcern(id)                  useConcernClusters()  // alias: useClusters()
+useConcerns({ status?, kind?, since?, near?, cluster_id?, limit?, at? })
+useConcern(id)                  useConcernClusters({ campaign_id?, at? })  // alias: useClusters()
 
 useSites()  useSite(id)  usePosts({ site_id?, kind? })  useAdvisories({ audience? })
 
-useAlerts({ role?, status?, severity?, kind?, site_id? })
+useAlerts({ role?, status?, severity?, kind?, site_id?, at? })
     // role defaults to the active persona. Pass site_id to get bearing_deg +
-    // distance_m — that is the RWR geometry.
+    // distance_m. "Live" is isOngoing(alert, now) from core/events (or the
+    // server's `ongoing`), never status === 'active'.
 useAlert(id, siteId?)           useActionLevels()
 
-useFeed({ role?, since?, limit? })      // merged social feed
+useFeed({ role?, since?, limit?, at? })  // merged social feed
 
 useFleet({ at?, delay_min? })   // at ← time cursor; delay_min ← role (community ≥180)
 useVehicles()  useDrivePlan()  useDrivePlanCoverage(planId)
@@ -121,8 +125,14 @@ useTouchdown(siteId, { measure?, from?, to?, regime? })  // MEASURED plume. Verd
                                                         // per-feature state is EVIDENCE, never a finding
 useCoverage(campaignId?, cellM?)                         // where a car has actually been. cell_m is a SIDE
 
-useCommunityStats({ window? })  useCampaignStats()  useActivity({ since?, limit? })
+useCommunityStats({ window?, at? })  useCampaignStats()  useActivity({ since?, limit? })
 ```
+
+The five event lists — concerns, clusters, alerts, feed, community stats — send
+`at: timeParam(time)` by default, and the server cuts at it **before** its LIMIT.
+Include the key yourself to override: `{ at: undefined }` is the whole record up to
+the end of the data (the timeline's event ticks). They, and the series hooks, keep
+the previous data on screen while the next step loads (`TIMED`).
 
 ### Mutations
 
@@ -174,9 +184,13 @@ useLiveStatus()   // 'idle' | 'connecting' | 'open' | 'retrying' | 'offline'
 useLivePulse()    // { pulse, at, role } — bump a CSS animation off `pulse`
 useLiveEvents()   // last 80 LiveEvents, newest first (admin oversight ticker)
 useLiveToasts()   // the toast queue (the shell renders it)
-useLiveUnseen()   // unseen counter; useLive.getState().markSeen()
+useLiveUnseen()   // deprecated: nothing marks events seen, so it only grows
 useLive           // the raw store: .toast({...}), .dismiss(id), .clearToasts()
 ```
+
+An event's `at` is naive campaign time. Writes are stamped at the server's frozen now
+(the end of the data), and an event that arrives without a stamp gets the same
+instant, so a toast reads "just now" whichever moment is on screen.
 
 Also exported: `parseLiveEvent`, `invalidationsFor`, `hrefFor`, `handleLiveEvent`,
 `emitLocal(qc, role, {...})` (synthesise an event locally — handy for optimistic
@@ -197,31 +211,59 @@ useMeasureCode()  useMetric()  useStatWindow()  useSiteId()
 
 State: `role` · `personaByRole` · `user` · `siteId` · `selection`
 (`segmentId`/`alertId`/`concernId`/`monitorId`/`siteId`/`clusterId`) · `mapView` ·
-`time` (`cursor`/`playing`/`speed`/`windowHours`) · `measure` · `metric` ·
+`time` (`cursor`/`playing`/`speed`/`windowHours`/`bounds`) · `measure` · `metric` ·
 `statWindow` · `switcherOpen` · `transitioningTo`.
 
 Actions: `setRole` · `setPersona` · `setSite` · `select(patch)` · `clearSelection` ·
 `setMapView` · `flyTo(center, zoom?)` · `resetView` · `setMeasure` · `setMetric` ·
-`setStatWindow` · `setTimeCursor` · `stepTime(hours)` · `goLive` · `setPlaying` ·
+`setStatWindow` · `setTimeCursor` · `stepTime(hours)` · `goToEnd` · `setTimeBounds` · `setPlaying` ·
 `togglePlaying` · `setSpeed` · `setWindowHours` · `setSwitcherOpen` ·
 `toggleSwitcher` · `reset`.
 
-### The time cursor
+### The clock
 
-`time.cursor === null` means **live**. Otherwise it is an ISO timestamp in the past.
+Every timestamp is **naive campaign time**, `YYYY-MM-DDTHH:MM:SS`: no `Z`, no
+offset, America/Chicago digits. `toISOString()` wrote the cursor as UTC and the
+server served an hour seven hours away in a Pacific browser, so never use it for a
+campaign time. Build and read through `core/clock`:
 
 ```ts
-resolveNow(time)   // Date — always defined
-timeParam(time)    // string | undefined — pass straight into ?at=
+toCampaign(date)  parseCampaign(t)  campaignMs(t)  addHours(t, h)  floorTo(t, min)
+```
+
+`time.cursor === null` means **paused at the end of the data** — never live, never
+the wall clock (D1). `time.bounds` is `{ start, end }`: campaign start to the build
+instant, loaded once by the shell. The cursor is clamped into them, and at or past
+the end it becomes `null`.
+
+```ts
+useNowCampaign()   // the demo's now, naive — cursor ?? bounds.end
+useDemoClock()     // the same, as a Date
+nowCampaign(time)  resolveNow(time)   // non-hook forms
+timeParam(time)    // string | undefined — pass into ?at= (undefined = the end)
 timeRange(time)    // { from, to } for the trailing window
 useTimeRange()     // hook form: { from, to, at }
 ```
 
-Time-aware hooks (`useFleet`, `useMonitorReadings`, `useWind`, `useMobileWind`,
-`useWindField`, `useDispersion`) already default to it. Mount the shared scrubber
-anywhere with `<TimeCursor />` from `@/app/TimeCursor`.
+Never `Date.now()` or `new Date()` for "now". Animation timing (`performance.now`,
+rAF) is not "now" and stays on the wall clock.
 
-Persisted to `localStorage` under `air.session.v1`.
+**Events follow the clock** (`core/events`): `hasStarted(e, now)`, `isOngoing(e,
+now)` (the definition of "live"), `isOpenCase`, `isRecent`, `happenedBy(list,
+now)`. Anything that had not begun by `now` does not render.
+
+Time-aware hooks (`useFleet`, `useMonitorReadings`, `useWind`, `useMobileWind`,
+`useWindField`, `useDispersion`, `useMonitors`/`useMonitor`, `useAlert`,
+`useCalibration`, and the five event lists above) already default to the clock.
+Every one of them waits for `time.bounds` whatever `enabled` the caller passes:
+before the bootstrap lands `nowCampaign` has only the wall clock to offer, and a
+fresh /industry load fired `/wind?to=2026-09-23T19:00` on a campaign ending Aug 28,
+whose empty answer then sat on screen as the placeholder for the real one. The
+report window on every map (`useWindowedReports`, from `@/components`) ends at the
+same instant the rows' ages are measured from.
+
+Persisted to `localStorage` under `air.session.v1` — but never the cursor: a reload
+always opens at the end of the data.
 
 Other helpers: `DEFAULT_VIEW`, `EMPTY_SELECTION`, `PLAYBACK_SPEEDS`,
 `fleetDelayFor(role, configured?)`, `landingFor(role)`.
@@ -287,8 +329,10 @@ compassPoint  compassWords  fmtBearing  fmtDegrees  fmtWind  fmtWindWords
 distanceBetween(a, b)  bearingBetween(a, b)  fmtLatLon
 ```
 
-`relativeTime(iso, now)` takes the session's "now" — pass `resolveNow(time)` when the
-UI is scrubbed into the past so labels stay honest.
+`relativeTime(t, now)`, `relativeShort(t, now)` and `fmtElapsed(since, until)` **require**
+their `now`: pass `useNowCampaign()`. A time after `now` is never printed as "in 2 d"
+or as a past duration. Every date formatter reads strings as naive campaign time, so a
+date-only `2026-05-31` is local midnight, not the UTC midnight `new Date()` gives.
 
 ---
 

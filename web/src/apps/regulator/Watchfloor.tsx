@@ -25,18 +25,18 @@ import { severityRank, severityVar } from '@/core/measures'
 import {
   useActionLevels, useAlerts, useCampaignStats, useFleet, useMonitors, useSites,
 } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { Alert, MeasureCode, Monitor, Severity } from '@/core/types'
 
 import {
   Caps, KIND_CODE, Panel, Readout, Sev, Tag, Unit, Wire, fmtRatio, liveAlerts, levelUnit,
-  overBy, shortWhere, sortLevels, sourceTag, SOURCE_TAG_LABEL, styles as s, tinyCode,
-  towerMeasures, towersFor, useMeasureMap, useNowTick, useReach, useTowers,
+  overBy, shortWhere, sortLevels, sourceTag, SOURCE_TAG_LABEL, styles as s, timelineRow,
+  towerMeasures, towersFor, useMeasureMap, useReach, useTowers,
 } from './lib'
 
 export function Watchfloor() {
   const navigate = useNavigate()
-  const now = useNowTick()
+  const now = useNowCampaign()
   const setMeasure = useSession((x) => x.setMeasure)
 
   const towersQ = useTowers()
@@ -49,7 +49,8 @@ export function Watchfloor() {
   const sites = useSites().data ?? []
   const measures = useMeasureMap()
 
-  const live = useMemo(() => liveAlerts(alertsQ.data), [alertsQ.data])
+  // Live at the demo's now — begun and not ended — whatever the status says.
+  const live = useMemo(() => liveAlerts(alertsQ.data, now), [alertsQ.data, now])
   const towerIds = useMemo(() => new Set(towers.map((m) => m.id)), [towers])
   const canSee = useMemo(() => towerMeasures(towers), [towers])
 
@@ -120,16 +121,8 @@ export function Watchfloor() {
       [...live]
         .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
         .slice(0, 14)
-        .map((a) => ({
-          id: a.id,
-          label: `${a.measure ? a.measure.toUpperCase() : 'CLUSTER'} · ${shortWhere(a)}`,
-          code: tinyCode(a),
-          severity: a.severity,
-          startedAt: a.started_at,
-          endedAt: a.ended_at,
-          acknowledged: a.status === 'acknowledged',
-        })),
-    [live],
+        .map((a) => timelineRow(a, now, `${a.measure ? a.measure.toUpperCase() : 'CLUSTER'} · ${shortWhere(a)}`)),
+    [live, now],
   )
 
   return (
@@ -176,12 +169,15 @@ export function Watchfloor() {
           <Readout label="Warn / Watch" value={`${counts.warning + counts.critical} / ${counts.watch}`} tone={over ? 'over' : undefined} />
           <Readout label="Towers up" value={`${online}/${towers.length}`} tone={online === towers.length ? 'tower' : 'over'} />
           <Readout label="Cars rolling" value={`${driving}/${fleet.length}`} tone="fleet" />
+          {/* The whole campaign's distance: `/stats/campaign` takes no `at`, so
+              at Aug 12 this read the 8.6k km driven through Aug 28. Named as the
+              campaign's, not as measured by the moment on screen. */}
           <Readout
-            label="Street-km measured"
+            label="Street-km · campaign"
             value={fmtNum((stats?.km_driven ?? 0) / 1000, 1)}
             unit="k km"
             tone="fleet"
-            title="Cumulative distance our fleet has driven inside the campaign."
+            title="Total distance our fleet drove inside the campaign, first day to last, whatever moment the clock shows."
           />
         </div>
       </div>

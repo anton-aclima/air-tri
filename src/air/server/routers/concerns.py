@@ -3,6 +3,11 @@
 POST /concerns runs cluster detection inline: >=3 concerns within 600 m and 24 h
 form a `concern_cluster`, which emits an alert addressed to industry + regulator
 at the cluster centroid with `site_id` set to the nearest industry site.
+
+Both reads take `at` (replay rewinds events, docs/PLAN-refocus.md D2) and apply
+it in SQL before the LIMIT; no `at` is the end of the data (`domain.as_of`).
+Writes are stamped `timeutil.now_iso()`, the same frozen instant, so a report
+filed live sits at the end of the data and reads "just now" on every screen.
 """
 
 from __future__ import annotations
@@ -36,13 +41,14 @@ def list_concerns(
     since: str | None = None,
     near: str | None = Query(None, description="lon,lat,radius_m"),
     cluster_id: str | None = None,
+    at: str | None = None,
     limit: int = 500,
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
     cid = resolve_campaign(conn, campaign_id)
     return loaders.load_concerns(
-        conn, cid, status=status, kind=kind, since=since,
+        conn, cid, status=status, kind=kind, since=since, until=domain.as_of(conn, cid, at),
         cluster_id=cluster_id, near=_parse_near(near), limit=limit,
     )
 
@@ -59,17 +65,61 @@ def get_concern(concern_id: str, conn: sqlite3.Connection = Depends(get_db)) -> 
 @router.get("/clusters")
 def list_clusters(
     status: str | None = None,
+    at: str | None = None,
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """Clusters as they stood at `at`.
+
+    The row is the cluster's FINAL shape: its count includes reports filed
+    after `at`, and `first_at`/`last_at` are when things were noticed
+    (`occurred_at`), which runs hours ahead of posting (cl-01: first noticed
+    05:43, first posted 07:38). So `first_at <= at` is only the SQL prefilter.
+    A cluster with members posted after `at` is recounted without them and
+    dropped below CLUSTER_MIN_COUNT — it had not formed yet — with its times
+    and kinds rebuilt from the members posted by then (`loaders.cluster_as_of`,
+    the rule every report's `cluster_id` is served by too). That is the rule
+    `clusterAsOf` in web/src/apps/community/lib.ts applies to the rows it is
+    given, so a bounded row passes through it unchanged. `status` is the final
+    one; that cannot be rebuilt (only it is stored).
+
+    `last_posted_at` is when the last counted member was posted — the moment
+    this row is whole on every list bounded by `at`, and the one to send the
+    clock to. `last_at` is not: at cl-00's `last_at` (Jun 5 04:56) two of its
+    nine reports were posted and this endpoint returned nothing.
+    """
     cid = resolve_campaign(conn, campaign_id)
-    sql = ["SELECT * FROM concern_cluster WHERE campaign_id = ?"]
-    params: list[Any] = [cid]
+    now = domain.as_of(conn, cid, at)
+    sql = ["SELECT * FROM concern_cluster WHERE campaign_id = ? AND first_at <= ?"]
+    params: list[Any] = [cid, now]
     if status:
         sql.append("AND status = ?")
         params.append(status)
     sql.append("ORDER BY last_at DESC")
-    return [shapes.concern_cluster(r) for r in rows(conn, " ".join(sql), params)]
+    found = rows(conn, " ".join(sql), params)
+    if not found:
+        return []
+
+    members = loaders.cluster_members(conn, [r["id"] for r in found])
+    out = []
+    for r in found:
+        mine = members.get(r["id"], [])
+        stood = loaders.cluster_as_of(r["count"], mine, now)
+        if stood is None:
+            continue  # had not formed yet
+        count, posted = stood
+        c = shapes.concern_cluster(r, max((m["created_at"] for m in posted), default=None))
+        if len(posted) < len(mine):
+            noticed = sorted(m["occurred_at"] for m in posted)
+            c.update(count=count, last_at=noticed[-1])
+            # Only with every member on file can the first report and the kinds
+            # be rebuilt; otherwise the row's stand (as clusterAsOf does).
+            if len(posted) == count:
+                c.update(first_at=noticed[0], kinds=sorted({m["kind"] for m in posted}))
+        out.append(c)
+    # A rebuilt last_at can move a cluster; stay newest-last first.
+    out.sort(key=lambda c: c["last_at"] or "", reverse=True)
+    return out
 
 
 # ── writes ────────────────────────────────────────────────────────────────────
@@ -78,7 +128,10 @@ def list_clusters(
 def create_concern(payload: ConcernIn, conn: sqlite3.Connection = Depends(get_db)) -> dict[str, Any]:
     cid = resolve_campaign(conn, payload.campaign_id)
     now = timeutil.now_iso()
-    occurred = payload.occurred_at or now
+    # Naive, and not after now: a report cannot have occurred in the demo's
+    # future (D1), and a raw client string with a `Z` would break the string
+    # comparisons that the time bounds and the cluster window rely on.
+    occurred = domain.as_of(conn, cid, payload.occurred_at)
     concern_id = domain.new_id("cn")
 
     author_id = payload.author_id

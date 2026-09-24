@@ -9,12 +9,13 @@
  * believe they have authority they do not have.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Button, Field, Input, Select, Textarea, Tooltip } from '@/app/ui'
+import { hasStarted, happenedBy, isOpenCase } from '@/core/events'
 import { fmtDateTime, relativeShort } from '@/core/format'
 import { useConcerns, useCreateMitigation, useCreatePost, usePosts } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { SitePost } from '@/core/types'
 
 import { Caps, Panel, Tag, styles as s, useSiteLock } from './lib'
@@ -24,8 +25,21 @@ type PostKind = SitePost['kind']
 export function Outreach() {
   const site = useSiteLock()
   const user = useSession((x) => x.user)
+  const now = useNowCampaign()
   const postsQ = usePosts({ site_id: site?.id }, { enabled: !!site })
+  // Cut at the moment shown by the server (`at`, before its LIMIT), so these
+  // are that moment's newest 12, not the end of the data's.
   const concernsQ = useConcerns({ limit: 12 })
+  // Only what had happened by the moment shown (D2). `/posts` has no `at`, so
+  // this cut is the only one; `isOpenCase` below repeats the server's for the
+  // frames where the previous moment's list is still on screen. A post
+  // published here is stamped with the server's now, the end of the data, so
+  // it shows once the clock is back at the end.
+  const posts = useMemo(() => happenedBy(postsQ.data, now), [postsQ.data, now])
+  const openConcerns = useMemo(
+    () => (concernsQ.data ?? []).filter((c) => isOpenCase(c, now)),
+    [concernsQ.data, now],
+  )
   const createPost = useCreatePost()
   const mitigate = useCreateMitigation()
 
@@ -55,8 +69,6 @@ export function Outreach() {
     )
   }
 
-  const openConcerns = (concernsQ.data ?? []).filter((c) => c.status !== 'resolved' && c.status !== 'closed')
-
   return (
     <div className={`${s.page} ${s.outreachPage}`}>
       <div className={s.outreachBody}>
@@ -73,7 +85,9 @@ export function Outreach() {
               <div className={s.bannerLine}>
                 <span className={s.brandName}>{site.name}</span>
                 <span className={s.bannerSub}>
-                  {site.claimed_by_user_id ? `Claimed ${relativeShort(site.claimed_at)} ago` : 'Unclaimed'}
+                  {site.claimed_by_user_id && site.claimed_at && hasStarted({ created_at: site.claimed_at }, now)
+                    ? `Claimed ${relativeShort(site.claimed_at, now)} ago`
+                    : 'Unclaimed'}
                   {' · '}{site.kind} · {site.status}
                 </span>
               </div>
@@ -164,7 +178,7 @@ export function Outreach() {
                   <div>
                     <div className={s.triSrc}>{c.title}</div>
                     <div className={s.triNote}>
-                      {c.kind} · {c.district ?? 'nearby'} · {relativeShort(c.occurred_at)}
+                      {c.kind} · {c.district ?? 'nearby'} · {relativeShort(c.occurred_at, now)}
                       {c.corroborations ? ` · +${c.corroborations}` : ''}
                     </div>
                   </div>
@@ -179,9 +193,9 @@ export function Outreach() {
             </div>
           </Panel>
 
-          <Panel title="Your posts" className={s.stackGrow} aside={<Caps>{(postsQ.data ?? []).length} published</Caps>}>
-            {(postsQ.data ?? []).length ? (
-              (postsQ.data ?? []).map((p) => (
+          <Panel title="Your posts" className={s.stackGrow} aside={<Caps>{posts.length} published</Caps>}>
+            {posts.length ? (
+              posts.map((p) => (
                 <article key={p.id} className={s.post}>
                   <div className={s.postHead}>
                     <span>{p.media_emoji ?? p.logo_emoji ?? '▲'}</span>

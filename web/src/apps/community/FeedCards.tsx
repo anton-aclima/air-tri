@@ -18,17 +18,21 @@ import {
   SectionLabel,
 } from '@/apps/community/parts'
 import {
+  inForce,
   kindEmoji,
   kindLabel,
   monitorVoice,
   nearWords,
   severityWord,
   statusPlain,
+  useGroupFormed,
   useMe,
   type Voice,
 } from '@/apps/community/lib'
 import { Badge, Button, Chip } from '@/app/ui'
-import { countOf, relativeTime } from '@/core/format'
+import type { CampaignTime } from '@/core/clock'
+import { happenedBy, hasStarted } from '@/core/events'
+import { countOf, fmtDateTime, relativeTime } from '@/core/format'
 import { plainName, riskFromValue, SEVERITY_PLAIN } from '@/core/measures'
 import { useCorroborate, useMeasure, useOrgs } from '@/core/queries'
 import type {
@@ -62,18 +66,23 @@ export function ConcernCard({
   compact,
 }: {
   concern: Concern
-  now: Date
+  now: CampaignTime
   distanceM?: number | null
   compact?: boolean
 }) {
   const me = useMe()
   const corroborate = useCorroborate()
   const status = statusPlain(concern.status)
-  const claim = [...concern.responses].reverse().find((r) => r.role === 'industry')
-  const agency = [...concern.responses].reverse().find((r) => r.role === 'regulator')
+  // Only what had been said by `now`: in replay a reply posted later is the
+  // future, and it would otherwise headline a report filed minutes earlier.
+  const said = happenedBy(concern.responses, now).reverse()
+  const claim = said.find((r) => r.role === 'industry')
+  const agency = said.find((r) => r.role === 'regulator')
   const who = concern.is_anonymous ? 'A neighbour' : (concern.author?.name ?? 'A neighbour')
   const where = concern.author?.neighborhood ?? concern.district
   const near = distanceM == null ? null : nearWords(distanceM)
+  // Only once the group had formed: `cluster_id` is the final grouping.
+  const grouped = useGroupFormed(concern.cluster_id)
 
   return (
     <Post voice="neighbour">
@@ -143,7 +152,7 @@ export function ConcernCard({
         <Link to={`/community/c/${concern.id}`} style={{ fontSize: 'var(--text-sm)' }}>
           Open the thread
         </Link>
-        {concern.cluster_id ? (
+        {grouped ? (
           <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
             Part of a group of nearby reports
           </span>
@@ -155,7 +164,7 @@ export function ConcernCard({
 
 // ═══════════════════════════════════════════════════════════ agency notices
 
-export function AdvisoryCard({ advisory, now }: { advisory: Advisory; now: Date }) {
+export function AdvisoryCard({ advisory, now }: { advisory: Advisory; now: CampaignTime }) {
   const orgs = useOrgs()
   const org = orgOf(orgs, advisory.org_id)
   const def = useMeasure(advisory.measure)
@@ -185,9 +194,14 @@ export function AdvisoryCard({ advisory, now }: { advisory: Advisory; now: Date 
         <Link to="/community/status" style={{ fontSize: 'var(--text-sm)' }}>
           See what the agency measures
         </Link>
+        {/* A date, not an age: `relativeTime` refuses the future, so "until
+            {relativeTime(expires_at)}" read "until just now" on every notice
+            still in force. An expired one says when it ended. */}
         {advisory.expires_at ? (
           <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
-            In force until {relativeTime(advisory.expires_at, now)}
+            {inForce(advisory, now)
+              ? `In force until ${fmtDateTime(advisory.expires_at)}`
+              : `Ended ${relativeTime(advisory.expires_at, now)}`}
           </span>
         ) : null}
       </div>
@@ -205,7 +219,7 @@ const POST_KIND_WORD: Record<SitePost['kind'], string> = {
   intro: 'Introducing themselves',
 }
 
-export function SitePostCard({ post, now }: { post: SitePost; now: Date }) {
+export function SitePostCard({ post, now }: { post: SitePost; now: CampaignTime }) {
   return (
     <Post voice="company">
       <Byline
@@ -261,16 +275,22 @@ export function MitigationCard({
 }: {
   mitigation: Mitigation
   site: IndustrySite | null
-  now: Date
+  now: CampaignTime
 }) {
-  const state =
-    mitigation.status === 'completed'
-      ? 'says it has finished'
-      : mitigation.status === 'in_progress'
-        ? 'says it is working on'
-        : mitigation.status === 'withdrawn'
-          ? 'has withdrawn'
-          : 'has proposed'
+  // `status` is the row's FINAL status. At Aug 12 mt-003 read "completed",
+  // yet its completed_at is Aug 18 — "has finished" six days before it did.
+  // Finished only once `completed_at` is on or before the demo's now; until
+  // then it was still being worked on. A null `completed_at` (the server
+  // blanks one that is after `at`) counts as not yet.
+  const done =
+    mitigation.status === 'completed' && hasStarted({ started_at: mitigation.completed_at }, now)
+  const state = done
+    ? 'says it has finished'
+    : mitigation.status === 'completed' || mitigation.status === 'in_progress'
+      ? 'says it is working on'
+      : mitigation.status === 'withdrawn'
+        ? 'has withdrawn'
+        : 'has proposed'
   return (
     <Post voice="company">
       <Byline
@@ -317,7 +337,7 @@ export function ReadingCard({
   value: number
   exceeds: boolean
   at: string
-  now: Date
+  now: CampaignTime
 }) {
   const orgs = useOrgs()
   const def = useMeasure(measure)
@@ -373,8 +393,20 @@ export function ReadingCard({
   )
 }
 
+/**
+ * How many passes, said for the moment it is true of. `passes_total` is the
+ * whole campaign: at Aug 12 12:00 it read "56,673 separate passes so far"
+ * when 44,667 had been driven. `passes_to_date` is counted up to the clock;
+ * without it the total is named as the whole campaign's, not "so far".
+ */
+function passesWords(stats: CommunityStats): string {
+  return stats.passes_to_date != null
+    ? `${stats.passes_to_date.toLocaleString()} separate passes so far`
+    : `${stats.passes_total.toLocaleString()} separate passes over the whole campaign`
+}
+
 /** Us. What the cars have been doing on these streets. */
-export function AclimaCard({ stats, now }: { stats: CommunityStats | undefined; now: Date }) {
+export function AclimaCard({ stats, now }: { stats: CommunityStats | undefined; now: CampaignTime }) {
   void now
   const worst = stats?.worst_streets?.slice(0, 3) ?? []
   return (
@@ -389,7 +421,7 @@ export function AclimaCard({ stats, now }: { stats: CommunityStats | undefined; 
       <h3 className={s.postTitle}>We measured your block, not just the city</h3>
       <p className={s.postBody}>
         {stats
-          ? `${Math.round(stats.monitored_km)} kilometres of your streets, driven again and again — ${stats.passes_total.toLocaleString()} separate passes so far. That is how a single street can get its own score instead of sharing one with the whole county.`
+          ? `${Math.round(stats.monitored_km)} kilometres of your streets, driven again and again — ${passesWords(stats)}. That is how a single street can get its own score instead of sharing one with the whole county.`
           : 'Our cars drive every street in the neighbourhood repeatedly, so a single street gets its own score instead of sharing one with the whole county.'}
       </p>
       {worst.length ? (
@@ -414,7 +446,7 @@ export function AclimaCard({ stats, now }: { stats: CommunityStats | undefined; 
 
 // ══════════════════════════════════════════════════════════════ small parts
 
-export function ResponseLine({ response, now }: { response: ConcernResponse; now: Date }) {
+export function ResponseLine({ response, now }: { response: ConcernResponse; now: CampaignTime }) {
   const voice: Voice =
     response.role === 'industry' ? 'company' : response.role === 'regulator' ? 'agency' : 'neighbour'
   return (

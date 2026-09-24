@@ -80,22 +80,10 @@ def test_community_fleet_is_delayed(client, api, json_ok) -> None:
     assert all(v["delay_min"] == 0 for v in live)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN DEFECT, found by this test 2026-09-10. Non-negotiable #5 is applied to the "
-        "LABEL but not to the data. fleet.py:39 subtracts the delay from `domain.data_now`, "
-        "and `data_now` returns max(latest_row, wall_clock) (domain.py:117-119). Once the "
-        "clock runs past the end of the generated data — which it does from the day after "
-        "the build — the community cutoff lands days AFTER the newest ping, so both roles "
-        "get the identical freshest position while the payload still says delay_min=180. "
-        "Measured: data_now 2026-09-10T21:13Z, community cutoff 2026-09-10T18:13Z, newest "
-        "ping 2026-08-28T18:06 — 13 days of slack. Same root cause as P0-B. The fix is to "
-        "anchor the delay to the newest ping rather than to data_now; it is a behaviour "
-        "change to a contract rule, so it is the owner's call, not a drive-by. Remove this "
-        "marker when it lands — strict=True means a fix reports as a failure here."
-    ),
-)
+# Was a strict xfail (found 2026-09-10): the delay was subtracted from a "now"
+# that ran with the wall clock, so both roles got the freshest ping. Fixed by
+# the one clock (docs/PLAN-refocus.md D1/F1): the server's now is the build
+# instant, frozen, and the community cutoff lands three hours before it.
 def test_community_fleet_positions_are_actually_stale(client, api, json_ok) -> None:
     """#5 is about what the community can SEE, not what the payload claims."""
     live = json_ok(client.get(f"{api}/fleet", params={"role": "regulator"}))
@@ -104,6 +92,29 @@ def test_community_fleet_positions_are_actually_stale(client, api, json_ok) -> N
     assert max(v["ts"] for v in delayed) < max(v["ts"] for v in live), (
         "community saw a position as fresh as the regulator's"
     )
+
+
+def test_community_fleet_cannot_be_asked_for_the_future(client, api, json_ok) -> None:
+    """`at` goes through `domain.as_of` like every clock-keyed read. It used to
+    be taken raw: `at=garbage` compared `p.ts <= 'garbage'`, true for every
+    ping, and a moment past the end was not clamped, so the community got AC-05
+    at 18:06 — four hours NEWER than the regulator's view at the build instant —
+    under a payload still saying delay_min=180."""
+    from air.server import config, timeutil
+
+    now = timeutil.now_iso()
+    cutoff = timeutil.shift(now, minutes=-config.COMMUNITY_FLEET_DELAY_MIN)
+    default = json_ok(client.get(f"{api}/fleet", params={"role": "community"}))
+    for at in ("2099-01-01T00:00:00", timeutil.shift(now, hours=10)):
+        future = json_ok(client.get(f"{api}/fleet", params={"role": "community", "at": at}))
+        assert future, "no vehicles to check"
+        assert all(v["ts"] <= cutoff for v in future), (
+            f"at={at}: a community position less than "
+            f"{config.COMMUNITY_FLEET_DELAY_MIN} min behind the end ({now})"
+        )
+        assert future == default, "past the end is the end"
+    r = client.get(f"{api}/fleet", params={"role": "community", "at": "garbage"})
+    assert r.status_code == 422 and "json" in r.headers.get("content-type", "")
 
 
 def test_community_cannot_ask_for_a_shorter_delay(client, api, json_ok) -> None:

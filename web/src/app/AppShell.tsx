@@ -11,7 +11,7 @@
  *   admin      · drafting rail + numeric status bar along the bottom
  */
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
@@ -22,10 +22,11 @@ import { SimulatedBadge } from '@/app/SimulatedBadge'
 import { RoleSwitcher, RoleWipe } from '@/app/RoleSwitcher'
 import { ToastHost } from '@/app/Toasts'
 import { useShellHotkeys } from '@/app/useRoleSwitch'
-import { useTimePlayback } from '@/app/useTimePlayback'
+import { useClockBounds, useTimePlayback } from '@/app/useTimePlayback'
 import { ROLES, activeNav, type NavItem, type RoleMeta } from '@/core/roles'
-import { useSession } from '@/core/session'
-import { startLive, useLive, useLiveStatus } from '@/core/live'
+import { useNowCampaign, useSession } from '@/core/session'
+import { isOngoing } from '@/core/events'
+import { startLive, useLiveStatus } from '@/core/live'
 import {
   useActiveSite,
   useAlerts,
@@ -34,46 +35,31 @@ import {
   useMonitors,
 } from '@/core/queries'
 import { fmtNum, fmtPct } from '@/core/format'
-import type { Role } from '@/core/types'
+import type { Alert, Role } from '@/core/types'
 
 const FALLBACK_CAMPAIGN = 'Southwest Memphis Community Air Monitoring'
 
-// ───────────────────────────────────────────────────────────────── live dot
+// ────────────────────────────────────────────────────────────── the stream
 
-function LivePulse() {
+/**
+ * Says so only when the activity stream is down. It replaced a permanent LIVE
+ * chip: "live" was the wall clock, which the demo no longer follows (at the
+ * end of the data it is paused, D1), and its unseen counter only ever grew
+ * because nothing marked events seen. The SIMULATED DATA chip is the clock
+ * now; the stream earns header room only when it is not doing its job.
+ * `idle` (before the deferred connect, or `?live=0`) and the first
+ * `connecting` attempt are not failures and show nothing.
+ */
+function StreamNotice() {
   const status = useLiveStatus()
-  const pulse = useLive((st) => st.pulse)
-  const pulseRole = useLive((st) => st.pulseRole)
-  const unseen = useLive((st) => st.unseen)
-  const on = status === 'open'
-
+  if (status !== 'retrying' && status !== 'offline') return null
   return (
     <Tooltip
       below
-      title={on ? 'Live' : 'Not receiving events'}
-      content={
-        on
-          ? 'Connected to the activity stream. Anything anyone does in any interface arrives here immediately.'
-          : 'The event stream is not connected. Screens will still load, they just will not update by themselves.'
-      }
+      title="Not receiving events"
+      content="The event stream is not connected. Screens still load; they just will not update by themselves when someone acts in another interface."
     >
-      <span className={clsx(s.live, on ? s.liveOn : s.liveOff)}>
-        <span className={s.liveDot}>
-          {pulse > 0 ? (
-            <span
-              key={pulse}
-              className={s.pulseRing}
-              style={{
-                ['--pulse-color' as string]: pulseRole
-                  ? `var(--actor-${pulseRole})`
-                  : 'var(--accent)',
-              }}
-            />
-          ) : null}
-        </span>
-        {on ? 'Live' : status === 'offline' ? 'No stream' : 'Linking'}
-        {unseen > 0 ? <span className={s.unseen}>{unseen}</span> : null}
-      </span>
+      <span className={s.noStream}>No stream</span>
     </Tooltip>
   )
 }
@@ -147,13 +133,38 @@ function StripItem({
 
 const DASH = '—'
 
+/**
+ * The alerts live at the moment on screen, for the header strip and the rail
+ * badge: one query and one test, so the two cannot disagree with each other or
+ * with the page. Live is `isOngoing` — begun and not yet ended at the demo's
+ * now — whatever the status says. Counting `status: 'active'` put ended alerts
+ * in the header during replay: at Aug 25 13:54 the header said "Active alerts
+ * 2" over a page saying "0 LIVE", and at the end 13 over the page's 6. The
+ * industry deck is one site's, so its count is that site's too (the rail said
+ * 9 over a Contacts list of 2). It is the site the industry pages lock
+ * (`siteId`, written by `useSiteLock`), the same key the timeline's ticks use —
+ * not `useActiveSite`'s fallback, which lands on another company's site until
+ * the lock is written.
+ */
+function useLiveAlerts(): Alert[] | undefined {
+  const role = useSession((st) => st.role)
+  const siteId = useSession((st) => st.siteId)
+  const now = useNowCampaign()
+  const industry = role === 'industry'
+  const alerts = useAlerts(
+    industry ? { site_id: siteId ?? undefined } : {},
+    { enabled: !industry || siteId != null },
+  )
+  return useMemo(() => alerts.data?.filter((a) => isOngoing(a, now)), [alerts.data, now])
+}
+
 function RegulatorStrip() {
   const monitors = useMonitors({ owner_type: 'regulator' })
-  const alerts = useAlerts({ status: 'active' })
+  const live = useLiveAlerts()
   const online = monitors.data?.filter((m) => m.status === 'online').length
   const total = monitors.data?.length
-  const active = alerts.data?.length
-  const critical = alerts.data?.filter((a) => a.severity === 'critical').length ?? 0
+  const active = live?.length
+  const critical = live?.filter((a) => a.severity === 'critical').length ?? 0
   return (
     <div className={s.strip}>
       <StripItem
@@ -162,21 +173,21 @@ function RegulatorStrip() {
         tone={total && online === total ? 'ok' : total ? 'warn' : undefined}
       />
       <StripItem
-        label="Active alerts"
+        label="Live alerts"
         value={active != null ? fmtNum(active, 0) : DASH}
         tone={critical > 0 ? 'threat' : active ? 'warn' : undefined}
       />
-      <StripItem label="Critical" value={alerts.data ? fmtNum(critical, 0) : DASH} tone={critical ? 'threat' : undefined} />
+      <StripItem label="Critical" value={live ? fmtNum(critical, 0) : DASH} tone={critical ? 'threat' : undefined} />
     </div>
   )
 }
 
 function IndustryStrip() {
   const site = useActiveSite()
-  const alerts = useAlerts({ status: 'active', site_id: site?.id })
-  const contacts = alerts.data?.length
-  const critical = alerts.data?.some((a) => a.severity === 'critical')
-  const caution = alerts.data?.some((a) => a.severity === 'warning')
+  const live = useLiveAlerts()
+  const contacts = live?.length
+  const critical = live?.some((a) => a.severity === 'critical')
+  const caution = live?.some((a) => a.severity === 'warning')
   const threat = critical || caution
   return (
     <div className={s.strip}>
@@ -260,8 +271,7 @@ function AdminStatusBar() {
 
 function NavRail({ meta, pathname }: { meta: RoleMeta; pathname: string }) {
   const active = activeNav(meta.role, pathname)
-  const alerts = useAlerts({ status: 'active' })
-  const alertCount = alerts.data?.length ?? 0
+  const alertCount = useLiveAlerts()?.length ?? 0
 
   const badgeFor = (item: NavItem): number | null => {
     if (!alertCount) return null
@@ -341,6 +351,7 @@ export function AppShell({ role, children }: AppShellProps) {
   const offline = bootstrap.isError
 
   useShellHotkeys()
+  useClockBounds()
   useTimePlayback()
 
   // The URL is the source of truth for which skin is on screen.
@@ -431,7 +442,7 @@ export function AppShell({ role, children }: AppShellProps) {
           </Tooltip>
         ) : null}
         <SimulatedBadge control />
-        <LivePulse />
+        <StreamNotice />
         <PersonaChip meta={meta} />
       </header>
 

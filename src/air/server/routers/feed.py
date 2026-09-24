@@ -2,6 +2,10 @@
 
 FeedItem is a discriminated union in types.ts: concern | advisory | post |
 mitigation | reading. Everything is merged and sorted newest-first.
+
+`at` serves the feed as it stood at a moment (replay rewinds events, D2): every
+source is bounded by it in SQL before its LIMIT, and the reading items are the
+latest readings at or before it. Without `at` the moment is the end of the data.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from air.server import loaders
+from air.server import domain, loaders
 from air.server.db import get_db, resolve_campaign
 
 router = APIRouter(tags=["feed"])
@@ -31,29 +35,33 @@ MAX_READINGS_COMMUNITY = 1
 def feed(
     role: str = "community",
     since: str | None = None,
+    at: str | None = None,
     limit: int = 80,
     include_readings: bool = True,
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
     cid = resolve_campaign(conn, campaign_id)
+    now = domain.as_of(conn, cid, at)
     items: list[dict[str, Any]] = []
 
-    for c in loaders.load_concerns(conn, cid, since=since, limit=limit * 2):
+    for c in loaders.load_concerns(conn, cid, since=since, until=now, limit=limit * 2):
         items.append({"type": "concern", "at": c["created_at"], "concern": c})
 
-    for a in loaders.load_advisories(conn, cid, audience=role if role != "admin" else None, limit=limit):
+    for a in loaders.load_advisories(
+        conn, cid, audience=role if role != "admin" else None, until=now, limit=limit
+    ):
         if since and a["created_at"] < since:
             continue
         items.append({"type": "advisory", "at": a["created_at"], "advisory": a})
 
-    for p in loaders.load_posts(conn, cid, limit=limit):
+    for p in loaders.load_posts(conn, cid, until=now, limit=limit):
         if since and p["created_at"] < since:
             continue
         items.append({"type": "post", "at": p["created_at"], "post": p})
 
     sites = {s["id"]: s for s in loaders.load_sites(conn, cid)}
-    for m in loaders.load_mitigations(conn, cid, limit=limit):
+    for m in loaders.load_mitigations(conn, cid, until=now, limit=limit):
         if since and m["created_at"] < since:
             continue
         items.append(
@@ -63,8 +71,11 @@ def feed(
 
     if include_readings:
         thresholds = loaders.spike_thresholds(conn, cid)
-        monitors = {m["id"]: m for m in loaders.load_monitors(conn, cid)}
-        latest = loaders.latest_readings(conn, cid)
+        # As of `now`, and the monitor object with it: its `latest` block rides
+        # in the item, so building it at the end of the data would put August's
+        # reading on a June card.
+        monitors = {m["id"]: m for m in loaders.load_monitors(conn, cid, at=now)}
+        latest = loaders.latest_readings(conn, cid, at=now)
         hot: list[tuple[str, dict, str, float]] = []
         for mid, per_measure in latest.items():
             for measure, v in per_measure.items():

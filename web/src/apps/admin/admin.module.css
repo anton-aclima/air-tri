@@ -144,7 +144,7 @@
   letter-spacing: var(--tracking-caps);
   color: var(--accent-2);
   border: 1px solid var(--line-strong);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   padding: 1px 5px;
   flex: none;
 }
@@ -401,7 +401,7 @@
   text-transform: uppercase;
   padding: 1px 4px;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   color: var(--ink-3);
 }
 .chipOn { color: var(--accent); border-color: var(--accent); }
@@ -409,7 +409,7 @@
 /* ─────────────────────────────────────────────── the ramp / data sheet ──── */
 .rampBar {
   height: 14px;
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   border: 1px solid var(--line-strong);
   position: relative;
 }
@@ -450,7 +450,7 @@
   color: var(--accent-2);
   text-transform: uppercase;
 }
-.measureSwatch { height: 8px; border-radius: 1px; border: 1px solid var(--line); }
+.measureSwatch { height: 8px; border-radius: var(--r-xs); border: 1px solid var(--line); }
 
 /* ─────────────────────────────────────────────── oversight: three lanes ─── */
 .lanes {
@@ -493,8 +493,9 @@
   display: grid;
   gap: 4px;
   padding: var(--s-2) var(--s-3);
+  /* The lane's own head rule carries its actor colour; repeating it as a
+     stripe on every entry was decoration. */
   border: 1px solid var(--line);
-  border-left: 2px solid var(--laneColor, var(--accent));
   border-radius: var(--r-xs);
   background: var(--surface-2);
   position: relative;
@@ -841,10 +842,10 @@
 }
 .callMeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 
-.legendLine { display: inline-block; width: 18px; border-radius: 1px; flex: none; }
+.legendLine { display: inline-block; width: 18px; border-radius: var(--r-xs); flex: none; }
 .legendOutline {
   display: inline-block; width: 18px; height: 9px; flex: none;
-  border: 1px solid var(--ink-2); border-radius: 1px;
+  border: 1px solid var(--ink-2); border-radius: var(--r-xs);
 }
 
 /* assignments */
@@ -859,7 +860,7 @@
 .assignVehicle { font-family: var(--font-mono); color: var(--ink); }
 .assignKm { display: flex; flex-wrap: wrap; gap: var(--s-3); color: var(--ink-2); font-size: var(--text-2xs); }
 .kmBar {
-  display: flex; height: 4px; border-radius: 1px; overflow: hidden;
+  display: flex; height: 4px; border-radius: var(--r-xs); overflow: hidden;
   background: var(--surface-2);
 }
 .kmBar > span { height: 100%; }
@@ -886,7 +887,7 @@
   text-transform: uppercase;
   padding: 1px 5px;
   border: 1px solid var(--line-strong);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   color: var(--ink-2);
 }
 .verdict_local { color: var(--sev-warning); border-color: var(--sev-warning); }
@@ -896,9 +897,9 @@
 .bars { display: grid; gap: 2px; }
 .barRow { display: grid; grid-template-columns: 70px minmax(0, 1fr) 118px; gap: var(--s-2); align-items: center; }
 .barLabel { font-size: var(--text-3xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3); }
-.barTrack { position: relative; height: 10px; background: var(--surface-2); border-radius: 1px; }
+.barTrack { position: relative; height: 10px; background: var(--surface-2); border-radius: var(--r-xs); }
 .barZero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-strong); }
-.barFill { position: absolute; top: 2px; bottom: 2px; border-radius: 1px; }
+.barFill { position: absolute; top: 2px; bottom: 2px; border-radius: var(--r-xs); }
 .barCi {
   position: absolute; top: 50%; height: 0;
   border-top: 1px solid var(--ink);

@@ -11,6 +11,8 @@ import sqlite3
 import uuid
 from typing import Any
 
+from fastapi import HTTPException
+
 from air.server import cache, config, geo, shapes, timeutil
 from air.server.db import one, rows, scalar
 
@@ -98,25 +100,48 @@ def measures(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
 
 
 def data_now(conn: sqlite3.Connection, campaign_id: str) -> str:
-    """The most recent timestamp present in the data.
+    """The demo's "now": the instant the data was built, frozen.
 
-    Demo data is anchored to the campaign end date, which may not be wall-clock
-    'now'; anything that means "latest" resolves against this instead.
+    It is `timeutil.now()` — `setting('datagen.now')` — and NOT the latest
+    timestamp in the data. The data runs past the build instant on purpose:
+    wind is generated to the end of the day and in-progress drives store the
+    pings of their remaining shift. A max() over the tables therefore landed at
+    23:59 and let the community's three-hour fleet delay show the same pings the
+    regulator sees (non-negotiable 5). It also used to fall back to the wall
+    clock whenever that was later, which is how every live window came back
+    empty once the demo was a day old.
+
+    Unconditionally `timeutil.now()`, including on a database with no build
+    stamp: timeutil owns that fallback (the newest reading or pass), so what
+    writes are stamped with and what reads are bounded by is one clock. It was
+    two, and a report filed on such a database was stamped four weeks after
+    the read bound and never listed. `conn` and `campaign_id` stay in the
+    signature for the ~20 callers.
     """
-    key = ("data_now", campaign_id)
-    hit = cache.get(key)
-    if hit is not None:
-        return hit
-    candidates = [
-        scalar(conn, "SELECT MAX(r.ts) FROM monitor_reading r JOIN monitor m ON m.id=r.monitor_id WHERE m.campaign_id=?", (campaign_id,)),
-        scalar(conn, "SELECT MAX(ts) FROM segment_pass WHERE campaign_id=?", (campaign_id,)),
-        scalar(conn, "SELECT MAX(ts) FROM wind WHERE campaign_id=?", (campaign_id,)),
-        scalar(conn, "SELECT end_date || 'T23:59:59Z' FROM campaign WHERE id=?", (campaign_id,)),
-    ]
-    stamps = [c for c in candidates if c]
-    value = max(stamps) if stamps else timeutil.now_iso()
-    live = timeutil.now_iso()
-    return cache.put(key, max(value, live) if value < live else value)
+    return timeutil.now_iso()
+
+
+def as_of(conn: sqlite3.Connection, campaign_id: str, at: str | None) -> str:
+    """The moment an event read is served as of: the client's `at`, or the end.
+
+    Replay rewinds events too (docs/PLAN-refocus.md D2), so `/feed`,
+    `/concerns`, `/clusters`, `/stats/community` and `/alerts` take `at` and
+    apply it as an upper bound IN SQL, before the LIMIT. A browser filter
+    after the LIMIT cannot do it: at Aug 12 all 40 items of the community feed
+    are in the future, so filtering them leaves an empty feed.
+
+    No `at` means the end of the data, which is `data_now` — so the default
+    and an explicit `at=<now>` return the same thing. A `Z` or an offset is
+    dropped rather than converted (`timeutil.parse`), and a moment past the
+    end is the end: time is constrained to the simulation (D1).
+    """
+    end = data_now(conn, campaign_id)
+    if not at:
+        return end
+    dt = timeutil.parse(at)
+    if dt is None:
+        raise HTTPException(422, f"not a campaign time (YYYY-MM-DDTHH:MM:SS, no Z): {at!r}")
+    return min(timeutil.iso(dt), end)
 
 
 # ── risk framing (community: unitless 0-100, no units, no acronyms) ───────────
@@ -177,14 +202,23 @@ def nearest_site(conn: sqlite3.Connection, campaign_id: str, lon: float, lat: fl
 
 
 def current_wind(conn: sqlite3.Connection, campaign_id: str, at: str | None = None) -> dict[str, Any] | None:
-    at = at or data_now(conn, campaign_id)
+    """The wind as of `at`, through `as_of` like every event read: a moment past
+    the end is the end, and a garbage one is a 422. It used to take `at` raw,
+    so `at=garbage` compared `ts <= 'garbage'` (true for every row) and served
+    the 23:00 wind, nine hours past the build — the wind is generated to the
+    end of the day. `12:00` without seconds sorted before `12:00:00` and got
+    the 11:00 row; `as_of` normalises it.
+
+    Before the first row there is no wind yet; the fallback is the FIRST row,
+    the nearest one, not the newest, which would put August's wind on June 1."""
+    at = as_of(conn, campaign_id, at)
     r = one(
         conn,
         "SELECT * FROM wind WHERE campaign_id=? AND ts<=? ORDER BY ts DESC LIMIT 1",
         (campaign_id, at),
     )
     if r is None:
-        r = one(conn, "SELECT * FROM wind WHERE campaign_id=? ORDER BY ts DESC LIMIT 1", (campaign_id,))
+        r = one(conn, "SELECT * FROM wind WHERE campaign_id=? ORDER BY ts LIMIT 1", (campaign_id,))
     return shapes.wind_point(r) if r else None
 
 
@@ -660,6 +694,10 @@ def create_advisory(
 ) -> dict[str, Any]:
     adv_id = new_id("ad")
     now = timeutil.now_iso()
+    # Stored naive like every other stamp, so `expires_at >= now` compares
+    # digits with digits. A client-sent `Z` is dropped, not converted.
+    parsed = timeutil.parse(expires_at)
+    expires_at = timeutil.iso(parsed) if parsed else expires_at
     if org_id is None:
         org_id = scalar(conn, "SELECT id FROM org WHERE kind='agency' ORDER BY id LIMIT 1")
     conn.execute(

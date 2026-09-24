@@ -28,8 +28,9 @@ import { BaseMap, MapOverlay, MapScale, destination } from '@/components'
 import type { Theme } from '@/components'
 import { Segmented } from '@/app/ui'
 import { fmtDayFull, fmtNum, fmtSigned } from '@/core/format'
-import { useCampaignInfo } from '@/core/queries'
-import { useMissionBrief } from '@/core/queries'
+import { campaignMs } from '@/core/clock'
+import { useCampaignInfo, useMissionBrief } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 import type {
   BriefAssignment, BriefDebrief, BriefOutlookDay, BriefStat, BriefStratum, MissionBrief, Position,
 } from '@/core/types'
@@ -64,6 +65,11 @@ export function Brief() {
   const [siteId, setSiteId] = useState<string | null>(null)
   const q = useMissionBrief(siteId)
   const b = q.data
+  // Before the first 07:00 issue (where Start lands, Jun 1 06:00) the server
+  // clamps to the first brief there is, which is still in the future. Say so
+  // rather than show a brief "issued" an hour after the moment on screen.
+  const now = useNowCampaign()
+  const notYet = !!b?.issued_at && campaignMs(b.issued_at) > campaignMs(now)
   const [day, setDay] = useState<0 | 1>(0)
 
   const siteShort = useMemo(() => {
@@ -87,7 +93,9 @@ export function Brief() {
       <TitleBlock
         sheet="brief"
         title={`Mission brief · ${fmtDayFull(`${b.date}T12:00:00`)}`}
-        subtitle={`Issued ${b.issued_at?.slice(0, 16).replace('T', ' ') ?? '—'} · read-only over ${b.plan_id ?? 'no plan'} · a proposal with a debrief, never a dispatch`}
+        subtitle={notYet
+          ? `No brief had been issued yet at this moment — the first is issued ${b.issued_at?.slice(0, 16).replace('T', ' ')}. Showing it for reference.`
+          : `Issued ${b.issued_at?.slice(0, 16).replace('T', ' ') ?? '—'} · read-only over ${b.plan_id ?? 'no plan'} · a proposal with a debrief, never a dispatch`}
         cells={[
           { label: 'target', value: b.site.short, tone: 'accent' },
           { label: 'routes today', value: fmtNum(b.ledger.vehicles, 0) },

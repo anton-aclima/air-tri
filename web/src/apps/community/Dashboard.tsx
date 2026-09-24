@@ -12,13 +12,17 @@ import { adviceFor, trendWords, usePlaces } from '@/apps/community/lib'
 import { FootNote, MeterRow, RiskPill, SimNote } from '@/apps/community/parts'
 import { Skeleton } from '@/app/ui'
 import { RiskDial } from '@/components'
+import { happenedBy } from '@/core/events'
 import { fmtNum } from '@/core/format'
 import { useCommunityStats, useConcerns, useFlags } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 
 export function Dashboard() {
   const places = usePlaces()
   const { data: stats, isLoading } = useCommunityStats()
-  const concerns = useConcerns({ limit: 200 }).data ?? []
+  // Counted up to the demo's now: in replay, "reports from neighbours" is how
+  // many had been posted by the moment on screen, not the campaign's total.
+  const concerns = happenedBy(useConcerns({ limit: 200 }).data, useNowCampaign())
   const flags = useFlags()
 
   return (
@@ -52,9 +56,18 @@ export function Dashboard() {
               <b className="num">{stats ? fmtNum(stats.monitored_km, 0) : '—'}</b>
               <span>kilometres of street measured</span>
             </span>
+            {/* To date when the server counts it (`passes_to_date`, up to the
+                clock); otherwise the campaign's total, said as such — at Aug 12
+                that total held 12,006 passes not yet driven. */}
             <span className={s.riskPill}>
-              <b className="num">{stats ? stats.passes_total.toLocaleString() : '—'}</b>
-              <span>times our cars drove them</span>
+              <b className="num">
+                {stats ? (stats.passes_to_date ?? stats.passes_total).toLocaleString() : '—'}
+              </b>
+              <span>
+                {stats && stats.passes_to_date == null
+                  ? 'times our cars drove them over the whole campaign'
+                  : 'times our cars drove them'}
+              </span>
             </span>
             <span className={s.riskPill}>
               <b className="num">{concerns.length}</b>

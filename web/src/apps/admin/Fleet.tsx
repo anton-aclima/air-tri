@@ -19,11 +19,12 @@ import {
   useCampaignBoundary, useCampaignInfo, useCampaignStats, useFleet, useSegments,
   useVehicles,
 } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 import type { VehicleStatus } from '@/core/types'
 
 import {
   Caps, KV, Readout, Readouts, Sheet, TitleBlock, campaignView, styles as s,
-  useActivePlan, useNowTick, usePlanRoutes,
+  useActivePlan, usePlanRoutes,
 } from './lib'
 
 const STATUS_TONE: Record<VehicleStatus, string> = {
@@ -48,7 +49,9 @@ export function Fleet() {
   const fleet = useFleet({ delay_min: 0 })
   const plan = useActivePlan()
   const planQ = usePlanRoutes(plan?.id)
-  const now = useNowTick(15_000)
+  // "Last fix 4m" is measured from the demo's now, the moment `useFleet` asked
+  // for, so an age never outruns the positions it describes.
+  const now = useNowCampaign()
   const pulse = usePulse(2200)
   const animated = useFleetAnimation(fleet.data ?? [])
 
@@ -93,7 +96,9 @@ export function Fleet() {
         cells={[
           { label: 'out now', value: fmtNum(counts.driving ?? 0, 0), tone: 'accent' },
           { label: 'reporting', value: d ? fmtNum(d.vehicles_active, 0) : '—' },
-          { label: 'km driven', value: d ? fmtCompact(d.km_driven, 0) : '—' },
+          // `/stats/campaign` takes no `at`: this is every km of the campaign,
+          // beside "out now", which follows the clock. Named, not rebuilt.
+          { label: 'km · campaign', value: d ? fmtCompact(d.km_driven, 0) : '—' },
           { label: 'delay', value: '0 min', tone: 'accent' },
         ]}
       />

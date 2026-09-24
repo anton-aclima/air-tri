@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSession } from '@/core/session';
+import { parseCampaign } from '@/core/clock';
+import { useNowCampaign } from '@/core/session';
 import type { FleetPosition, Position } from '@/core/types';
 import { alongPath, lerpPosition } from './geo';
 
@@ -61,27 +62,24 @@ export function usePulse(periodMs = 1400, opts?: { running?: boolean }): number 
   return p <= 0.5 ? p * 2 : 2 - p * 2;
 }
 
-/** `Date.now()` on a coarse interval — for "still up for 4h 12m" readouts. */
 /**
- * "Now" as a ticking epoch — the DEMO's now, not the viewer's.
+ * The DEMO's now as epoch ms — not the viewer's, and not animation time (that
+ * is `performance.now()` inside the loops above, and it is right there).
  *
  * Charts use this for a right-hand edge and for "still running" durations, so
  * it has to agree with the simulation clock. Reading `Date.now()` directly
  * meant pinning the clock moved every query and every age while a timeline's
  * axis stayed anchored to real time — the same event drawn in two different
- * places on one screen.
+ * places on one screen. With the cursor at the end of the data (`null`) this
+ * used to tick the wall clock, a month past the last reading; the end is now
+ * paused (D1), so nothing ticks and `intervalMs` is ignored.
  *
- * A pinned cursor needs no interval; only a live clock ticks.
+ * The ms are on the same axis as `parseCampaign(t).getTime()` and as
+ * `Date.parse` of a naive timestamp — local-time epoch — so they can share a
+ * `scaleTime` with the data.
  */
-export function useNow(intervalMs = 30_000): number {
-  const cursor = useSession((s) => s.time.cursor);
-  const [wall, setWall] = useState(() => Date.now());
-  useEffect(() => {
-    if (cursor) return undefined;
-    const id = setInterval(() => setWall(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs, cursor]);
-  return cursor ? Date.parse(cursor) : wall;
+export function useNow(_intervalMs = 30_000): number {
+  return parseCampaign(useNowCampaign()).getTime();
 }
 
 function easeInOut(t: number) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }

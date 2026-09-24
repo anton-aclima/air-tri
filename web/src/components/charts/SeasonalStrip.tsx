@@ -13,6 +13,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { SeriesPoint } from '@/core/types';
+import { parseCampaign } from '@/core/clock';
 import { fmtDay, fmtNum, isoDate } from '@/core/format';
 import { useTheme } from '../lib/theme';
 import { makeColorScale, robustDomain } from '../lib/scales';
@@ -80,7 +81,9 @@ export function SeasonalStrip(props: SeasonalStripProps) {
   // Only label the first day of a month, and only when it will not collide.
   const monthMarks = monthTicks
     ? points.reduce<{ i: number; label: string }[]>((acc, p, i) => {
-      const d = new Date(p.t);
+      // `parseCampaign`, not `new Date`: a date-only day is UTC midnight to
+      // `new Date`, the evening before in the Americas — every cell a day early.
+      const d = parseCampaign(p.t);
       if (Number.isNaN(d.getTime())) return acc;
       if (d.getDate() <= 1 || i === 0) {
         const label = d.toLocaleDateString('en-US', { month: 'short' });
@@ -224,7 +227,7 @@ export function CalendarHeat(props: CalendarHeatProps) {
 
   const cells = useMemo(() => {
     const rows = points
-      .map((p) => ({ p, d: new Date(p.t) }))
+      .map((p) => ({ p, d: parseCampaign(p.t) }))
       .filter((r) => !Number.isNaN(r.d.getTime()))
       .sort((a, b) => a.d.getTime() - b.d.getTime());
     if (!rows.length) return { items: [], weeks: 0, monthMarks: [] as { week: number; label: string }[] };

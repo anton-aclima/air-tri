@@ -10,11 +10,14 @@
 import { useMemo } from 'react'
 
 import { CONCERN_EMOJI, CONCERN_LABEL } from '@/components'
+import type { CampaignTime } from '@/core/clock'
+import { hasStarted, isOngoing } from '@/core/events'
 import { distanceBetween, fmtDistanceImperial } from '@/core/format'
-import { useSegments, useUsers } from '@/core/queries'
+import { useConcernClusters, useSegments, useUsers } from '@/core/queries'
 import { DEFAULT_VIEW, usePersona } from '@/core/session'
 import type {
-  Concern, ConcernKind, ConcernStatus, Monitor, Position, Role, SegmentCollection, SiteKind, User,
+  Advisory, Concern, ConcernCluster, ConcernKind, ConcernStatus, FeedItem, Monitor, Position, Role,
+  SegmentCollection, SiteKind, User,
 } from '@/core/types'
 
 // ───────────────────────────────────────────────────────────────── identity
@@ -257,6 +260,98 @@ export function nearWords(metres: number | null): string {
 
 export function distanceFromHome(c: Pick<Concern, 'lon' | 'lat'>, home: Position): number {
   return distanceBetween(home, [c.lon, c.lat])
+}
+
+// ─────────────────────────────────────────────── what had happened by now
+//
+// Replay rewinds events too (docs/PLAN-refocus.md D2). The server bounds the
+// feed, the reports and the groups by `at` before its LIMIT; these are the
+// view's own guard on top, because a timed query keeps the PREVIOUS moment's
+// rows on screen while the next one loads — scrub back from Aug 28 to Aug 12
+// and, for one fetch, every row on the page is in the future.
+
+/**
+ * The stream as of `now`. A feed item carries its moment as `at` — a report's
+ * or post's `created_at`, a reading's `ts` (routers/feed.py) — so that is what
+ * is tested, with the same rule as every other event.
+ */
+export function feedBy(items: readonly FeedItem[] | null | undefined, now: CampaignTime): FeedItem[] {
+  return (items ?? []).filter((it) => hasStarted({ created_at: it.at }, now))
+}
+
+/**
+ * A notice in force at `now`: issued, and not yet expired. The same test the
+ * server's `advisory_count_active` makes, so the rail and the headline count
+ * agree. At the end of the data four of the five notices have expired.
+ */
+export function inForce(a: Advisory, now: CampaignTime): boolean {
+  return isOngoing({ created_at: a.created_at, ended_at: a.expires_at }, now)
+}
+
+/** Three reports within a few blocks in a day make a group (the copy says so). */
+const GROUP_MIN = 3
+
+/**
+ * A group of reports as it stood at `now`, or null if it had not formed yet.
+ *
+ * The cluster row is the group's FINAL shape. Its count includes reports filed
+ * after the moment on screen, and `first_at`/`last_at` are when things were
+ * noticed (`occurred_at`), which runs about 3 h ahead of posting and up to
+ * 6.7 h (cl-01: first noticed 05:43, first posted 07:38). So when the report
+ * list in hand shows members posted after `now`, the group is recounted
+ * without them, and dropped below three. With no later members in hand the
+ * row stands, once its first report had been noticed.
+ */
+export function clusterAsOf(
+  cl: ConcernCluster,
+  concerns: readonly Concern[],
+  now: CampaignTime,
+): ConcernCluster | null {
+  const members = concerns.filter((c) => c.cluster_id === cl.id)
+  const later = members.filter((c) => !hasStarted(c, now))
+  if (!later.length) return hasStarted({ started_at: cl.first_at }, now) ? cl : null
+  const posted = members.filter((c) => hasStarted(c, now))
+  const count = cl.count - later.length
+  if (count < GROUP_MIN || !posted.length) return null
+  const noticed = posted.map((c) => c.occurred_at).sort()
+  // Every member in hand: the group can be rebuilt exactly. Otherwise the list
+  // was cut at its oldest end, so the row's first report and kinds stand.
+  const whole = posted.length === count
+  return {
+    ...cl,
+    count,
+    first_at: whole ? noticed[0] : cl.first_at,
+    last_at: noticed[noticed.length - 1],
+    kinds: whole ? [...new Set(posted.map((c) => c.kind))] : cl.kinds,
+  }
+}
+
+export function clustersAsOf(
+  clusters: readonly ConcernCluster[] | null | undefined,
+  concerns: readonly Concern[],
+  now: CampaignTime,
+): ConcernCluster[] {
+  const out: ConcernCluster[] = []
+  for (const cl of clusters ?? []) {
+    const at = clusterAsOf(cl, concerns, now)
+    if (at) out.push(at)
+  }
+  return out
+}
+
+/**
+ * Whether a report's group had formed by the demo's now.
+ *
+ * `cluster_id` is the report's FINAL group. At Jun 17 08:30 the feed labelled
+ * cn-0100-0009 "part of a group" while 2 of cl-01's 7 reports had been posted,
+ * and /clusters at that moment listed only cl-00 — cl-01 formed at 08:51, with
+ * its third. `useConcernClusters` asks for the groups as of the clock, counted
+ * from reports posted by then, so the id has to be on that list. The query is
+ * the same one the feed and the map already hold, so a card costs no request.
+ */
+export function useGroupFormed(clusterId: string | null | undefined): boolean {
+  const clusters = useConcernClusters().data
+  return !!clusterId && (clusters ?? []).some((g) => g.id === clusterId)
 }
 
 // ─────────────────────────────────────────────────────────── risk from data

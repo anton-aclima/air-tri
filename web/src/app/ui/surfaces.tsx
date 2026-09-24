@@ -1,13 +1,17 @@
 /**
  * air — surface primitives.
- * Card · Panel · Tabs · Tooltip · Modal · Sheet · Divider · Toolbar.
+ * Card · Panel · Tabs · Tooltip · Popover · Modal · Sheet · Divider · Toolbar.
  */
 
 import clsx from 'clsx'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import {
+  useEffect, useId, useLayoutEffect, useRef, useState,
+  type HTMLAttributes, type ReactNode, type RefObject,
+} from 'react'
 import { createPortal } from 'react-dom'
 
 import s from '@/design/primitives.module.css'
+import p from '@/app/ui/popover.module.css'
 import { Icon } from '@/app/ui/Icon'
 import { IconButton } from '@/app/ui/controls'
 import type { IconName } from '@/core/roles'
@@ -178,20 +182,27 @@ export interface TooltipProps {
   title?: string
   /** Open below instead of above. */
   below?: boolean
+  /**
+   * Keep it shut, whatever the pointer or focus does — for a control whose
+   * own panel is open. The wrapper stays, so the child is not remounted (it
+   * may be a popover's anchor, holding the focus and the anchor ref).
+   */
+  suppressed?: boolean
   className?: string
   children: ReactNode
 }
 
-export function Tooltip({ content, title, below, className, children }: TooltipProps) {
-  const [open, setOpen] = useState(false)
+export function Tooltip({ content, title, below, suppressed, className, children }: TooltipProps) {
+  const [wanted, setWanted] = useState(false)
+  const open = wanted && !suppressed
   const id = useId()
   return (
     <span
       className={clsx(s.tipWrap, className)}
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onPointerEnter={() => setWanted(true)}
+      onPointerLeave={() => setWanted(false)}
+      onFocus={() => setWanted(true)}
+      onBlur={() => setWanted(false)}
       aria-describedby={open ? id : undefined}
     >
       {children}
@@ -202,6 +213,132 @@ export function Tooltip({ content, title, below, className, children }: TooltipP
         </span>
       ) : null}
     </span>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────── Popover
+
+/** The page gutter a popover keeps from the viewport edge, px. */
+const POP_GUTTER = 16
+/** Gap between the anchor's bottom edge and the popover, px. */
+const POP_GAP = 8
+
+export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'role'> {
+  open: boolean
+  onClose: () => void
+  /** The element it hangs from. A press on it is not an outside click. */
+  anchor: RefObject<HTMLElement | null>
+  /** Which edge of the anchor the popover lines up with. */
+  align?: 'start' | 'end'
+  /** Preferred width, px. Never wider than the viewport less a 16px gutter each side. */
+  width?: number
+  /** Accessible name — a popover has no visible title to borrow one from. */
+  label: string
+  children?: ReactNode
+}
+
+/**
+ * A non-modal panel hung under a control: no scrim, no blur, the page stays
+ * live behind it. Closes on Esc (focus goes back to the anchor) or a press
+ * outside both itself and the anchor.
+ *
+ * Portalled with fixed coordinates rather than absolutely placed inside the
+ * anchor's parent, because the anchors live in the shell header, whose flex
+ * row and stacking context would otherwise decide how wide it may be and what
+ * it may paint over.
+ *
+ * On open, focus moves to the first `[data-autofocus]` inside, else to the
+ * panel itself, so its keyboard handling works without a click first.
+ */
+export function Popover({
+  open,
+  onClose,
+  anchor,
+  align = 'end',
+  width = 360,
+  label,
+  className,
+  style,
+  children,
+  ...rest
+}: PopoverProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const a = anchor.current
+      if (!a) return
+      const r = a.getBoundingClientRect()
+      const vw = document.documentElement.clientWidth
+      const w = Math.min(width, vw - POP_GUTTER * 2)
+      const want = align === 'end' ? r.right - w : r.left
+      const left = Math.max(POP_GUTTER, Math.min(want, vw - POP_GUTTER - w))
+      setPos({ top: r.bottom + POP_GAP, left, width: w })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open, anchor, align, width])
+
+  // Once per opening — not whenever the caller hands in a new `onClose` — and
+  // only once it has been placed. The first frame of the first opening is
+  // `visibility: hidden` (no position yet), and focus() on a hidden element
+  // does nothing: measured on a fresh load, focus stayed on the chip, so Space
+  // pressed the chip and shut the popover instead of playing. Later openings
+  // reuse the last position, which is why only the first one failed.
+  const placed = pos != null
+  useEffect(() => {
+    if (!open || !placed) return
+    const el = ref.current
+    const first = el?.querySelector<HTMLElement>('[data-autofocus]')
+    ;(first ?? el)?.focus({ preventScroll: true })
+  }, [open, placed])
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node | null
+      if (!t) return
+      if (ref.current?.contains(t) || anchor.current?.contains(t)) return
+      onClose()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      onClose()
+      anchor.current?.focus({ preventScroll: true })
+    }
+    // Capture, so a map or a chart that stops propagation still closes it.
+    document.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open, onClose, anchor])
+
+  if (!open) return null
+  return createPortal(
+    <div
+      ref={ref}
+      role="dialog"
+      aria-modal="false"
+      aria-label={label}
+      tabIndex={-1}
+      className={clsx(p.pop, className)}
+      style={{
+        ...style,
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        width: pos?.width ?? width,
+        visibility: pos ? undefined : 'hidden',
+      }}
+      {...rest}
+    >
+      {children}
+    </div>,
+    document.body,
   )
 }
 

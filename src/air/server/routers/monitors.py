@@ -1,4 +1,12 @@
-"""/monitors — the regulator's towers and industry's fenceline rings."""
+"""/monitors — the regulator's towers and industry's fenceline rings.
+
+`at` (both reads) makes each monitor's `latest` block the latest reading as of
+that moment (`domain.as_of`: no `at` is the end, past the end is the end,
+garbage is a 422). Without it every tower, fenceline ring and "over the line"
+badge read the Aug 28 13:00 reading whatever the clock showed: at Aug 12 the
+community status screen said Weaver Road smog "46 Moderate" (August) while the
+feed beside it, already bounded, said "65 Elevated" for the same instrument.
+"""
 
 from __future__ import annotations
 
@@ -18,19 +26,26 @@ def list_monitors(
     owner_type: str | None = None,
     grade: str | None = None,
     site_id: str | None = None,
+    at: str | None = None,
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
     cid = resolve_campaign(conn, campaign_id)
-    return loaders.load_monitors(conn, cid, owner_type=owner_type, grade=grade, site_id=site_id)
+    return loaders.load_monitors(
+        conn, cid, owner_type=owner_type, grade=grade, site_id=site_id,
+        at=domain.as_of(conn, cid, at),
+    )
 
 
 @router.get("/monitors/{monitor_id}")
-def get_monitor(monitor_id: str, conn: sqlite3.Connection = Depends(get_db)) -> dict[str, Any]:
+def get_monitor(
+    monitor_id: str, at: str | None = None, conn: sqlite3.Connection = Depends(get_db)
+) -> dict[str, Any]:
     r = one(conn, "SELECT campaign_id FROM monitor WHERE id=?", (monitor_id,))
     if r is None:
         raise HTTPException(404, f"unknown monitor {monitor_id}")
-    found = loaders.load_monitors(conn, r["campaign_id"], monitor_id=monitor_id)
+    cid = r["campaign_id"]
+    found = loaders.load_monitors(conn, cid, monitor_id=monitor_id, at=domain.as_of(conn, cid, at))
     return found[0]
 
 

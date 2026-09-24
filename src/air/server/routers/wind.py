@@ -304,9 +304,9 @@ def wind_climatology(
     map, in one answer.
     """
     cid = resolve_campaign(conn, campaign_id)
-    # The CAMPAIGN, not "the last 90 days". `domain.data_now` returns
+    # The CAMPAIGN, not "the last 90 days". `domain.data_now` used to return
     # max(latest_row, wall_clock), so a wall-clock-anchored default window
-    # slides off the end of the record a day at a time — which is exactly how
+    # slid off the end of the record a day at a time — which is exactly how
     # `/sites/{id}/model-verification` came to answer `consistent` for all
     # three sites (P0-B). A climatology that quietly shrinks is worse than one
     # that is simply out of date: the number moves and nothing says so.

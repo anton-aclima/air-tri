@@ -86,6 +86,18 @@ MEASURE_FALLBACK = {"no2": 18.0, "pm25": 9.0, "bc": 0.8, "o3": 32.0, "co": 0.4,
                     "co2": 430.0, "ch4": 1.95, "methane_leak": 0.1, "diesel": 0.5, "nondiesel": 0.5}
 
 
+def _fallback(measure: str) -> float:
+    """Baseline to assume when a monitor has no readings for `measure`.
+
+    a183f30 switched both call sites from `MEASURE_FALLBACK[measure]` to this
+    name without defining it, so `generator_test` and the integrated-exposure
+    scenario raised NameError the moment they found a monitor. A measure the
+    table does not list (the `aclima_sense` composite) gets a neutral 1.0
+    rather than a KeyError.
+    """
+    return MEASURE_FALLBACK.get(measure, 1.0)
+
+
 def _target_level(conn: sqlite3.Connection, cid: str, measure: str, mult: float, base: float) -> float:
     """Aim comfortably over the **highest** enabled threshold for this measure.
 

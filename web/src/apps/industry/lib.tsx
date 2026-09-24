@@ -15,14 +15,17 @@ import type { LayersList } from 'deck.gl'
 import { ALERT_KIND_CODE, ALERT_KIND_LABEL, SEVERITY_GLYPH, metersPerPixel } from '@/components'
 import type { Theme } from '@/components'
 import { API_BASE } from '@/core/api'
+import { addHours, campaignMs, floorTo } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { hasStarted, isOngoing } from '@/core/events'
 import { fmtBearing, fmtDistance, fmtDuration, fmtNum } from '@/core/format'
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
 import { useActiveSite, useAskAdvisor, useBootstrapSites, useCampaignInfo, useOrgs } from '@/core/queries'
 import { roleMeta } from '@/core/roles'
-import { useDemoClock, useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type {
   Alert, AdvisorReply, BBox, Concern, ConcernCluster, DispersionModel,
-  Envelope as EnvelopeT, EnvelopeState, IndustrySite, Monitor,
+  Envelope as EnvelopeT, EnvelopeState, IndustrySite, Mitigation, Monitor,
   Position, Severity,
 } from '@/core/types'
 
@@ -142,76 +145,93 @@ export function severityCountLine(counts: Record<Severity, number>): string {
 }
 
 /** "NO2 · W 260° · 430 m · up 24 m" — the whole contact in one line. */
-export function contactLine(c: Contact, now?: Date): string {
+export function contactLine(c: Contact, now: CampaignTime): string {
   const measure = c.alert.measure ? c.alert.measure.toUpperCase() : c.kindLabel
   return [
     measure,
     ...(c.sited ? [fmtBearing(c.bearing), fmtDistance(c.distance, 1)] : ['site-wide']),
-    `up ${upFor(c.alert, now)}`,
+    `${isOngoing(c.alert, now) ? 'up' : 'lasted'} ${upFor(c.alert, now)}`,
   ].join('  ·  ')
 }
 
-/** How long a contact has been up, in words a glance can finish. */
-export function upFor(alert: Alert, now?: Date): string {
-  const end = alert.ended_at ? new Date(alert.ended_at) : (now ?? new Date())
-  return fmtDuration(end.getTime() - new Date(alert.started_at).getTime())
+/**
+ * The alert's end AS IT STOOD AT `now`. An `ended_at` after the moment on
+ * screen had not happened yet, so in replay that alert was still up — and
+ * drawing it to its real end would show the future (D2).
+ */
+export function endedBy(alert: Alert, now: CampaignTime): string | null {
+  return alert.ended_at && campaignMs(alert.ended_at) <= campaignMs(now) ? alert.ended_at : null
+}
+
+/**
+ * How long an alert was up at `now`: to its end if it had ended by then, else
+ * to now. It used to take `ended_at` whenever one was set, so in replay an
+ * alert still up at the moment shown read its final duration — the future —
+ * and one with no end measured to the wall clock and read about a month.
+ */
+export function upMs(alert: Alert, now: CampaignTime): number {
+  return Math.max(0, campaignMs(endedBy(alert, now) ?? now) - campaignMs(alert.started_at))
+}
+
+/** `upMs` in words a glance can finish. */
+export function upFor(alert: Alert, now: CampaignTime): string {
+  return fmtDuration(upMs(alert, now))
 }
 
 // ───────────────────────────────────────────────────── a stable time window
 
 /**
- * `timeRange()` in `core/session` re-derives `to` from `new Date()` on every
- * call, so any hook that defaults its window (`useWind`, `useWindField`,
- * `useMobileWind`, `useMonitorReadings`, `useFleet`, `useDispersion`) gets a new
- * query key on EVERY RENDER and refetches forever. Quantising the window to a
- * bucket makes the key stable, which is the difference between a wind field
- * that renders and a request storm that never settles.
+ * A trailing window ending at the DEMO's now, for the wind hooks.
+ *
+ * This used to tick off the wall clock, which put `to` a month past the end of
+ * the data — the wind came back empty, and the plume track and the downwind
+ * readout went with it. Scope papered over that with two-week windows. The
+ * demo's now is the cursor, or the end of the data when paused there (D1), so
+ * the window now ends where the data is.
+ *
+ * `to` snaps to the wind's own resolution, an hour. Nothing ticks when paused,
+ * so the key is already stable; while playing the cursor moves every 250 ms
+ * and an hourly grid refetches only when there is a new observation to show.
  */
-export function useStableWindow(hours = 24, bucketMin = 5): { from: string; to: string } {
-  const cursor = useSession((x) => x.time.cursor)
-  const bucketMs = bucketMin * 60_000
-  const [tick, setTick] = useState(() => Math.floor(Date.now() / bucketMs))
-  useEffect(() => {
-    const t = setInterval(() => setTick(Math.floor(Date.now() / bucketMs)), 30_000)
-    return () => clearInterval(t)
-  }, [bucketMs])
+export function useStableWindow(hours = 24, bucketMin = 60): { from: string; to: string } {
+  const now = useNowCampaign()
   return useMemo(() => {
-    const end = cursor ? new Date(cursor) : new Date(tick * bucketMs)
-    return {
-      from: new Date(end.getTime() - hours * 3_600_000).toISOString(),
-      to: end.toISOString(),
-    }
-  }, [cursor, tick, bucketMs, hours])
+    const to = floorTo(now, bucketMin)
+    return { from: addHours(to, -hours), to }
+  }, [now, bucketMin, hours])
 }
 
 /**
  * The WHOLE campaign, as a query window — for anything comparing a filed model
  * against the campaign's measured record.
  *
- * `useStableWindow` above is anchored to the wall clock, which is right for
- * "what is happening now" and wrong for "was the consultant's study correct".
+ * `useStableWindow` above is "what is happening now"; this is "was the
+ * consultant's study correct", which is a question about the whole record.
  * `/sites/{id}/model-verification` defaults to the last 30 days ending at
- * `domain.data_now`, and `data_now` returns `max(latest_row, wall_clock)` — so
- * once the machine's clock runs past the end of the generated data, that
- * default window slides off the record a day at a time.
+ * `domain.data_now`, and that default used to follow the wall clock off the
+ * end of the data a day at a time.
  *
  * Measured 2026-09-10, with data ending 2026-08-28: the default window saw
  * 6,346 of 28,324 fleet wind observations and returned `consistent` for ALL
  * THREE sites. The same call over the campaign returns `understates`, +5.8
- * points on the SW bearing, over Boxtown and White Chapel. The flagship
- * "verify your consultant" claim was switched off by a default parameter, and
- * it degrades further every day — past 2026-09-28 the window holds no
- * observations at all.
+ * points on the SW bearing, over Boxtown and White Chapel. `data_now` is now the
+ * build instant, so the default no longer slides — but 30 days is still a third
+ * of the record, and the flagship "verify your consultant" claim should not
+ * rest on a default parameter.
  *
- * Anchored to `campaign.start_date`/`end_date` rather than to literal dates so
- * a rebuild with a different `--now` still asks the right question.
+ * Naive campaign time (core/clock), no `Z`. Anchored to `campaign.start_date`/
+ * `end_date` rather than to literal dates so a rebuild with a different
+ * `--now` still asks the right question. Deliberately NOT cut at the cursor:
+ * like the envelope, the verdict is a climatology of the campaign, not an
+ * event, and re-running it on every playback step would cost a refetch per
+ * step for a number that should not move.
  */
 export function useCampaignWindow(): { from: string; to: string } | undefined {
   const campaign = useCampaignInfo()
   const start = campaign?.start_date
   const end = campaign?.end_date
   return useMemo(
-    () => (start && end ? { from: `${start}T00:00:00Z`, to: `${end}T23:59:59Z` } : undefined),
+    () => (start && end ? { from: `${start}T00:00:00`, to: `${end}T23:59:59` } : undefined),
     [start, end],
   )
 }
@@ -241,6 +261,19 @@ export function shortTitle(a: Alert): string {
   const at = a.title.split(/ at /i)
   if (at.length > 1) return at[at.length - 1]
   return a.title.replace(/^Community concern cluster · /, '').replace(/^Observed wind diverges from /, '')
+}
+
+/**
+ * A mitigation's status as it stood at `now`. `status` is the row's FINAL one:
+ * at Aug 12 mt-003 on al-cluster-05's contact read "completed", though its
+ * `completed_at` is Aug 18. Completed only once that stamp is on or before
+ * now (a null one — the server blanks a stamp after `at` — is not yet); until
+ * then it was in progress. `started_at` equals `created_at` on every row in the
+ * checked-in data, so "proposed" needs no rebuilding.
+ */
+export function mitigationStatusAt(m: Mitigation, now: CampaignTime): Mitigation['status'] {
+  if (m.status !== 'completed') return m.status
+  return hasStarted({ started_at: m.completed_at }, now) ? 'completed' : 'in_progress'
 }
 
 // ────────────────────────────────────────────────────────────── the envelope
@@ -505,11 +538,6 @@ export function Sev({ severity }: { severity: Severity }) {
       {SEVERITY_GLYPH[severity]} {SEVERITY_LABEL[severity].toUpperCase()}
     </span>
   )
-}
-
-/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
-export function useNowTick(ms = 1000): Date {
-  return useDemoClock(ms)
 }
 
 /** Percent of a value against a limit, guarded — used for the fenceline read. */

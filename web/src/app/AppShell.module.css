@@ -141,8 +141,10 @@
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  min-width: 0;
-  overflow: hidden;
+  /* The numbers keep their width; the campaign name beside them is the one
+     built to ellipsize. At 1080 the strip used to lose "CRITICAL 0" to "CR"
+     while the name kept its room. The strips go in phase 3 (F3). */
+  flex: none;
 }
 
 .stripItem {
@@ -173,6 +175,7 @@
 .stripValueThreat { color: var(--sev-critical); }
 
 .campaignName {
+  flex: 1 1 0;
   font-size: var(--text-sm);
   color: var(--ink-2);
   overflow: hidden;
@@ -371,54 +374,25 @@
 .footKey { letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 .footValue { color: var(--ink-2); }
 
-/* ───────────────────────────────────────────────────────────── live pulse */
+/* ──────────────────────────────────────────────────── stream notice */
+/* Only on screen while the activity stream is down. Neutral, not a severity:
+   the data is all still there, it just will not update by itself. */
 
-.live {
+.noStream {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-2);
   padding: 2px var(--s-2);
   border-radius: var(--r-pill);
-  border: 1px solid var(--line);
+  border: 1px dashed var(--line-strong);
   font-size: var(--text-3xs);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   font-weight: var(--weight-semi);
   color: var(--ink-3);
+  white-space: nowrap;
   flex: none;
 }
-
-.liveDot {
-  position: relative;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-3);
-  flex: none;
-  transition: background var(--dur-fast) var(--ease-out);
-}
-
-.liveOn .liveDot { background: var(--sev-ok); }
-.liveOn { color: var(--ink-2); border-color: color-mix(in srgb, var(--sev-ok) 30%, transparent); }
-.liveOff .liveDot { background: var(--ink-3); }
-
-.pulseRing {
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 1.5px solid var(--pulse-color, var(--accent));
-  animation: pulseRing 900ms var(--ease-out) forwards;
-}
-
-@keyframes pulseRing {
-  from { transform: scale(0.6); opacity: 1; }
-  to { transform: scale(3.2); opacity: 0; }
-}
-
-.unseen {
-  font-family: var(--font-mono);
-  color: var(--accent);
-}
+.shell[data-role='industry'] .noStream { border-radius: var(--r-xs); }
 
 /* ───────────────────────────────────────────────────────────── persona chip */
 

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import s from '@/apps/community/community.module.css'
 import {
+  clustersAsOf,
   distanceFromHome,
   kindEmoji,
   kindLabel,
@@ -47,6 +48,8 @@ import {
   windowReports,
 } from '@/components'
 import type { ConcernBubble, ReportWindowDays } from '@/components'
+import { campaignMs } from '@/core/clock'
+import { happenedBy } from '@/core/events'
 import { relativeTime } from '@/core/format'
 import { PICKABLE, plainName } from '@/core/measures'
 import {
@@ -59,7 +62,7 @@ import {
   useFlags,
   useMeasures,
 } from '@/core/queries'
-import { resolveNow, useSession, useTime } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { ConcernKind, MeasureCode, Position } from '@/core/types'
 
 const NEAR_RADIUS_M = 1600
@@ -68,8 +71,7 @@ export function MapScreen() {
   // Climatology is the default and the only mode that draws nothing. See
   // `Plume` for why the live cloud is a tap behind rather than the front door.
   const [plumeMode, setPlumeMode] = useState<PlumeMode>('usually')
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const places = usePlaces()
   const pulse = usePulse(2400)
 
@@ -78,14 +80,29 @@ export function MapScreen() {
   // mean all of them.
   const allConcerns = useConcerns({ limit: 400 }).data
   const allClusters = useConcernClusters().data
-  const cursor = useSession((st) => st.time.cursor)
   const [reportDays, setReportDays] = useState<ReportWindowDays>(REPORT_WINDOW_DAYS)
+  /*
+    Cut to the demo's now BEFORE the window, so "Everything since the start"
+    means up to the moment on screen, not the whole campaign, and a group is
+    counted from the reports posted by then (`clustersAsOf`). The window is
+    anchored on the same now — the instant the row ages below are measured
+    from — so "Last 14 days" cannot list a report 27 days old.
+  */
+  const formed = useMemo(
+    () => clustersAsOf(allClusters, allConcerns ?? [], now),
+    [allConcerns, allClusters, now],
+  )
   const windowed = useMemo(
-    () => windowReports(allConcerns ?? [], allClusters ?? [], reportDays, cursor),
-    [allConcerns, allClusters, reportDays, cursor],
+    () => windowReports(happenedBy(allConcerns, now), formed, reportDays, now),
+    [allConcerns, formed, reportDays, now],
   )
   const concerns = windowed.concerns
   const clusters = windowed.clusters
+  // A row says "grouped" only if its group had formed by now: `cluster_id` is
+  // the final grouping, and at Jun 17 08:30 two cl-01 reports carried it while
+  // the group formed at 08:51. Tested against every group formed by now, not
+  // the window's, which drops a group whose last report was noticed before it.
+  const formedIds = useMemo(() => new Set(formed.map((g) => g.id)), [formed])
   const fleet = useFleet().data ?? []
   // Only fetched when a cloud mode is on. `usually` is the default and draws
   // nothing, so a resident who never taps never requests a modelled shape.
@@ -168,7 +185,7 @@ export function MapScreen() {
     return concerns
       .map((c) => ({ c, d: distanceFromHome(c, places.home) }))
       .filter(({ c, d }) => (!nearOnly || d <= NEAR_RADIUS_M) && (!kindFilter || c.kind === kindFilter))
-      .sort((a, b) => (nearOnly ? a.d - b.d : +new Date(b.c.occurred_at) - +new Date(a.c.occurred_at)))
+      .sort((a, b) => (nearOnly ? a.d - b.d : campaignMs(b.c.occurred_at) - campaignMs(a.c.occurred_at)))
   }, [concerns, places.home, nearOnly, kindFilter])
 
   // Memoised: ConcernLayer caches its folding on this array's identity.
@@ -446,7 +463,7 @@ export function MapScreen() {
                     </span>
                     <span className={s.concernRowMeta}>
                       <span>{nearWords(d)}</span>
-                      {c.cluster_id ? (
+                      {c.cluster_id && formedIds.has(c.cluster_id) ? (
                         <Badge tone="accent">Grouped with nearby reports</Badge>
                       ) : (
                         <span>{statusPlain(c.status).label}</span>

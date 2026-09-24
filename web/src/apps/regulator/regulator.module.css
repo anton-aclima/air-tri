@@ -271,12 +271,12 @@
 .wire {
   position: relative;
   height: 7px;
-  border-radius: 1px;
+  border-radius: var(--r-xs);
   background: var(--bg-sunk);
   border: 1px solid var(--line);
   overflow: hidden;
 }
-.wireFill { position: absolute; inset: 0 auto 0 0; border-radius: 1px; }
+.wireFill { position: absolute; inset: 0 auto 0 0; border-radius: var(--r-xs); }
 .wireMark {
   position: absolute;
   top: -2px; bottom: -2px;
@@ -290,8 +290,9 @@
 .tower {
   display: flex; flex-direction: column; gap: var(--s-2);
   padding: var(--s-2) var(--s-3);
+  /* No side stripe: the status glyph and chip already say online / degraded /
+     offline, and a coloured left edge on a card is decoration, not data. */
   border: 1px solid var(--line);
-  border-left: 2px solid var(--tower);
   border-radius: var(--r-xs);
   background: var(--surface-2);
   text-align: left;
@@ -299,10 +300,10 @@
   color: inherit;
   cursor: pointer;
 }
-.tower:hover { border-color: var(--line-strong); border-left-color: var(--tower); }
-.towerActive { background: var(--surface-raised); border-color: var(--accent); border-left-color: var(--tower); }
-.towerDegraded { border-left-color: var(--sev-watch); }
-.towerOffline { border-left-color: var(--ink-3); opacity: 0.72; }
+.tower:hover { border-color: var(--line-strong); }
+.towerActive { background: var(--surface-raised); border-color: var(--accent); }
+.towerDegraded { border-color: color-mix(in srgb, var(--sev-watch) 45%, var(--line)); }
+.towerOffline { opacity: 0.72; }
 .towerHead { display: flex; align-items: baseline; gap: var(--s-2); }
 .towerName { font-size: var(--text-xs); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .towerReads { display: flex; flex-direction: column; gap: 2px; }
@@ -329,7 +330,7 @@
 /* ─────────────────────────────────────────────────────────── reach block */
 .reach { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
 .reachRow { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: var(--s-2); }
-.reachBar { position: relative; height: 12px; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 1px; overflow: hidden; }
+.reachBar { position: relative; height: 12px; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: var(--r-xs); overflow: hidden; }
 .reachInside { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--tower) 45%, transparent); }
 .reachEdge { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--tower); }
 .reachOutside {
@@ -377,8 +378,10 @@
 .rowNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .rowTrunc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* alerts grid: sev | src | measure | title | value | thr | ratio | age */
-.alertCols { grid-template-columns: 78px 62px 52px minmax(0, 1fr) 82px 74px 62px 62px; }
+/* alerts grid: sev | src | measure | title | value | thr | ratio | age
+   The age column holds "ended 12h" (nine mono characters at 12px ≈ 65px) since
+   an ended alert reads its end, not "up for 29d" from its start. */
+.alertCols { grid-template-columns: 78px 62px 52px minmax(0, 1fr) 82px 74px 62px 70px; }
 /* watchfloor over-the-line: sev | measure | where | value | ratio */
 .overCols { grid-template-columns: 74px 52px minmax(0, 1fr) 84px 60px; }
 /* ranking: # | street | district | value | persistence | pct */
@@ -591,11 +594,11 @@
 .covNum { font-size: var(--text-xs); color: var(--ink-2); text-align: right; white-space: nowrap; }
 .covAnchor { font-size: var(--text-xs); color: var(--ink-3); min-width: 0; }
 .covTrack {
-  position: relative; height: 8px; border-radius: 4px;
+  position: relative; height: 8px; border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden;
 }
-.covBar { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; }
-.covBarThreat { position: absolute; inset: 0 auto 0 0; background: var(--sev-high, var(--accent)); border-radius: 4px; }
+.covBar { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--r-xs); }
+.covBarThreat { position: absolute; inset: 0 auto 0 0; background: var(--sev-high, var(--accent)); border-radius: var(--r-xs); }
 .covDivider { margin: var(--s-3) 0 var(--s-1); padding-top: var(--s-2); border-top: 1px dashed var(--line); }
 .covCompare { display: flex; flex-direction: column; }
 .covPage { grid-template-rows: auto minmax(0, 1fr); }

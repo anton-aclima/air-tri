@@ -8,13 +8,17 @@
  * Server state never lives here. That is TanStack Query's job (`core/queries`).
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
 import type { MeasureCode, Position, Role, SegmentMetric, StatWindow, User } from '@/core/types'
 import { ROLES } from '@/core/roles'
 import { clamp } from '@/core/util'
+import {
+  addHours, campaignMs, clampTime, floorTo, naive, parseCampaign, toCampaign,
+} from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
 
 // ────────────────────────────────────────────────────────────────── shapes
 
@@ -37,16 +41,26 @@ export interface Selection {
 
 export interface TimeState {
   /**
-   * The demo's "now". `null` means *live* — follow the wall clock.
-   * ISO string when scrubbed into the past.
+   * The demo's "now", as naive campaign time (`core/clock`).
+   *
+   * `null` means AT THE END OF THE DATA, paused — never the wall clock. The
+   * owner's rule (docs/PLAN-refocus.md D1): time is always constrained to the
+   * simulation, and when it reaches the end it pauses there. The server's own
+   * "now" is that same instant (`setting('datagen.now')`), so a `null` cursor
+   * can be sent as "no `at`" and the two sides agree.
    */
-  cursor: string | null
-  /** Playing back through time. */
+  cursor: CampaignTime | null
+  /** Playing back through time. Stops, and pauses, at the end of the data. */
   playing: boolean
   /** Playback rate in simulated minutes per real second. */
   speed: number
   /** Trailing analysis window, hours. Drives `from`/`to` on series queries. */
   windowHours: number
+  /**
+   * The simulation's limits, set once from the bootstrap. Not persisted.
+   * `start` is the campaign's first instant, `end` the build instant.
+   */
+  bounds: { start: CampaignTime; end: CampaignTime } | null
 }
 
 export const EMPTY_SELECTION: Selection = {
@@ -67,7 +81,12 @@ export const DEFAULT_VIEW: MapView = {
   bearing: 0,
 }
 
-export const PLAYBACK_SPEEDS = [1, 15, 60, 360] as const
+/**
+ * Simulated minutes per real second: an hour, six hours, a day. At 6 h/s the
+ * whole campaign plays in about six minutes; at 1 d/s in ninety seconds.
+ */
+export const PLAYBACK_SPEEDS = [60, 360, 1440] as const
+export const DEFAULT_SPEED = 360
 
 // ──────────────────────────────────────────────────────────────── the store
 
@@ -109,9 +128,14 @@ export interface SessionState {
   setMeasure: (measure: MeasureCode) => void
   setMetric: (metric: SegmentMetric) => void
   setStatWindow: (window: StatWindow) => void
+  /** Clamped to the bounds; a time at or past the end becomes `null`. */
   setTimeCursor: (iso: string | null) => void
   stepTime: (hours: number) => void
+  /** Pause at the end of the data. (Was "go live" — there is no live.) */
+  goToEnd: () => void
+  /** @deprecated use `goToEnd`. Kept so old callers still compile. */
   goLive: () => void
+  setTimeBounds: (start: CampaignTime, end: CampaignTime) => void
   setPlaying: (playing: boolean) => void
   togglePlaying: () => void
   setSpeed: (speed: number) => void
@@ -136,7 +160,7 @@ const INITIAL = {
   siteId: null as string | null,
   selection: EMPTY_SELECTION,
   mapView: DEFAULT_VIEW,
-  time: { cursor: null, playing: false, speed: 60, windowHours: 24 } as TimeState,
+  time: { cursor: null, playing: false, speed: DEFAULT_SPEED, windowHours: 24, bounds: null } as TimeState,
   measure: 'no2' as MeasureCode,
   metric: 'median' as SegmentMetric,
   statWindow: 'all' as StatWindow,
@@ -242,21 +266,29 @@ export const useSession = create<SessionState>()(
       setMetric: (metric) => set({ metric }),
       setStatWindow: (statWindow) => set({ statWindow }),
 
-      setTimeCursor: (iso) => set((s) => ({ time: { ...s.time, cursor: iso } })),
+      // Reaching the end pauses there (D1), however it was reached. Left
+      // playing, a seek or a step onto the end during playback was undone: the
+      // playback loop cannot tell a `null` it did not write from one it did,
+      // so it wrote its own next step back within 250 ms and kept going.
+      setTimeCursor: (iso) => set((s) => ({ time: atCursor(s.time, constrain(iso, s.time.bounds)) })),
       stepTime: (hours) =>
         set((s) => {
-          const base = s.time.cursor ? new Date(s.time.cursor) : new Date()
-          const next = new Date(base.getTime() + hours * 3_600_000)
-          const now = Date.now()
-          // Never scrub into the future — "now" is the right edge of the demo.
-          return {
-            time: { ...s.time, cursor: next.getTime() >= now ? null : next.toISOString() },
-          }
+          const end = s.time.bounds?.end
+          const base = s.time.cursor ?? end
+          if (!base) return {}
+          return { time: atCursor(s.time, constrain(addHours(base, hours), s.time.bounds)) }
         }),
+      goToEnd: () => set((s) => ({ time: { ...s.time, cursor: null, playing: false } })),
       goLive: () => set((s) => ({ time: { ...s.time, cursor: null, playing: false } })),
+      setTimeBounds: (start, end) =>
+        set((s) => {
+          const bounds = { start: naive(start), end: naive(end) }
+          const same = s.time.bounds?.start === bounds.start && s.time.bounds?.end === bounds.end
+          return same ? {} : { time: { ...s.time, bounds, cursor: constrain(s.time.cursor, bounds) } }
+        }),
       setPlaying: (playing) => set((s) => ({ time: { ...s.time, playing } })),
       togglePlaying: () => set((s) => ({ time: { ...s.time, playing: !s.time.playing } })),
-      setSpeed: (speed) => set((s) => ({ time: { ...s.time, speed: clamp(speed, 1, 3600) } })),
+      setSpeed: (speed) => set((s) => ({ time: { ...s.time, speed: clamp(speed, 1, 1440) } })),
       setWindowHours: (hours) =>
         set((s) => ({ time: { ...s.time, windowHours: clamp(hours, 1, 24 * 90) } })),
 
@@ -274,10 +306,16 @@ export const useSession = create<SessionState>()(
       // screen saying the demo was not at its latest data. The migration drops
       // any cursor a v1 session saved (those are UTC strings, too — see
       // docs/PLAN-refocus.md F1).
-      version: 2,
+      // v3: speeds are 1 h / 6 h / 1 day per second, and the clock carries its
+      // bounds (never persisted — they come from the bootstrap).
+      version: 3,
       migrate: (persisted, version) => {
         const st = (persisted ?? {}) as Partial<SessionState>
-        if (version < 2 && st.time) st.time = { ...st.time, cursor: null, playing: false }
+        if (version < 3 && st.time) {
+          const speed = (PLAYBACK_SPEEDS as readonly number[]).includes(st.time.speed)
+            ? st.time.speed : DEFAULT_SPEED
+          st.time = { ...st.time, cursor: null, playing: false, bounds: null, speed }
+        }
         return st as SessionState
       },
       // Transient chrome state is never persisted, and neither is the moment
@@ -291,7 +329,7 @@ export const useSession = create<SessionState>()(
         measure: s.measure,
         metric: s.metric,
         statWindow: s.statWindow,
-        time: { ...s.time, playing: false, cursor: null },
+        time: { ...s.time, playing: false, cursor: null, bounds: null },
       }),
     },
   ),
@@ -312,17 +350,46 @@ export const useStatWindow = (): StatWindow => useSession((s) => s.statWindow)
 export const useSiteId = (): string | null => useSession((s) => s.siteId)
 
 /**
- * The session's effective "now" as an ISO string, or `undefined` when live.
- * Pass straight into `?at=` / `?to=` params — `undefined` means "server, you
- * decide", which is what live should do.
+ * The session's effective "now" for an `?at=` / `?to=` param, or `undefined`
+ * at the end of the data. `undefined` means "server, your now" — and the
+ * server's now IS the end of the data (`timeutil.now`), so they agree without
+ * a second fetch waiting on the bootstrap.
  */
 export function timeParam(time: TimeState): string | undefined {
   return time.cursor ?? undefined
 }
 
-/** The effective "now" as a Date, always defined. */
+/**
+ * The demo's now as naive campaign time: the cursor, else the end of the data.
+ * Before the bootstrap has loaded there are no bounds yet, and the wall clock
+ * is the placeholder for those renders. It must never reach the server: it
+ * did, as `/wind?to=2026-09-23T19:00` on a campaign ending Aug 28, so every
+ * query keyed on the clock now waits for the bounds (core/queries `timed`).
+ */
+export function nowCampaign(time: TimeState): CampaignTime {
+  return time.cursor ?? time.bounds?.end ?? toCampaign(new Date())
+}
+
+/** The effective "now" as a Date, always defined. See `nowCampaign`. */
 export function resolveNow(time: TimeState): Date {
-  return time.cursor ? new Date(time.cursor) : new Date()
+  return parseCampaign(nowCampaign(time))
+}
+
+/** The clock moved to `cursor`; at the end (`null`) it is also paused. */
+function atCursor(time: TimeState, cursor: CampaignTime | null): TimeState {
+  return { ...time, cursor, playing: cursor === null ? false : time.playing }
+}
+
+/** `null` when at or past the end (paused at the end); otherwise clamped. */
+function constrain(
+  t: string | null,
+  bounds: TimeState['bounds'],
+): CampaignTime | null {
+  if (!t) return null
+  const v = naive(t)
+  if (!bounds) return v
+  if (campaignMs(v) >= campaignMs(bounds.end)) return null
+  return clampTime(v, bounds.start, bounds.end)
 }
 
 /** Live windows snap to this grid so the pair is stable between renders. */
@@ -340,12 +407,9 @@ const LIVE_QUANTUM_MS = 5 * 60_000
  * stable and is passed through untouched.
  */
 export function timeRange(time: TimeState): { from: string; to: string } {
-  const raw = resolveNow(time)
-  const to = time.cursor
-    ? raw
-    : new Date(Math.floor(raw.getTime() / LIVE_QUANTUM_MS) * LIVE_QUANTUM_MS)
-  const from = new Date(to.getTime() - time.windowHours * 3_600_000)
-  return { from: from.toISOString(), to: to.toISOString() }
+  const now = nowCampaign(time)
+  const to = time.cursor ? now : floorTo(now, LIVE_QUANTUM_MS / 60_000)
+  return { from: addHours(to, -time.windowHours), to }
 }
 
 /**
@@ -361,15 +425,22 @@ export function timeRange(time: TimeState): { from: string; to: string } {
  * sets an interval, which also means a scrubbed demo stops re-rendering on a
  * timer for no reason.
  */
-export function useDemoClock(ms = 1000): Date {
+export function useDemoClock(_ms = 1000): Date {
+  // Nothing ticks: at the end of the data the clock is paused (D1), and while
+  // playing the cursor itself moves. `_ms` is kept so callers still compile.
   const cursor = useSession((s) => s.time.cursor)
-  const [wall, setWall] = useState(() => new Date())
-  useEffect(() => {
-    if (cursor) return undefined
-    const t = setInterval(() => setWall(new Date()), ms)
-    return () => clearInterval(t)
-  }, [ms, cursor])
-  return useMemo(() => (cursor ? new Date(cursor) : wall), [cursor, wall])
+  const end = useSession((s) => s.time.bounds?.end ?? null)
+  return useMemo(
+    () => parseCampaign(cursor ?? end ?? toCampaign(new Date())),
+    [cursor, end],
+  )
+}
+
+/** The demo's now as naive campaign time, reactive. */
+export function useNowCampaign(): CampaignTime {
+  const cursor = useSession((s) => s.time.cursor)
+  const end = useSession((s) => s.time.bounds?.end ?? null)
+  return cursor ?? end ?? toCampaign(new Date())
 }
 
 /** Hook form of the above, for series queries. */

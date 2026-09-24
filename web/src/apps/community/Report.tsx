@@ -23,10 +23,12 @@ import {
 import { FootNote, SimNote } from '@/apps/community/parts'
 import { Button, Chip, Field, Input, Textarea, Toggle } from '@/app/ui'
 import { BaseMap, ConcernLayer, SegmentLayer, makeColorScale } from '@/components'
+import { addHours, campaignMs, naive } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
 import { fmtTime } from '@/core/format'
 import { useCommunitySegments } from '@/apps/community/lib'
 import { useCreateConcern } from '@/core/queries'
-import { resolveNow, useTime } from '@/core/session'
+import { useNowCampaign } from '@/core/session'
 import type { Concern, ConcernKind, Position } from '@/core/types'
 
 type WhenChoice = 'now' | 'hours' | 'night' | 'custom'
@@ -38,24 +40,32 @@ const WHEN_LABEL: Record<WhenChoice, string> = {
   custom: 'Another time',
 }
 
-function whenToIso(choice: WhenChoice, custom: string, now: Date): string {
+/**
+ * When it happened, as naive campaign time counted back from the DEMO's now.
+ *
+ * This was `toISOString()` off a `Date`: UTC digits, which the server reads as
+ * Chicago time, so "Right now" was stamped five to seven hours away from the
+ * moment on screen. And "Last night" before 6 a.m. set 22:30 on the SAME date —
+ * later that night — so a report filed at 3 a.m. landed in the future and no
+ * screen showed it. Nothing here can be later than now: a custom time past it
+ * is pulled back to now, and the picker's `max` says so up front.
+ */
+function whenToCampaign(choice: WhenChoice, custom: string, now: CampaignTime): CampaignTime {
   if (choice === 'custom' && custom) {
-    const d = new Date(custom)
-    if (!Number.isNaN(d.getTime())) return d.toISOString()
+    const t = naive(custom)
+    const ms = campaignMs(t)
+    if (Number.isFinite(ms)) return ms > campaignMs(now) ? now : t
   }
-  const t = new Date(now)
-  if (choice === 'hours') t.setHours(t.getHours() - 4)
-  if (choice === 'night') {
-    t.setDate(t.getDate() - (t.getHours() < 6 ? 0 : 1))
-    t.setHours(22, 30, 0, 0)
-  }
-  return t.toISOString()
+  if (choice === 'hours') return addHours(now, -4)
+  // The evening before today's date, whatever the hour: on the digits, so a
+  // daylight-saving night cannot move it.
+  if (choice === 'night') return `${addHours(now, -24).slice(0, 10)}T22:30:00`
+  return now
 }
 
 export function Report({ initialKind }: { initialKind?: ConcernKind }) {
   const navigate = useNavigate()
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const me = useMe()
   const places = usePlaces()
   const segments = useCommunitySegments().data
@@ -76,7 +86,7 @@ export function Report({ initialKind }: { initialKind?: ConcernKind }) {
   const [posted, setPosted] = useState<Concern | null>(null)
 
   const center: Position = pin ?? places.centers.get(where) ?? places.home
-  const occurredAt = whenToIso(when, customWhen, now)
+  const occurredAt = whenToCampaign(when, customWhen, now)
 
   const draft: Concern = useMemo(
     () => ({
@@ -320,6 +330,7 @@ export function Report({ initialKind }: { initialKind?: ConcernKind }) {
             {when === 'custom' ? (
               <Input
                 type="datetime-local"
+                max={now.slice(0, 16)}
                 value={customWhen}
                 onChange={(e) => setCustomWhen(e.currentTarget.value)}
                 aria-label="When it happened"

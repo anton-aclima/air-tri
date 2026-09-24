@@ -16,6 +16,7 @@ import type {
   IndustrySite, MeasureDef, ModelVerification, Monitor, Position, SegmentDetail,
   SeriesPoint, WindField, WindFieldCell, WindPoint,
 } from '@/core/types';
+import { campaignMs, fromCampaignMs } from '@/core/clock';
 
 export { SEGMENTS } from './segments';
 export { BOUNDARY } from './boundary';
@@ -53,8 +54,18 @@ function prng(seed: number) {
 const rnd = prng(20260827);
 
 const DAY = 86_400_000;
-/** Fixed "now" so screenshots are reproducible. */
-export const NOW = new Date('2026-08-27T15:00:00Z');
+/**
+ * Fixed "now" so screenshots are reproducible — the fixtures' own moment, not
+ * the demo's (that is the session's, `useNowCampaign`).
+ *
+ * The fixtures live on the campaign axis (`campaignMs`, core/clock): a `Date`
+ * here holds the campaign digits in its UTC fields, which is why `HOURLY` reads
+ * `getUTCHours()`. `stamp` writes those digits back as naive campaign time — the
+ * digits `toISOString()` wrote, without the `Z` that told everything downstream
+ * they were UTC.
+ */
+export const NOW = new Date(campaignMs('2026-08-27T15:00:00'));
+const stamp = (d: Date): string => fromCampaignMs(d.getTime());
 
 // ───────────────────────────────────────────────────────────── measures
 
@@ -116,13 +127,13 @@ export const ACTION_LEVELS: ActionLevel[] = [
     id: 'al_no2_spike', measure: 'no2', label: 'NO₂ 1-hour', kind: 'spike',
     threshold: 53, unit: 'ppb', averaging_hours: 1, severity: 'warning', enabled: true,
     source: 'DRAQA action level', notify_community: true, notify_industry: true,
-    updated_at: NOW.toISOString(),
+    updated_at: stamp(NOW),
   },
   {
     id: 'al_no2_dose', measure: 'no2', label: 'NO₂ 8-hour dose', kind: 'integrated',
     threshold: 38, unit: 'ppb', averaging_hours: 8, severity: 'watch', enabled: true,
     source: 'DRAQA action level', notify_community: true, notify_industry: false,
-    updated_at: NOW.toISOString(),
+    updated_at: stamp(NOW),
   },
 ];
 
@@ -136,7 +147,7 @@ export const DAILY: SeriesPoint[] = Array.from({ length: 90 }, (_, i) => {
   // the generator-test episode in the last fortnight
   const episode = i > 76 && i < 84 ? 16 * Math.exp(-Math.pow(i - 80, 2) / 4) : 0;
   return {
-    t: t.toISOString(),
+    t: stamp(t),
     v: Number((19 + weekly + drift + episode + (rnd() - 0.5) * 3.2).toFixed(2)),
   };
 });
@@ -160,7 +171,7 @@ export const HOURLY: SeriesPoint[] = Array.from({ length: 48 }, (_, i) => {
   // twin traffic peaks plus a turbine test overnight
   const diurnal = 14 + 17 * Math.exp(-Math.pow(h - 8, 2) / 5) + 20 * Math.exp(-Math.pow(h - 18, 2) / 6);
   const test = i > 30 && i < 38 ? 26 * Math.exp(-Math.pow(i - 34, 2) / 3) : 0;
-  return { t: t.toISOString(), v: Number((diurnal + test + (rnd() - 0.5) * 4).toFixed(1)) };
+  return { t: stamp(t), v: Number((diurnal + test + (rnd() - 0.5) * 4).toFixed(1)) };
 });
 
 export const HOURLY_BAND = HOURLY.map((p) => ({
@@ -229,7 +240,7 @@ export const SITES: IndustrySite[] = SITE_DEFS.map((d, i) => {
     footprint: { type: 'Polygon', coordinates: [fp.ring] },
     centroid,
     claimed_by_user_id: i === 0 ? 'user_ridgeline_ops' : null,
-    claimed_at: i === 0 ? NOW.toISOString() : null,
+    claimed_at: i === 0 ? stamp(NOW) : null,
     status: 'operating',
     capacity_mw: d.capacity,
     it_load_mw: d.itLoad,
@@ -268,8 +279,8 @@ export const MONITORS: Monitor[] = [
     install_date: '2019-06-01', last_calibrated: '2026-07-14',
     blurb: 'DRAQA federal reference monitor.',
     latest: {
-      no2: { value: 31.4, ts: NOW.toISOString(), exceeds: false },
-      pm25: { value: 11.2, ts: NOW.toISOString(), exceeds: true },
+      no2: { value: 31.4, ts: stamp(NOW), exceeds: false },
+      pm25: { value: 11.2, ts: stamp(NOW), exceeds: true },
     },
   },
   {
@@ -279,7 +290,7 @@ export const MONITORS: Monitor[] = [
     measures: ['no2', 'o3'], radius_m: 1900,
     install_date: '2021-04-11', last_calibrated: '2026-06-30',
     blurb: 'Federal-equivalent method station.',
-    latest: { no2: { value: 58.9, ts: NOW.toISOString(), exceeds: true } },
+    latest: { no2: { value: 58.9, ts: stamp(NOW), exceeds: true } },
   },
   {
     id: 'mon_ridgeline_e', name: 'Ridgeline East Fenceline', code: 'RDG-E',
@@ -288,7 +299,7 @@ export const MONITORS: Monitor[] = [
     measures: ['no2', 'co2'], radius_m: 700,
     install_date: '2025-09-02', last_calibrated: '2026-08-01',
     blurb: 'Operator fenceline sensor.',
-    latest: { no2: { value: 64.1, ts: NOW.toISOString(), exceeds: true } },
+    latest: { no2: { value: 64.1, ts: stamp(NOW), exceeds: true } },
   },
   {
     id: 'mon_ridgeline_w', name: 'Ridgeline West Fenceline', code: 'RDG-W',
@@ -297,7 +308,7 @@ export const MONITORS: Monitor[] = [
     measures: ['no2'], radius_m: 700,
     install_date: '2025-09-02', last_calibrated: '2026-08-01',
     blurb: 'Operator fenceline sensor.',
-    latest: { no2: { value: 22.7, ts: NOW.toISOString(), exceeds: false } },
+    latest: { no2: { value: 22.7, ts: stamp(NOW), exceeds: false } },
   },
   {
     id: 'mon_baw_school', name: 'Westwood School Watch', code: 'BAW-1',
@@ -306,7 +317,7 @@ export const MONITORS: Monitor[] = [
     measures: ['pm25'], radius_m: 900,
     install_date: '2026-02-20', last_calibrated: null,
     blurb: 'Boxtown Air Watch community sensor.',
-    latest: { pm25: { value: 14.8, ts: NOW.toISOString(), exceeds: true } },
+    latest: { pm25: { value: 14.8, ts: stamp(NOW), exceeds: true } },
   },
   {
     id: 'mon_draqa_south', name: 'South Corridor', code: 'STH-03',
@@ -362,8 +373,8 @@ export const CONCERNS: Concern[] = Array.from({ length: 14 }, (_, i) => {
     lat: base[1] + (rnd() - 0.5) * spread * 0.7,
     address_hint: null,
     district: HOODS[i % HOODS.length],
-    occurred_at: new Date(NOW.getTime() - hoursAgo * 3.6e6).toISOString(),
-    created_at: new Date(NOW.getTime() - hoursAgo * 3.6e6).toISOString(),
+    occurred_at: stamp(new Date(NOW.getTime() - hoursAgo * 3.6e6)),
+    created_at: stamp(new Date(NOW.getTime() - hoursAgo * 3.6e6)),
     status: inCluster ? (i < 3 ? 'corroborated' : 'under_review') : STATUSES[i % STATUSES.length],
     cluster_id: inCluster ? 'cl_boxtown_se' : null,
     corroborations: inCluster ? 2 + Math.floor(rnd() * 5) : Math.floor(rnd() * 3),
@@ -382,8 +393,8 @@ export const CLUSTERS: ConcernCluster[] = [
     radius_m: 600,
     count: 6,
     kinds: ['smell', 'noise', 'smoke'],
-    first_at: new Date(NOW.getTime() - 2.4 * 3.6e6).toISOString(),
-    last_at: new Date(NOW.getTime() - 0.3 * 3.6e6).toISOString(),
+    first_at: stamp(new Date(NOW.getTime() - 2.4 * 3.6e6)),
+    last_at: stamp(new Date(NOW.getTime() - 0.3 * 3.6e6)),
     status: 'active',
     site_id: 'site_ridgeline',
   },
@@ -411,7 +422,7 @@ export const FLEET: FleetPosition[] = CALL_SIGNS.map((cs, i) => {
     heading_deg: (Math.atan2(head[0] - prev[0], head[1] - prev[1]) * 180) / Math.PI,
     speed_kph: 18 + Math.round(rnd() * 22),
     segment_id: feat.properties.id,
-    ts: NOW.toISOString(),
+    ts: stamp(NOW),
     delay_min: 0,
     trail,
   };
@@ -426,13 +437,13 @@ export const ALERTS: Alert[] = [
     source_type: 'monitor', source_id: 'mon_ridgeline_e',
     lon: -90.0985, lat: 35.0862, site_id: 'site_ridgeline',
     action_level_id: 'al_no2_spike',
-    started_at: new Date(NOW.getTime() - 4.2 * 3.6e6).toISOString(), ended_at: null,
+    started_at: stamp(new Date(NOW.getTime() - 4.2 * 3.6e6)), ended_at: null,
     status: 'active',
     title: 'NO₂ over 1-hour action level, east fenceline',
     body: 'Reference-grade confirmation pending.',
     recommendation: 'Stage down turbine bank 2 or shift load west.',
     audience: ['regulator', 'industry'],
-    created_at: new Date(NOW.getTime() - 4.2 * 3.6e6).toISOString(),
+    created_at: stamp(new Date(NOW.getTime() - 4.2 * 3.6e6)),
     bearing_deg: 95, distance_m: 1180,
   },
   {
@@ -441,13 +452,13 @@ export const ALERTS: Alert[] = [
     source_type: 'community', source_id: 'cl_boxtown_se',
     lon: -90.1055, lat: 35.0765, site_id: 'site_ridgeline',
     action_level_id: null,
-    started_at: new Date(NOW.getTime() - 2.4 * 3.6e6).toISOString(), ended_at: null,
+    started_at: stamp(new Date(NOW.getTime() - 2.4 * 3.6e6)), ended_at: null,
     status: 'active',
     title: 'Six resident reports within 600 m in 2 hours',
     body: 'Smell and noise, Boxtown south-east.',
     recommendation: 'Acknowledge publicly and post a mitigation.',
     audience: ['industry', 'regulator'],
-    created_at: new Date(NOW.getTime() - 2.4 * 3.6e6).toISOString(),
+    created_at: stamp(new Date(NOW.getTime() - 2.4 * 3.6e6)),
     bearing_deg: 148, distance_m: 1620,
   },
   {
@@ -456,13 +467,13 @@ export const ALERTS: Alert[] = [
     source_type: 'model', source_id: null,
     lon: -90.1745, lat: 35.0705, site_id: 'site_ridgeline',
     action_level_id: 'al_no2_dose',
-    started_at: new Date(NOW.getTime() - 9.6 * 3.6e6).toISOString(), ended_at: null,
+    started_at: stamp(new Date(NOW.getTime() - 9.6 * 3.6e6)), ended_at: null,
     status: 'acknowledged',
     title: '8-hour dose trending over watch level near Westwood School',
     body: null,
     recommendation: 'Monitor; wind veer expected after 18:00.',
     audience: ['regulator'],
-    created_at: new Date(NOW.getTime() - 9.6 * 3.6e6).toISOString(),
+    created_at: stamp(new Date(NOW.getTime() - 9.6 * 3.6e6)),
     bearing_deg: 265, distance_m: 3420,
   },
   {
@@ -471,13 +482,13 @@ export const ALERTS: Alert[] = [
     source_type: 'mobile', source_id: 'veh_02',
     lon: -90.0895, lat: 35.0685, site_id: 'site_ridgeline',
     action_level_id: null,
-    started_at: new Date(NOW.getTime() - 1.1 * 3.6e6).toISOString(), ended_at: null,
+    started_at: stamp(new Date(NOW.getTime() - 1.1 * 3.6e6)), ended_at: null,
     status: 'active',
     title: 'Methane anomaly the stationary network cannot see',
     body: 'Repeated on three passes.',
     recommendation: 'Survey the gas header on the south apron.',
     audience: ['regulator', 'industry'],
-    created_at: new Date(NOW.getTime() - 1.1 * 3.6e6).toISOString(),
+    created_at: stamp(new Date(NOW.getTime() - 1.1 * 3.6e6)),
     bearing_deg: 202, distance_m: 2260,
   },
   {
@@ -486,13 +497,13 @@ export const ALERTS: Alert[] = [
     source_type: 'monitor', source_id: 'mon_draqa_boxtown',
     lon: -90.1585, lat: 35.0475, site_id: 'site_ridgeline',
     action_level_id: null,
-    started_at: new Date(NOW.getTime() - 26 * 3.6e6).toISOString(),
-    ended_at: new Date(NOW.getTime() - 18 * 3.6e6).toISOString(),
+    started_at: stamp(new Date(NOW.getTime() - 26 * 3.6e6)),
+    ended_at: stamp(new Date(NOW.getTime() - 18 * 3.6e6)),
     status: 'resolved',
     title: 'PM2.5 daily mean over reference, Boxtown',
     body: null, recommendation: null,
     audience: ['regulator'],
-    created_at: new Date(NOW.getTime() - 26 * 3.6e6).toISOString(),
+    created_at: stamp(new Date(NOW.getTime() - 26 * 3.6e6)),
     bearing_deg: 318, distance_m: 5240,
   },
 ];
@@ -552,8 +563,8 @@ export const WIND_FIELD: WindField = (() => {
   return {
     cells,
     cell_size_m: cellSize,
-    from: new Date(NOW.getTime() - 30 * DAY).toISOString(),
-    to: NOW.toISOString(),
+    from: stamp(new Date(NOW.getTime() - 30 * DAY)),
+    to: stamp(NOW),
     n_obs: cells.reduce((t, c) => t + c.n, 0),
     source: 'mobile',
   };
@@ -567,7 +578,7 @@ export const WIND_POINTS: WindPoint[] = Array.from({ length: 720 }, (_, i) => {
   const base = northDay ? 8 : 222;
   const dir = (base + (rnd() - 0.5) * 62 + 360) % 360;
   return {
-    ts: t.toISOString(),
+    ts: stamp(t),
     speed_ms: Number((1.4 + rnd() * 5.4 + (northDay ? 1.1 : 0)).toFixed(2)),
     dir_deg: Number(dir.toFixed(1)),
     gust_ms: null,
@@ -704,8 +715,8 @@ export const SEGMENT_DETAIL: SegmentDetail = (() => {
     length_m: p.length_m,
     mid: coords[Math.floor(coords.length / 2)] as Position,
     n_passes: p.n_passes,
-    first_pass: new Date(NOW.getTime() - 89 * DAY).toISOString(),
-    last_pass: NOW.toISOString(),
+    first_pass: stamp(new Date(NOW.getTime() - 89 * DAY)),
+    last_pass: stamp(NOW),
     stats,
     daily,
     diurnal: diurnalMap,
@@ -757,7 +768,7 @@ export const DISPERSION_PLUME: import('@/core/types').DispersionPlume = {
         measure: 'no2' as const,
         level: [0.53, 0.16, 0.05][band],
         band,
-        ts: NOW.toISOString(),
+        ts: stamp(NOW),
         n_sources: 13,
         x_onset_m: ONSET,
         x_peak_m: 2140,

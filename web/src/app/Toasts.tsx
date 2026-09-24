@@ -4,6 +4,11 @@
  * Every toast here came off the SSE stream in `core/live.ts`, which means it
  * came from something *somebody else* did in another interface. Clicking one
  * navigates the current role to wherever that thing lives for them.
+ *
+ * Its age is measured from the demo's now. A write is stamped at the end of the
+ * data (the server's frozen now), so at the end it reads "just now", and while
+ * replaying an earlier moment it still reads "just now" rather than "in 16 d":
+ * it did just happen, in the room next door (docs/PLAN-refocus.md D1).
  */
 
 import { useNavigate } from '@tanstack/react-router'
@@ -14,6 +19,7 @@ import { useLive, useLiveToasts, type Toast } from '@/core/live'
 import { severityVar } from '@/core/measures'
 import { actorVar } from '@/core/measures'
 import { relativeTime } from '@/core/format'
+import { useNowCampaign } from '@/core/session'
 import type { IconName } from '@/core/roles'
 import { ROLES } from '@/core/roles'
 
@@ -34,6 +40,7 @@ export function ToastHost() {
   const toasts = useLiveToasts()
   const dismiss = useLive((st) => st.dismiss)
   const navigate = useNavigate()
+  const now = useNowCampaign()
 
   if (toasts.length === 0) return null
 
@@ -59,7 +66,7 @@ export function ToastHost() {
             {t.body ? <div className={s.body}>{t.body}</div> : null}
             <div className={s.meta}>
               {t.actorRole ? <span className={s.actor}>{ROLES[t.actorRole].label}</span> : null}
-              <span>{relativeTime(t.at)}</span>
+              <span>{relativeTime(t.at, now)}</span>
             </div>
           </div>
           <button

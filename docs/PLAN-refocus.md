@@ -286,6 +286,50 @@ Each phase ends with `cd web && npx tsc -b --force`, `npx oxlint src` and `uv ru
 - **"Road colours: all 90 days" in the popup (simulation-control critic):** moved to each map's legend title, because the regulator map switches to the day's streets.
 - **Per-day street windows only as a later option (simulation-control critic):** overruled for the regulator map only, following the regulator critic. There, an hourly plume drawn over a 90-day street grid reads as confirmation.
 
+## Phase 2 contract — the one clock (as built, 2026-09-23)
+
+The core is in place; everything else in phase 2 builds on these rules.
+
+**Time is naive campaign time.** `YYYY-MM-DDTHH:MM:SS`, no `Z`, no offset,
+America/Chicago digits, exactly what datagen writes. The browser parses a naive
+string as local and prints it with local getters, so digits round-trip in any
+zone ("floating" time).
+- Client: build with `toCampaign(date)` / `addHours(t, h)` / `floorTo(t, min)`,
+  read with `parseCampaign(t)`, compare with `campaignMs(t)`
+  (`web/src/core/clock.ts`). **Never** `toISOString()` for a campaign time.
+- Server: `timeutil.iso()` writes naive; `timeutil.parse()` drops a `Z`/offset
+  instead of converting it.
+
+**"Now" is the build instant, frozen.** Server: `timeutil.now()` =
+`setting('datagen.now')`, and `domain.data_now()` returns it. Client: the
+session's `time.cursor` is a naive time, or `null` meaning **paused at the end
+of the data** (D1). `nowCampaign(time)` / `useNowCampaign()` / `resolveNow` /
+`useDemoClock` read cursor ?? `time.bounds.end`. Never `Date.now()` / `new
+Date()` for "now". Sending no `at` means "the end", and the server agrees.
+
+**Bounds.** `time.bounds = { start: campaign.start_date T00:00, end:
+flags.generated_at }`, loaded once by the shell (`useClockBounds`). The cursor
+is clamped into them; at or past the end it becomes `null`. Playback runs 1 h,
+6 h or 1 day per real second (`PLAYBACK_SPEEDS`), writes the cursor at most 4×/s
+on a 10-min grid, restarts from the start when played from the end, and stops
+and pauses at the end.
+
+**Events follow the clock (D2).** `web/src/core/events.ts`:
+`hasStarted(e, now)`, `isOngoing(e, now)` (the definition of "live" — begun
+and not ended), `isOpenCase`, `isRecent`, `happenedBy(list, now)`. The
+server filters `/feed`, `/concerns`, `/clusters`, `/stats/community`
+and `/alerts` by `at` **before** its LIMIT (a browser filter after the LIMIT
+empties the list).
+
+**Formatters.** `relativeTime(t, now)`, `relativeShort(t, now)` and
+`fmtElapsed(since, until)` require their `now`. A future time is never printed
+as "in 2 d" or as a past duration.
+
+**Queries keyed on the clock** keep the previous data on screen while the next
+step loads (`TIMED` in core/queries.ts) — only those, not globally.
+
+Fixed on the way: non-negotiable 5 now holds, and its strict xfail is removed.
+
 ## 8. What the re-check changed
 
 Ten claims that decide what gets built were each handed to an agent told to refute them, with code, API or database evidence required.

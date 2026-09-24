@@ -11,8 +11,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import s from '@/apps/community/community.module.css'
 import { VOICE, type Voice } from '@/apps/community/lib'
 import { Avatar } from '@/app/ui'
+import type { CampaignTime } from '@/core/clock'
 import { riskColorVar, riskLabel } from '@/core/measures'
 import { relativeTime } from '@/core/format'
+import { useNowCampaign } from '@/core/session'
 
 /** The standing reminder that every person and company here is invented. */
 export function SimNote({ children }: { children?: ReactNode }) {
@@ -73,7 +75,12 @@ export interface BylineProps {
   /** "Boxtown · 20 min ago" — the second line under the name. */
   meta?: ReactNode
   at?: string | null
-  now?: Date
+  /**
+   * What `at` is measured from. Defaults to the demo's now, never the wall
+   * clock: `new Date()` here aged every byline by the month between the end of
+   * the data and today.
+   */
+  now?: CampaignTime
   emoji?: string | null
   color?: string | null
   tag?: string
@@ -81,6 +88,7 @@ export interface BylineProps {
 }
 
 export function Byline({ voice, name, meta, at, now, emoji, color, tag, actions }: BylineProps) {
+  const demoNow = useNowCampaign()
   return (
     <div className={s.byline}>
       <Avatar
@@ -98,7 +106,7 @@ export function Byline({ voice, name, meta, at, now, emoji, color, tag, actions 
         <span className={s.bylineMeta}>
           {meta}
           {meta && at ? <span className={s.bylineDot}>·</span> : null}
-          {at ? <span>{relativeTime(at, now ?? new Date())}</span> : null}
+          {at ? <span>{relativeTime(at, now ?? demoNow)}</span> : null}
         </span>
       </div>
       {actions ? <span style={{ marginLeft: 'auto' }}>{actions}</span> : null}

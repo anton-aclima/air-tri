@@ -55,7 +55,11 @@ export function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
-/** Stable, human-sortable id for client-side objects (toasts, optimistic rows). */
+/**
+ * Stable, human-sortable id for client-side objects (toasts, optimistic rows).
+ * The wall clock here only makes ids unique across reloads; it is never read
+ * back as a time, so it is not the demo's now and need not be (core/clock).
+ */
 let seq = 0
 export function uid(prefix = 'id'): string {
   seq += 1

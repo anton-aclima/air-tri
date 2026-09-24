@@ -8,14 +8,18 @@
  * what DRAQA can sense and what the fleet senses is arithmetic, not a claim.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 
 import { SEVERITY_GLYPH, haversine } from '@/components'
-import { fmtNum } from '@/core/format'
+import type { TimelineAlert } from '@/components'
+import { addHours, campaignMs, floorTo } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { hasStarted, isOngoing } from '@/core/events'
+import { fmtDuration, fmtNum, relativeShort, relativeTime } from '@/core/format'
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
 import { useBootstrap, useMonitors, useSegments } from '@/core/queries'
-import { useDemoClock, useSession } from '@/core/session'
+import { useNowCampaign } from '@/core/session'
 import type {
   ActionLevel, Alert, MeasureCode, MeasureDef, Monitor, Position,
   SegmentCollection, Severity,
@@ -26,31 +30,22 @@ import s from './regulator.module.css'
 // ───────────────────────────────────────────────── a stable time window
 
 /**
- * `timeRange()` re-derives `to` from `new Date()` on every call, so any hook
- * that defaults its window gets a fresh query key on EVERY RENDER and refetches
- * forever. Quantising to a bucket makes the key stable. (Same fix the industry
- * app carries; it belongs in `core/session`, reported rather than moved.)
+ * A trailing window ending at the demo's now, in naive campaign time.
+ *
+ * This used to build both ends with `toISOString()` — UTC, with a `Z` — which
+ * the server reads as Chicago digits, so in a Pacific browser every trace here
+ * ended seven hours from the moment on screen. It also ticked a wall-clock
+ * interval, which at the end of the data meant a window a month past the last
+ * reading. Now the end is the session's now (the cursor, or the end of the
+ * data), floored to the bucket so a playing cursor re-keys the query once per
+ * bucket rather than on every step.
  */
-export function useStableWindow(hours = 24, bucketMin = 5): { from: string; to: string } {
-  const cursor = useSession((x) => x.time.cursor)
-  const bucketMs = bucketMin * 60_000
-  const [tick, setTick] = useState(() => Math.floor(Date.now() / bucketMs))
-  useEffect(() => {
-    const t = setInterval(() => setTick(Math.floor(Date.now() / bucketMs)), 30_000)
-    return () => clearInterval(t)
-  }, [bucketMs])
+export function useStableWindow(hours = 24, bucketMin = 5): { from: CampaignTime; to: CampaignTime } {
+  const now = useNowCampaign()
   return useMemo(() => {
-    const end = cursor ? new Date(cursor) : new Date(tick * bucketMs)
-    return {
-      from: new Date(end.getTime() - hours * 3_600_000).toISOString(),
-      to: end.toISOString(),
-    }
-  }, [cursor, tick, bucketMs, hours])
-}
-
-/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
-export function useNowTick(ms = 30_000): Date {
-  return useDemoClock(ms)
+    const to = floorTo(now, bucketMin)
+    return { from: addHours(to, -hours), to }
+  }, [now, bucketMin, hours])
 }
 
 // ───────────────────────────────────────────────────────── the towers
@@ -230,10 +225,94 @@ export function levelUnit(level: ActionLevel): string {
 
 // ───────────────────────────────────────────────────────── alert helpers
 
-export const LIVE_STATUSES = new Set(['active', 'acknowledged'])
+/**
+ * Live = begun and not yet ended at the demo's now (`isOngoing`). Not
+ * `status in {active, acknowledged}`: at the end of the checked-in data nine
+ * of the fifteen alerts carrying those statuses had already ended, 31 h to
+ * 4.3 d earlier — one-hour NO2 exceedances counted as live for days. An
+ * acknowledged alert that is still running stays live: acknowledging is not
+ * ending.
+ */
+export function liveAlerts(alerts: Alert[] | undefined, now: CampaignTime): Alert[] {
+  return (alerts ?? []).filter((a) => isOngoing(a, now))
+}
 
-export function liveAlerts(alerts: Alert[] | undefined): Alert[] {
-  return (alerts ?? []).filter((a) => LIVE_STATUSES.has(a.status))
+/** Statuses that leave an alert waiting on the agency after it has ended. */
+const OPEN_STATUSES = new Set(['active', 'acknowledged'])
+
+/**
+ * The queue: everything live, plus anything that has ended but was never
+ * resolved — an exceedance that ended unacknowledged three days ago is still
+ * the operator's to acknowledge. Nothing that began after the demo's now. The
+ * status is the row's final one (core/events), so in replay this is
+ * approximate and the time half is exact.
+ */
+export function queueAlerts(alerts: Alert[] | undefined, now: CampaignTime): Alert[] {
+  return (alerts ?? []).filter(
+    (a) => isOngoing(a, now) || (hasStarted(a, now) && OPEN_STATUSES.has(a.status)),
+  )
+}
+
+/** Ended by the demo's now. In replay an alert can end after the moment shown. */
+function endedBy(a: Alert, now: CampaignTime): boolean {
+  return !!a.ended_at && campaignMs(a.ended_at) <= campaignMs(now)
+}
+
+/**
+ * How long an alert is — or was — up, as of the demo's now. `short` fits the
+ * queue's age column, `long` is the sentence for a tooltip.
+ *
+ * Every row used to be measured from `started_at`, so Riverport Road's
+ * one-hour Aug 25 NO2 exceedance read "up for 29d" (from the wall clock), and
+ * would still read "3d" from the demo's now. An ended alert's duration is its
+ * own start to its own end; its age is how long since it ended.
+ */
+export function alertSpan(a: Alert, now: CampaignTime): { short: string; long: string; ongoing: boolean } {
+  if (endedBy(a, now)) {
+    const end = a.ended_at as string
+    const ago = relativeShort(end, now)
+    return {
+      short: ago === 'now' ? 'ended now' : `ended ${ago}`,
+      long: `Was up ${fmtDuration(campaignMs(end) - campaignMs(a.started_at))}, ended ${relativeTime(end, now)}`,
+      ongoing: false,
+    }
+  }
+  const up = relativeShort(a.started_at, now)
+  return {
+    short: up === 'now' ? 'just up' : `up ${up}`,
+    long: `Up for ${fmtDuration(campaignMs(now) - campaignMs(a.started_at))}`,
+    ongoing: true,
+  }
+}
+
+/**
+ * An alert as a duration-timeline row, seen from the demo's now: an end that
+ * falls after now has not happened yet, so the bar is drawn open, not closed
+ * at a moment the screen has not reached.
+ */
+export function timelineRow(a: Alert, now: CampaignTime, label: string): TimelineAlert {
+  return {
+    id: a.id,
+    label,
+    code: tinyCode(a),
+    severity: a.severity,
+    startedAt: a.started_at,
+    endedAt: endedBy(a, now) ? a.ended_at : null,
+    acknowledged: a.status === 'acknowledged',
+  }
+}
+
+/**
+ * When an action level was last set, without reading the future: the edit
+ * stamp is the build instant (or a live edit's, which is the same instant), so
+ * in replay it lies after the moment on screen and an age would be invented.
+ * A stamp after `now` is an edit that had not happened yet, so the level reads
+ * as it was issued. Printing the stamp instead put "SET 28 AUG 13:54" on every
+ * one of the 11 levels at Aug 12 — a date the page had not reached.
+ */
+export function levelSetWhen(level: ActionLevel, now: CampaignTime): string {
+  if (!level.updated_at || campaignMs(level.updated_at) > campaignMs(now)) return 'as issued'
+  return `set ${relativeTime(level.updated_at, now)}`
 }
 
 export const SOURCE_LABEL: Record<string, string> = {
@@ -319,9 +398,11 @@ export function hourOf(t: string, fallback: number): number {
   const tagged = /hour:(\d{1,2})/.exec(t)
   if (tagged) return Number(tagged[1]) % 24
   if (/^\d{1,2}$/.test(t.trim())) return Number(t) % 24
-  // Naive stamps carry campaign-local time; treating them as UTC keeps the hour.
-  const d = new Date(/[Zz]|[+-]\d\d:?\d\d$/.test(t) ? t : `${t}Z`)
-  return Number.isNaN(d.getTime()) ? fallback % 24 : d.getUTCHours()
+  // Naive stamps carry campaign-local time: read the digits (core/clock), on
+  // the campaign axis so a DST gap in the viewer's zone cannot move the hour. A
+  // `Z` or offset is dropped, not converted.
+  const ms = campaignMs(t)
+  return Number.isFinite(ms) ? new Date(ms).getUTCHours() : fallback % 24
 }
 
 /** Any per-hour series → 24 slots, means where an hour repeats. */

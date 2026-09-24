@@ -29,23 +29,25 @@ import {
   compassPoint, fmtBearing, fmtCompact, fmtDateTime, fmtDistance,
   fmtNum, fmtPct, relativeShort,
 } from '@/core/format'
+import type { CampaignTime } from '@/core/clock'
+import { hasStarted, happenedBy, isOngoing } from '@/core/events'
 import { SEVERITY_LABEL, formatValue, severityVar } from '@/core/measures'
 import {
   useAcknowledgeAlert, useAlert, useCreateMitigation, useCreatePost,
   useMeasure, useModelVerification, useMonitors, useSegmentDetail, useSegments, useWind,
 } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { Alert, Concern, SegmentProps } from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Sev, Tag, isSited, shortTitle, styles as s, upFor, useAdvisor, useNowTick,
-  useCampaignWindow, useSiteLock,
+  Caps, Panel, Readout, Sev, Tag, isSited, mitigationStatusAt, shortTitle, styles as s, upFor,
+  useAdvisor, useCampaignWindow, useSiteLock,
   useStableWindow,
 } from './lib'
 
 export function ContactDetail({ alertId }: { alertId: string }) {
   const site = useSiteLock()
-  const now = useNowTick(1000)
+  const now = useNowCampaign()
   const alertQ = useAlert(alertId, site?.id)
   const alert = alertQ.data
   const measure = useMeasure(alert?.measure ?? null)
@@ -63,8 +65,22 @@ export function ContactDetail({ alertId }: { alertId: string }) {
   if (!alert) {
     return <div className={`${s.page} ${s.detailPage}`}><div className={s.err}>Acquiring contact…</div></div>
   }
+  // Reached by a link while the clock is earlier than the alert: at the moment
+  // shown it had not happened, so nothing about it is drawn (D2) — not even its
+  // start time, which is the future too.
+  if (!hasStarted(alert, now)) {
+    return (
+      <div className={`${s.page} ${s.detailPage}`}>
+        <div className={s.err}>
+          This alert had not begun at the moment shown. Move the clock later to see it, or{' '}
+          <Link to="/industry/alerts">see the alerts up to now</Link>.
+        </div>
+      </div>
+    )
+  }
 
   const sited = isSited(alert)
+  const ongoing = isOngoing(alert, now)
   const bearing = sited ? alert.bearing_deg ?? null : null
   const plumeToward = wind?.dir_deg != null ? (wind.dir_deg + 180) % 360 : null
   const offset = bearing != null && plumeToward != null
@@ -99,10 +115,13 @@ export function ContactDetail({ alertId }: { alertId: string }) {
         <div className={s.bannerStats}>
           <Readout label="Bearing" value={sited ? fmtBearing(bearing) : 'site-wide'} />
           <Readout label="Range" value={sited ? fmtDistance(alert.distance_m ?? null, 1) : '—'} />
+          {/* Up or ended AT THE MOMENT SHOWN: in replay an alert that ends
+              later was still up, and one that has ended reads its real
+              duration rather than the time since it began. */}
           <Readout
-            label={alert.ended_at ? 'Was up' : 'Up for'}
+            label={ongoing ? 'Up for' : 'Was up'}
             value={upFor(alert, now)}
-            tone={alert.ended_at ? undefined : 'threat'}
+            tone={ongoing ? 'threat' : undefined}
             big
           />
           <div className={s.readout}>
@@ -142,9 +161,7 @@ export function ContactDetail({ alertId }: { alertId: string }) {
             </Panel>
           ) : null}
 
-          {alert.concerns && alert.concerns.length > 0 ? (
-            <ConcernList concerns={alert.concerns} />
-          ) : null}
+          <ConcernList concerns={happenedBy(alert.concerns, now)} now={now} />
         </div>
 
         {/* ── the answer ───────────────────────────────────────────── */}
@@ -202,7 +219,7 @@ export function ContactDetail({ alertId }: { alertId: string }) {
             )}
           </Panel>
 
-          <RespondPanel alert={alert} siteId={site?.id ?? null} />
+          <RespondPanel alert={alert} siteId={site?.id ?? null} now={now} />
         </div>
       </div>
     </div>
@@ -481,7 +498,9 @@ function ModelCheck({ siteId }: { siteId: string | null }) {
 
 /* ──────────────────────────────────────────────── the residents behind it */
 
-function ConcernList({ concerns }: { concerns: Concern[] }) {
+/** Only the reports filed by `now` — the caller has already cut the list. */
+function ConcernList({ concerns, now }: { concerns: Concern[]; now: CampaignTime }) {
+  if (!concerns.length) return null
   return (
     <Panel title={`Resident reports · ${concerns.length}`} aside={<Caps>you cannot close these</Caps>}>
       <div className={s.tri}>
@@ -491,7 +510,7 @@ function ConcernList({ concerns }: { concerns: Concern[] }) {
             <div>
               <div className={s.triSrc}>{c.title}</div>
               <div className={s.triNote}>
-                {c.kind} · {c.district ?? c.address_hint ?? 'nearby'} · {relativeShort(c.occurred_at)}
+                {c.kind} · {c.district ?? c.address_hint ?? 'nearby'} · {relativeShort(c.occurred_at, now)}
                 {c.corroborations ? ` · +${c.corroborations} corroborated` : ''}
               </div>
             </div>
@@ -507,7 +526,7 @@ function ConcernList({ concerns }: { concerns: Concern[] }) {
 
 /* ───────────────────────────────────────────────────────── act on it */
 
-function RespondPanel({ alert, siteId }: { alert: Alert; siteId: string | null }) {
+function RespondPanel({ alert, siteId, now }: { alert: Alert; siteId: string | null; now: CampaignTime }) {
   const mitigate = useCreateMitigation()
   const post = useCreatePost()
   const user = useSession((x) => x.user)
@@ -518,6 +537,11 @@ function RespondPanel({ alert, siteId }: { alert: Alert; siteId: string | null }
 
   if (!siteId) return null
   const disabled = !title.trim() || mitigate.isPending || post.isPending
+  // Filed by the moment shown. By FILING time, not `started_at`: a mitigation
+  // proposed for later had still been proposed. One filed live is stamped with
+  // the server's now, the end of the data, so it appears once the clock is back
+  // at the end.
+  const filed = (alert.mitigations ?? []).filter((m) => hasStarted({ created_at: m.created_at }, now))
 
   const submit = (kind: 'mitigation' | 'post') => {
     if (kind === 'mitigation') {
@@ -594,15 +618,15 @@ function RespondPanel({ alert, siteId }: { alert: Alert; siteId: string | null }
           </Caps>
         ) : null}
 
-        {alert.mitigations && alert.mitigations.length ? (
+        {filed.length ? (
           <div className={s.tri}>
-            {alert.mitigations.map((m) => (
+            {filed.map((m) => (
               <div key={m.id} className={s.triRow} style={{ gridTemplateColumns: '12px minmax(0,1fr) 96px' }}>
                 <span style={{ color: 'var(--scope)' }}>◇</span>
                 <div>
                   <div className={s.triSrc}>{m.title}</div>
                   <div className={s.triNote}>
-                    {m.status.replace('_', ' ')} · {fmtDateTime(m.created_at)}
+                    {mitigationStatusAt(m, now).replace('_', ' ')} · {fmtDateTime(m.created_at)}
                     {m.expected_reduction_pct != null ? ` · −${fmtPct(m.expected_reduction_pct, 0, false)} expected` : ''}
                   </div>
                 </div>

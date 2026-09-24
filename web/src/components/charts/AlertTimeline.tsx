@@ -5,6 +5,10 @@
  * to subtract. One row per contact, a bar spanning start → end, and an open bar
  * with a live edge for anything still running. Severity carries colour AND a
  * glyph, so nothing depends on hue alone.
+ *
+ * "Now" is the demo's now, and replay rewinds the rows (docs/PLAN-refocus.md
+ * F2): an alert that had not begun at the moment shown is not drawn, and one
+ * that ended after it was still running then, so it draws open, to "now".
  */
 
 import { useMemo, useState } from 'react';
@@ -12,8 +16,11 @@ import type { CSSProperties, ReactNode } from 'react';
 import { scaleTime } from 'd3-scale';
 import type { Alert, Severity } from '@/core/types';
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures';
+import { parseCampaign } from '@/core/clock';
+import { hasStarted, isOngoing } from '@/core/events';
 import { fmtTime24, fmtDay, fmtDurationMin, fmtStamp } from '@/core/format';
-import { useNow, usePulse } from '../lib/anim';
+import { useNowCampaign } from '@/core/session';
+import { usePulse } from '../lib/anim';
 import { ALERT_KIND_CODE, SEVERITY_GLYPH } from '../lib/vizmeta';
 import { ChartFrame, ChartTooltip, EmptyPlot, TableTwin, useChart } from './primitives';
 import type { Margins } from './primitives';
@@ -83,6 +90,9 @@ function shortLabel(label: string, max = 11): string {
   return `${stem.replace(/[\s,.;:-]+$/, '')}\u2026`;
 }
 
+/** Local-epoch ms of a naive timestamp: the axis `scaleTime` draws on. */
+const tMs = (t: string) => parseCampaign(t).getTime();
+
 export function AlertTimeline(props: AlertTimelineProps) {
   const {
     alerts, from, to, rowHeight = 22, maxRows = 8,
@@ -90,19 +100,24 @@ export function AlertTimeline(props: AlertTimelineProps) {
     labels = true, showTable = true, margin, className, style,
   } = props;
 
-  const now = useNow(30_000);
+  const nowAt = useNowCampaign();
+  const now = tMs(nowAt);
   const pulse = usePulse(1600);
   const [hover, setHover] = useState<string | null>(null);
 
   const rows = useMemo(
-    () => [...alerts].sort((x, y) => {
-      const live = Number(!y.endedAt) - Number(!x.endedAt);
-      if (live !== 0) return live;
-      const sev = severityRank(y.severity) - severityRank(x.severity);
-      if (sev !== 0) return sev;
-      return Date.parse(y.startedAt) - Date.parse(x.startedAt);
-    }),
-    [alerts],
+    () => alerts
+      .filter((r) => hasStarted({ started_at: r.startedAt }, nowAt))
+      .map((r) => (r.endedAt && isOngoing({ started_at: r.startedAt, ended_at: r.endedAt }, nowAt)
+        ? { ...r, endedAt: null } : r))
+      .sort((x, y) => {
+        const live = Number(!y.endedAt) - Number(!x.endedAt);
+        if (live !== 0) return live;
+        const sev = severityRank(y.severity) - severityRank(x.severity);
+        if (sev !== 0) return sev;
+        return tMs(y.startedAt) - tMs(x.startedAt);
+      }),
+    [alerts, nowAt],
   );
   const shown = rows.slice(0, maxRows);
   const hidden = rows.length - shown.length;
@@ -115,10 +130,10 @@ export function AlertTimeline(props: AlertTimelineProps) {
   });
 
   const [t0, t1] = useMemo<[number, number]>(() => {
-    const starts = rows.map((r) => Date.parse(r.startedAt)).filter(Number.isFinite);
-    const ends = rows.map((r) => (r.endedAt ? Date.parse(r.endedAt) : now)).filter(Number.isFinite);
-    const lo = from ? Date.parse(from) : (starts.length ? Math.min(...starts) : now - 6 * 3.6e6);
-    const hi = to ? Date.parse(to) : (ends.length ? Math.max(...ends, now) : now);
+    const starts = rows.map((r) => tMs(r.startedAt)).filter(Number.isFinite);
+    const ends = rows.map((r) => (r.endedAt ? tMs(r.endedAt) : now)).filter(Number.isFinite);
+    const lo = from ? tMs(from) : (starts.length ? Math.min(...starts) : now - 6 * 3.6e6);
+    const hi = to ? tMs(to) : (ends.length ? Math.max(...ends, now) : now);
     // Always leave a sliver of future so a live bar's edge is visible.
     const pad = Math.max((hi - lo) * 0.03, 60_000);
     return [lo, hi + pad];
@@ -145,7 +160,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
     return fmtTime24(d);
   };
 
-  if (!alerts.length) {
+  if (!rows.length) {
     return (
       <ChartFrame title={title} subtitle={subtitle} aside={aside} className={className} style={style}>
         <EmptyPlot height={72} label="No alerts in window" />
@@ -168,7 +183,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
             r.label,
             SEVERITY_LABEL[r.severity],
             fmtStamp(r.startedAt),
-            fmtDurationMin(((r.endedAt ? Date.parse(r.endedAt) : now) - Date.parse(r.startedAt)) / 60000),
+            fmtDurationMin(((r.endedAt ? tMs(r.endedAt) : now) - tMs(r.startedAt)) / 60000),
           ])}
           label="Show alert table"
         />
@@ -207,8 +222,8 @@ export function AlertTimeline(props: AlertTimelineProps) {
               </text>
 
               {shown.map((r, i) => {
-                const st = Date.parse(r.startedAt);
-                const en = r.endedAt ? Date.parse(r.endedAt) : now;
+                const st = tMs(r.startedAt);
+                const en = r.endedAt ? tMs(r.endedAt) : now;
                 const live = !r.endedAt;
                 const y0 = i * rowHeight + (rowHeight - barH) / 2;
                 const bx = Math.max(0, x(st));
@@ -296,7 +311,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
 
           {hovered && (
             <ChartTooltip
-              x={m.left + Math.max(0, x(Date.parse(hovered.startedAt)))}
+              x={m.left + Math.max(0, x(tMs(hovered.startedAt)))}
               y={m.top + shown.indexOf(hovered) * rowHeight}
               head={hovered.label}
               rows={[
@@ -310,7 +325,7 @@ export function AlertTimeline(props: AlertTimelineProps) {
                   id: 'dur',
                   label: hovered.endedAt ? 'lasted' : 'up for',
                   value: fmtDurationMin(
-                    ((hovered.endedAt ? Date.parse(hovered.endedAt) : now) - Date.parse(hovered.startedAt)) / 60000,
+                    ((hovered.endedAt ? tMs(hovered.endedAt) : now) - tMs(hovered.startedAt)) / 60000,
                   ),
                   color: theme.css('ink-3'),
                 },

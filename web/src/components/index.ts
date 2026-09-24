@@ -53,7 +53,7 @@ export { SiteLayer, pickedSite } from './map/layers/SiteLayer';
 export type { SiteLayerProps } from './map/layers/SiteLayer';
 export { ConcernLayer, concernStatusToken, BUBBLE_SPLIT_ZOOM } from './map/layers/ConcernLayer';
 export type { ConcernLayerProps, ConcernBubble } from './map/layers/ConcernLayer';
-export { REPORT_WINDOW_DAYS, windowReports, reportAnchor } from './lib/reports';
+export { REPORT_WINDOW_DAYS, windowReports, reportAnchor, useWindowedReports } from './lib/reports';
 export type { ReportWindowDays, WindowedReports } from './lib/reports';
 export { FleetLayer } from './map/layers/FleetLayer';
 export type { FleetLayerProps } from './map/layers/FleetLayer';

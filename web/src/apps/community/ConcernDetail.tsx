@@ -15,6 +15,7 @@ import {
   nearWords,
   severityWord,
   statusPlain,
+  useGroupFormed,
   useMe,
   usePlaces,
   VOICE,
@@ -22,18 +23,21 @@ import {
 import { ResponseLine, corroborationWord } from '@/apps/community/FeedCards'
 import { Byline, FootNote, SectionLabel, SimNote } from '@/apps/community/parts'
 import { Badge, Button, Chip, Empty, Spinner } from '@/app/ui'
-import { relativeTime } from '@/core/format'
+import { happenedBy, hasStarted } from '@/core/events'
+import { fmtDateTime, relativeTime } from '@/core/format'
 import { useConcern, useConcerns, useCorroborate } from '@/core/queries'
-import { resolveNow, useTime } from '@/core/session'
+import { useNowCampaign } from '@/core/session'
 
 export function ConcernDetail({ concernId }: { concernId: string }) {
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const me = useMe()
   const places = usePlaces()
   const { data: concern, isLoading, isError } = useConcern(concernId)
   const corroborate = useCorroborate()
-  const all = useConcerns({ limit: 200 }).data ?? []
+  const all = happenedBy(useConcerns({ limit: 200 }).data, now)
+  // "Part of a group" only once the group had formed by now — `cluster_id` is
+  // the final grouping, set on a report hours before its group's third arrived.
+  const grouped = useGroupFormed(concern?.cluster_id)
 
   if (isLoading) {
     return (
@@ -57,6 +61,24 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
     )
   }
 
+  /*
+    A link can outrun the clock: a thread opened from a later moment, or a
+    report posted during replay (the server stamps it at the end of the data).
+    Showing it would put the future on screen and age it "just now", so say
+    when it arrives instead.
+  */
+  if (!hasStarted(concern, now)) {
+    return (
+      <div className={s.page}>
+        <SimNote />
+        <Empty icon="report" title="This report comes later">
+          It was posted {fmtDateTime(concern.created_at)}, after the moment the demonstration is
+          showing. <Link to="/community">Back to the feed</Link>
+        </Empty>
+      </div>
+    )
+  }
+
   const status = statusPlain(concern.status)
   const who = concern.is_anonymous ? 'A neighbour' : (concern.author?.name ?? 'A neighbour')
   const nearby = all
@@ -66,7 +88,9 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
     .sort((a, b) => a.d - b.d)
     .slice(0, 5)
 
-  const industryReplies = concern.responses.filter((r) => r.role === 'industry')
+  // Replies as of `now` too — a later one is the future on a past report.
+  const responses = happenedBy(concern.responses, now)
+  const industryReplies = responses.filter((r) => r.role === 'industry')
 
   return (
     <div className={s.page}>
@@ -176,13 +200,13 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
 
           <SectionLabel>Replies</SectionLabel>
           <div className={s.thread}>
-            {concern.responses.length === 0 ? (
+            {responses.length === 0 ? (
               <Empty icon="megaphone" title="No replies yet">
                 Nobody has responded to this report yet. If the agency or an operator does, it will
                 appear here with their name on it.
               </Empty>
             ) : null}
-            {concern.responses.map((r) => (
+            {responses.map((r) => (
               <ResponseLine key={r.id} response={r} now={now} />
             ))}
           </div>
@@ -218,7 +242,7 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
             </div>
           </section>
 
-          {concern.cluster_id ? (
+          {grouped ? (
             <section className={s.railCard}>
               <h2 className={s.railTitle}>Part of a group</h2>
               <p className={s.tileBody}>

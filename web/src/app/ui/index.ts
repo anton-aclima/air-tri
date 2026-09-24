@@ -17,9 +17,9 @@ export {
 } from '@/app/ui/controls'
 
 export {
-  Card, Panel, Toolbar, Spacer, Divider, Kbd, Tabs, Tooltip, Modal, Sheet,
+  Card, Panel, Toolbar, Spacer, Divider, Kbd, Tabs, Tooltip, Popover, Modal, Sheet,
   type CardProps, type PanelProps, type TabsProps, type TabItem,
-  type TooltipProps, type ModalProps, type SheetProps,
+  type TooltipProps, type PopoverProps, type ModalProps, type SheetProps,
 } from '@/app/ui/surfaces'
 
 export {

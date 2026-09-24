@@ -22,6 +22,7 @@ import { Link } from '@tanstack/react-router'
 
 import { Button } from '@/app/ui'
 import type { SegmentFeature } from '@/components'
+import type { CampaignTime } from '@/core/clock'
 import { relativeTime } from '@/core/format'
 import { bearingBetween, compassWords, distanceBetween, fmtDistanceImperial } from '@/core/format'
 import type { Concern, ConcernCluster, IndustrySite } from '@/core/types'
@@ -47,7 +48,8 @@ export type MapPick =
 export interface PickedProps {
   pick: MapPick | null
   onClear: () => void
-  now: Date
+  /** The demo's now — every age on the card is measured from it. */
+  now: CampaignTime
   home: Position
   concerns: Concern[]
   clusters: ConcernCluster[]

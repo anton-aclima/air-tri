@@ -13,19 +13,22 @@ import { KIND_WORD, usePlaces } from '@/apps/community/lib'
 import { FootNote, SimNote, VoiceTag } from '@/apps/community/parts'
 import { SitePostCard } from '@/apps/community/FeedCards'
 import { Badge, Empty } from '@/app/ui'
+import { happenedBy } from '@/core/events'
 import { bearingBetween, compassWords, distanceBetween, fmtDistanceImperial } from '@/core/format'
 import { useBootstrapSites, useConcerns, useOrgs, usePosts } from '@/core/queries'
-import { resolveNow, useTime } from '@/core/session'
+import { useNowCampaign } from '@/core/session'
 import type { IndustrySite, Position } from '@/core/types'
 
 export function Outreach() {
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const places = usePlaces()
   const sites = useBootstrapSites()
   const orgs = useOrgs()
-  const posts = usePosts({ limit: 30 }).data ?? []
-  const concerns = useConcerns({ limit: 200 }).data ?? []
+  // As of the demo's now (D2). `status` is the report's final one, so in replay
+  // a claim made later can still mark an earlier report — only the latest
+  // status is stored (docs/PLAN-refocus.md F2).
+  const posts = happenedBy(usePosts({ limit: 30 }).data, now)
+  const concerns = happenedBy(useConcerns({ limit: 200 }).data, now)
 
   const claimed = concerns.filter((c) => c.status === 'mitigation_proposed')
 

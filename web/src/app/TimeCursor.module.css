@@ -1,113 +1,297 @@
-/* The global time cursor. One scrubbable "now" for the whole application:
-   maps, charts, fleet positions and relative timestamps all read it. Mount it
-   wherever an app wants it — the state is in core/session. */
+/* The campaign timeline — the simulation popover's body.
+   One axis, three layers on it: event ticks above the track, the handle on it,
+   the driven-day strip under it. Everything positions in % (or px measured
+   from the rail) of that one axis, so the three can never drift apart.
+   Semantic tokens only; each room's finish comes from its own tokens. */
 
-.bar {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-2) var(--s-3);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  min-height: 44px;
-  min-width: 0;
-}
+.body { display: grid; gap: var(--s-3); min-width: 0; }
 
-.flush { border: none; border-radius: 0; background: transparent; }
-
+/* ── the readout row ───────────────────────────────────────────────────── */
+.head { display: flex; align-items: center; gap: var(--s-3); min-height: 32px; }
 .readout {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 132px;
-  flex: none;
-}
-
-.stamp {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  margin: 0 auto 0 0;
   font-size: var(--text-sm);
   color: var(--ink);
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.3;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.readout :global(.num) { color: var(--ink-2); }
 
-.sub {
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-3);
-  font-weight: var(--weight-semi);
-  display: flex;
-  align-items: center;
-  gap: var(--s-1);
-}
+/* ── the axis ──────────────────────────────────────────────────────────── */
+/* The handle is 14px wide and centred on its moment, so the rail is inset by
+   half of it: at the first and last instant the handle sits flush with the
+   popover's padding instead of hanging out of it. */
+.timeline { padding: 0 7px; }
+.rail { position: relative; min-width: 0; }
 
-.liveDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--sev-ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sev-ok) 20%, transparent);
-  animation: breathe 2400ms var(--ease-in-out) infinite;
-}
-.pastDot { background: var(--sev-watch); box-shadow: none; animation: none; }
-
-@keyframes breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-.controls { display: flex; align-items: center; gap: 2px; flex: none; }
-
-.track {
-  position: relative;
-  flex: 1;
-  min-width: 80px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ticks {
-  position: relative;
-  height: 8px;
-  margin: 0 7px;
-}
+.ticks { position: relative; height: 18px; }
 
 .tick {
   position: absolute;
-  top: 2px;
+  bottom: 2px;
+  translate: -50% 0;
+  display: grid;
+  place-items: end center;
+  width: 12px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  --tick-c: var(--ink-2);
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.tick_cluster { --tick-c: var(--actor-community); }
+.tick[data-sev='info'] { --tick-c: var(--sev-info); }
+.tick[data-sev='watch'] { --tick-c: var(--sev-watch); }
+.tick[data-sev='warning'] { --tick-c: var(--sev-warning); }
+.tick[data-sev='critical'] { --tick-c: var(--sev-critical); }
+
+.mark { display: block; background: var(--tick-c); }
+
+/* Shape carries the source, colour the severity, height the severity again —
+   never colour alone (DESIGN.md). Residents' reports are round; alerts are
+   upright bars, taller as they get more serious. */
+.tick_cluster .mark { width: 8px; height: 8px; border-radius: 50%; }
+.tick_alert .mark,
+.tick_mixed .mark { width: 4px; height: 8px; border-radius: var(--r-xs); }
+.tick[data-sev='warning'] .mark { height: 11px; }
+.tick[data-sev='critical'] .mark { height: 14px; }
+
+/* Model-sourced: an inference, not a measurement, so it is only an outline. */
+.tickHollow .mark { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tick-c); }
+.tickHollow.tick_alert .mark { width: 5px; }
+
+/* Several events within 12px: one tick that says how many. */
+.tickGroup { width: auto; min-width: 16px; }
+.tickGroup .mark {
+  display: grid;
+  place-items: center;
+  width: auto;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--tick-c) 22%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--tick-c);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  font-weight: var(--weight-semi);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.tickGroup.tickHollow .mark { background: transparent; box-shadow: none; border: 1px dashed var(--tick-c); }
+/* A merged pill with a model-sourced event among measured ones: the pill stays
+   filled (something in it was measured) and a hollow notch on its shoulder
+   says one of them is an inference. */
+.tickModel .mark { position: relative; }
+.tickModel .mark::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--tick-c);
+}
+
+/* Not reached yet by the moment shown: still there to jump to, but quieter. */
+.tickAhead { opacity: 0.42; }
+.tick:hover, .tick:focus-visible { opacity: 1; }
+.tick:hover .mark { outline: 2px solid color-mix(in srgb, var(--tick-c) 40%, transparent); outline-offset: 1px; }
+
+/* ── the track and the handle ──────────────────────────────────────────── */
+.scrub {
+  position: relative;
+  padding: 5px 0 0;
+  cursor: pointer;
+  touch-action: none;
+}
+.track {
+  position: relative;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+.fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  transform-origin: left center;
+}
+.handleRail {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.handleRail > .handle { left: 0; pointer-events: auto; }
+
+.handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-card);
+  cursor: grab;
+}
+.handle:active { cursor: grabbing; }
+.handle:focus { outline: none; }
+.handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* While playing the cursor is written four times a second; gliding between
+   writes makes that read as motion rather than as steps. */
+.gliding .handleRail { transition: transform 250ms linear; }
+.gliding .fill { transition: transform 250ms linear; }
+
+/* ── the driven-day strip ──────────────────────────────────────────────── */
+.strip {
+  position: relative;
+  height: 12px;
+  margin-top: 5px;
+  border-bottom: 1px solid var(--line);
+}
+.day {
+  position: absolute;
+  bottom: 0;
+  background: color-mix(in srgb, var(--ink-3) 45%, transparent);
+  /* A hairline of the ground between days, so a run of driving reads as days. */
+  box-shadow: inset 1px 0 0 var(--surface);
+}
+
+/* ── axis labels ───────────────────────────────────────────────────────── */
+.axis {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  height: 16px;
+  margin-top: 4px;
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.edge { color: var(--ink-2); translate: -7px 0; }
+.edgeEnd { translate: 7px 0; }
+.month { position: absolute; top: 0; translate: -50% 0; }
+.month::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -6px;
   width: 1px;
   height: 4px;
   background: var(--line-strong);
 }
-.tickMajor { height: 7px; top: 0; background: var(--ink-3); }
 
-.tickLabel {
+/* ── hover label: a tick's events, or where a click would land ─────────── */
+.tip {
   position: absolute;
-  top: 8px;
-  translate: -50% 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  color: var(--ink-3);
-  white-space: nowrap;
+  bottom: calc(100% - 14px);
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  /* Wide enough that "Boxtown · Paul R Lowry Road — 9 reports" is one line;
+     the longest alert titles still wrap. */
+  max-width: 420px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--ink);
+  pointer-events: none;
 }
+.tip_mid { translate: -50% 0; }
+.tip_left { translate: -12px 0; }
+.tip_right { translate: calc(-100% + 12px) 0; }
+.tipLine { display: flex; gap: var(--s-2); align-items: baseline; }
+.tipWhen { color: var(--ink-3); flex: none; font-size: var(--text-2xs); }
+.tipMore { color: var(--ink-3); font-size: var(--text-2xs); }
+.tipModel { color: var(--ink-2); }
 
-.spanLabel {
+/* ── transport ─────────────────────────────────────────────────────────── */
+.transport {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  color: var(--ink-3);
-  padding: 0 var(--s-1);
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.buttons { display: flex; align-items: center; gap: var(--s-1); }
+/* Start and End are ghost buttons beside icon buttons; the room's full button
+   padding pushed the speed control onto a second row in community. Three
+   classes deep so it outranks the room's own `.sm` padding in any load order. */
+.transport .buttons .jump { padding-inline: var(--s-3); }
+/* The toggle heads the top row in both layouts and never changes width, so
+   the readout and the track beside it do not shift on a press. */
+.play { flex: none; }
+.playWord { display: inline-grid; }
+.playWord > * { grid-area: 1 / 1; }
+.playWord > [aria-hidden] { visibility: hidden; }
+.speed { flex: none; }
+/* The row is ~500px of a 510px box in community; at the room's segment
+   padding the speed control wrapped onto a second row. */
+.transport .speed > button { padding: 0 var(--s-2); }
+/* Unselected speeds in --ink-2: the primitive's --ink-3 on --bg-sunk measured
+   3.08:1 at 12px in community and 4.0:1 at 10px caps in industry, under AA
+   for text this small. Selected keeps the primitive's --ink on its raised chip. */
+.transport .speed > button[aria-selected='false'] { color: var(--ink-2); }
+.transport .speed > button[aria-selected='false']:hover { color: var(--ink); }
+
+/* ── collapsed: the bar left open while playing ────────────────────────── */
+/* The bar is the unfolded layout's top row with the readout swapped for the
+   track: same height, same gap, so the toggle does not move when it folds. */
+.mini { min-width: 0; }
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 32px;
+}
+/* The handle's 7px inset is a MARGIN here, as `.timeline`'s padding is in the
+   unfolded layout: `msAt` measures the rail's border box, and with the inset
+   as the rail's own padding a tap near either end landed up to ~1.5 days from
+   the drawn position. */
+.bar .rail { flex: 1; margin: 0 7px; }
+.bar .scrub { padding: 6px 0; }
+.miniWhen {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  min-width: 11ch;
+  text-align: right;
 }
 
-.speed { flex: none; }
+/* ── rooms ─────────────────────────────────────────────────────────────── */
+:global([data-role='community']) .readout { font-size: var(--text-md); }
+:global([data-role='community']) .handle { width: 16px; height: 16px; }
 
-:global([data-role='community']) .bar { border-radius: var(--r-pill); padding: var(--s-2) var(--s-4); }
-:global([data-role='community']) .sub { text-transform: none; letter-spacing: 0; font-size: var(--text-xs); font-weight: var(--weight-regular); }
+:global([data-role='industry']) .readout,
+:global([data-role='industry']) .miniWhen,
+:global([data-role='industry']) .axis {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-size: var(--text-2xs);
+}
+:global([data-role='industry']) .handle { border-radius: var(--r-xs); box-shadow: var(--glow-accent); }
+:global([data-role='industry']) .track { border-radius: 0; }
+:global([data-role='industry']) .tip { border-radius: var(--r-xs); }
 
-:global([data-role='industry']) .bar { border-radius: var(--r-xs); background: var(--surface-2); }
-:global([data-role='industry']) .stamp { color: var(--accent); }
+:global([data-role='regulator']) .handle,
+:global([data-role='admin']) .handle { background: var(--surface); }
+
+@media (prefers-reduced-motion: reduce) {
+  .gliding .handleRail, .gliding .fill { transition: none; }
+}

@@ -17,14 +17,17 @@
 import { useMemo, useState } from 'react'
 
 import { Button, Modal } from '@/app/ui'
-import { fmtNum, fmtTime, relativeShort } from '@/core/format'
+import type { SimulateResult } from '@/core/api'
+import { happenedBy, isOngoing } from '@/core/events'
+import { fmtDateTime, fmtNum, fmtTime, relativeShort } from '@/core/format'
 import { useLiveEvents, useLiveStatus } from '@/core/live'
 import { severityVar } from '@/core/measures'
 import { useAlerts, useConcerns, useReseed, useSimulate } from '@/core/queries'
+import { nowCampaign, useNowCampaign, useSession } from '@/core/session'
 import type { Role, SimScenario } from '@/core/types'
 
 import {
-  ACTOR_VAR, Caps, KV, Readout, Readouts, Sheet, TitleBlock, styles as s, useNowTick,
+  ACTOR_VAR, Caps, KV, Readout, Readouts, Sheet, TitleBlock, stampedBy, styles as s,
 } from './lib'
 
 /** The backend knows six; `SimScenario` in core/types is missing this one. */
@@ -124,15 +127,33 @@ interface Fired {
   summary: string
 }
 
+/**
+ * When a cue's rows were written. The server's clock is frozen at the end of
+ * the data (docs/PLAN-refocus.md D1) and does not follow the cursor, so a cue
+ * fired while replaying August 12 still writes at the end — and the log says
+ * that instant, not the cursor's and not the wall clock's (which was a month
+ * after the data). `POST /admin/simulate` returns it as `at`; core/api's type
+ * leaves the field out.
+ */
+function writtenAt(res?: SimulateResult & { at?: string }): string {
+  const { time } = useSession.getState()
+  return res?.at ?? time.bounds?.end ?? nowCampaign(time)
+}
+
 export function Director() {
   const simulate = useSimulate()
   const reseed = useReseed()
   const events = useLiveEvents()
   const status = useLiveStatus()
-  const alerts = useAlerts({ role: 'admin' })
+  // The whole record (`at: undefined`), not the session's moment: ALL CLEAR
+  // resolves by status at the end of the data, whatever the cursor says, so
+  // its confirmation must count every alert it will close. The world state is
+  // cut to the moment below — all 31 alerts fit in one request.
+  const alerts = useAlerts({ role: 'admin', at: undefined })
   // Counted as a headline below, so the limit must exceed the campaign.
   const concerns = useConcerns({ limit: 1000 })
-  const now = useNowTick(10_000)
+  const now = useNowCampaign()
+  const replaying = useSession((st) => st.time.cursor)
 
   // A stage manager's panel always has something on the lever.
   const [armed, setArmed] = useState<Scenario | null>('generator_test')
@@ -142,7 +163,14 @@ export function Director() {
 
   const cue = useMemo(() => CUES.find((c) => c.id === armed) ?? null, [armed])
   const lastFired = log[0]
-  const active = (alerts.data ?? []).filter((a) => a.status !== 'resolved')
+  // What the world looks like AT THE MOMENT ON SCREEN (D2): only what had begun
+  // by then, and "up" means `isOngoing` — begun and not ended — not a status.
+  const shown = happenedBy(alerts.data, now)
+  const active = shown.filter((a) => isOngoing(a, now))
+  const closable = (alerts.data ?? []).filter((a) => a.status === 'active' || a.status === 'acknowledged')
+  // Cues write at the end of the data, so while replaying, what they write is
+  // in the moment's future and — correctly — nowhere on screen yet.
+  const stream = useMemo(() => stampedBy(events, now, (e) => e.at), [events, now])
 
   function fire(target: Cue) {
     simulate.mutate(target.id as SimScenario, {
@@ -154,7 +182,7 @@ export function Director() {
         ].filter(Boolean)
         setLog((l) => [
           {
-            at: new Date().toISOString(),
+            at: writtenAt(res),
             scenario: target.id,
             ok: true,
             summary: bits.length ? bits.join(' · ') : (res.message ?? 'written'),
@@ -166,7 +194,7 @@ export function Director() {
       },
       onError: (err) => {
         setLog((l) => [
-          { at: new Date().toISOString(), scenario: target.id, ok: false, summary: err.message },
+          { at: writtenAt(), scenario: target.id, ok: false, summary: err.message },
           ...l,
         ])
       },
@@ -275,7 +303,11 @@ export function Director() {
                   Disarm
                 </Button>
                 <span className={s.spacer} />
-                <Caps>{cue.danger ? 'requires confirmation' : 'propagates over SSE in ~1 s'}</Caps>
+                <Caps>
+                  {cue.danger
+                    ? 'requires confirmation'
+                    : replaying ? 'writes at the end of the data' : 'propagates over SSE in ~1 s'}
+                </Caps>
               </div>
             </div>
           ) : (
@@ -326,7 +358,11 @@ export function Director() {
           <Sheet code="07-C" title="World state">
             <Readouts>
               <Readout label="alerts up" value={fmtNum(active.length, 0)} tone={active.length ? 'warn' : 'accent'} size="lg" />
-              <Readout label="concerns" value={fmtNum(concerns.data?.length ?? null, 0)} size="lg" />
+              <Readout
+                label="concerns"
+                value={fmtNum(concerns.data ? happenedBy(concerns.data, now).length : null, 0)}
+                size="lg"
+              />
               <Readout
                 label="stream"
                 value={status}
@@ -341,7 +377,7 @@ export function Director() {
                 ['critical', fmtNum(active.filter((a) => a.severity === 'critical').length, 0)],
                 ['warning', fmtNum(active.filter((a) => a.severity === 'warning').length, 0)],
                 ['watch', fmtNum(active.filter((a) => a.severity === 'watch').length, 0)],
-                ['acknowledged', fmtNum((alerts.data ?? []).filter((a) => a.status === 'acknowledged').length, 0)],
+                ['acknowledged', fmtNum(shown.filter((a) => a.status === 'acknowledged').length, 0)],
               ]}
             />
           </Sheet>
@@ -350,16 +386,17 @@ export function Director() {
             code="07-D"
             title="Live stream"
             className={s.grow}
-            aside={<Caps ink>{events.length} events</Caps>}
+            aside={<Caps ink>{stream.length} events</Caps>}
           >
-            {events.length === 0 ? (
+            {stream.length === 0 ? (
               <div className={s.err}>
-                Quiet. Fire a cue and the consequences arrive here — and in the other three
-                interfaces — without a refresh.
+                {replaying
+                  ? `Replaying ${fmtDateTime(replaying)}. Cues write at the end of the data, so what they write appears here — and in the other three interfaces — once the clock is back at the end.`
+                  : 'Quiet. Fire a cue and the consequences arrive here — and in the other three interfaces — without a refresh.'}
               </div>
             ) : (
               <div className={s.ticker}>
-                {events.slice(0, 40).map((e) => (
+                {stream.slice(0, 40).map((e) => (
                   <div className={s.tickRow} key={e.id}>
                     <span className={s.tickTime}>{fmtTime(e.at)}</span>
                     <span
@@ -424,12 +461,13 @@ export function Director() {
         }
       >
         <p className={s.note}>
-          This resolves <strong>every active alert</strong> and closes every advisory. The
+          This resolves <strong>every open alert</strong> and closes every advisory. The
           industry radar goes to CLEAR and the regulator queue empties. There is no undo: the
           only way back is to fire the other cues again, one at a time.
         </p>
         <p className={s.noteDim} style={{ marginTop: 'var(--s-3)' }}>
-          {active.length} active {active.length === 1 ? 'alert' : 'alerts'} will be closed.
+          {closable.length} open {closable.length === 1 ? 'alert' : 'alerts'} will be closed, at the end
+          of the data.
         </p>
       </Modal>
 

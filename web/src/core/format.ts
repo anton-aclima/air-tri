@@ -9,6 +9,7 @@
  * always formats as `EMPTY` ("—") so tables never jump.
  */
 
+import { parseCampaign } from '@/core/clock'
 import { clamp } from '@/core/util'
 import type { Position } from '@/core/types'
 
@@ -109,7 +110,13 @@ export function countOf(n: number, singular: string, plural?: string): string {
 
 function toDate(input: string | number | Date | null | undefined): Date | null {
   if (input == null) return null
-  const d = input instanceof Date ? input : new Date(input)
+  // Strings are naive campaign time (core/clock): the digits are the truth, a
+  // `Z` or offset is dropped rather than converted, and a date-only string is
+  // local midnight — `new Date('2026-05-31')` is UTC midnight, the day before
+  // in the Americas.
+  const d = input instanceof Date ? input
+    : typeof input === 'string' ? parseCampaign(input)
+      : new Date(input)
   return Number.isNaN(d.getTime()) ? null : d
 }
 
@@ -193,16 +200,22 @@ const DAY = 24 * HOUR
  * `now` defaults to wall-clock now — pass the session time cursor when the UI
  * is scrubbed into the past so relative labels stay honest.
  */
+/**
+ * `"3 min ago"`, measured from the DEMO's now — which is required, so nothing
+ * can silently measure from the wall clock again (a month past the data, every
+ * age read "4 wk"). A time after `now` is not shown as "in 2 d": the event had
+ * not happened yet at the moment on screen, and the caller should not have
+ * rendered it (docs/PLAN-refocus.md F2). It reads "just now" as a last resort.
+ */
 export function relativeTime(
   input: string | Date | null | undefined,
-  now: string | Date = new Date(),
+  now: string | Date,
 ): string {
   const d = toDate(input)
-  const n = toDate(now) ?? new Date()
-  if (!d) return EMPTY
+  const n = toDate(now)
+  if (!d || !n) return EMPTY
   const ms = n.getTime() - d.getTime()
-  const future = ms < 0
-  const a = Math.abs(ms)
+  const a = Math.max(0, ms)
   let text: string
   if (a < 45_000) return 'just now'
   else if (a < HOUR) text = `${Math.round(a / MIN)} min`
@@ -210,18 +223,23 @@ export function relativeTime(
   else if (a < 7 * DAY) text = `${Math.round(a / DAY)} d`
   else if (a < 60 * DAY) text = `${Math.round(a / (7 * DAY))} wk`
   else text = `${Math.round(a / (30 * DAY))} mo`
-  return future ? `in ${text}` : `${text} ago`
+  return `${text} ago`
 }
 
 /** Short form for dense lists: `"14m"`, `"3h"`, `"2d"`. */
+/**
+ * Short form for dense lists: `"14m"`, `"3h"`, `"2d"`. Same rules as
+ * `relativeTime`. It used `Math.abs`, which turned a start in the future into
+ * a past duration — "UP FOR 16d" on an alert that had not begun.
+ */
 export function relativeShort(
   input: string | Date | null | undefined,
-  now: string | Date = new Date(),
+  now: string | Date,
 ): string {
   const d = toDate(input)
-  const n = toDate(now) ?? new Date()
-  if (!d) return EMPTY
-  const a = Math.abs(n.getTime() - d.getTime())
+  const n = toDate(now)
+  if (!d || !n) return EMPTY
+  const a = Math.max(0, n.getTime() - d.getTime())
   if (a < MIN) return 'now'
   if (a < HOUR) return `${Math.round(a / MIN)}m`
   if (a < DAY) return `${Math.round(a / HOUR)}h`
@@ -231,11 +249,11 @@ export function relativeShort(
 /** `"01:24:09"` elapsed — how long an RWR contact has been up. */
 export function fmtElapsed(
   since: string | Date | null | undefined,
-  until: string | Date | null = null,
+  until: string | Date,
 ): string {
   const d = toDate(since)
-  if (!d) return EMPTY
-  const end = toDate(until) ?? new Date()
+  const end = toDate(until)
+  if (!d || !end) return EMPTY
   const secs = Math.max(0, Math.round((end.getTime() - d.getTime()) / 1000))
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)

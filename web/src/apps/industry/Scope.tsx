@@ -32,6 +32,8 @@ import {
 } from '@/components'
 import type { MapView, RadarContact, SegmentFeature, Theme } from '@/components'
 import { Button } from '@/app/ui'
+import { hoursBetween } from '@/core/clock'
+import { isOngoing } from '@/core/events'
 import { compassPoint, fmtBearing, fmtCompact, fmtDistance, fmtNum, fmtPct, relativeShort } from '@/core/format'
 import { SEVERITY_LABEL, severityVar, shortName, unitFor } from '@/core/measures'
 import {
@@ -39,7 +41,7 @@ import {
   useDispersionModels, useMeasures, useModelVerification, useMonitors, useSegments,
   useWind, useWindField,
 } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { Alert, MeasureCode, Position } from '@/core/types'
 
 import { Selected } from './Selected'
@@ -47,16 +49,14 @@ import type { MapPick } from './Selected'
 import {
   Caps, Gauge, Panel, Readout, Tag, bboxAround, contactLine, countBySeverity, downwindOf,
   envelopeRead, foldContacts, radarOverlay, severityCountLine, shortTitle, styles as s,
-  bearingFrom, permitFootprintLayer, placeReports, regimeOf, reportsOverlay, toContacts, useNowTick, useSiteLock,
+  bearingFrom, permitFootprintLayer, placeReports, regimeOf, reportsOverlay, toContacts, useSiteLock,
   useCampaignWindow, useStableWindow,
 } from './lib'
-
-const LIVE_STATUSES = new Set(['active', 'acknowledged'])
 
 export function Scope() {
   const site = useSiteLock()
   const navigate = useNavigate()
-  const now = useNowTick(1000)
+  const now = useNowCampaign()
 
   // The field is binned from wherever the fleet drove, so a longer window fills
   // more streets. The strip states the window and the sample size out loud.
@@ -64,17 +64,17 @@ export function Scope() {
   const alertsQ = useAlerts({ site_id: site?.id }, { enabled: !!site })
   const windQ = useWindField({ cell_m: 400, ...fieldWin })
   const modelsQ = useDispersionModels(site?.id)
-  // The campaign, not the last 30 days — see `useCampaignWindow`. The default
-  // window has slid off the end of the data and answers `consistent`.
+  // The campaign, not the default last 30 days — see `useCampaignWindow`. That
+  // default once slid off the end of the data and answered `consistent`.
   const verifyWin = useCampaignWindow()
   const verifyQ = useModelVerification(site?.id, verifyWin ?? {}, {
     enabled: !!site?.id && !!verifyWin,
   })
-  // Two weeks, not 24 h. `win` is anchored to the wall clock, and the moment it
-  // runs past the end of the generated data the query comes back empty — which
-  // silently took out the plume track and the downwind readout with it. The
-  // strip labels this as the latest observation, so a wider search is honest.
-  const windSeries = useWind(useStableWindow(24 * 14))
+  // The latest observation at the moment shown. This was a two-week search
+  // because the window was anchored to the wall clock and came back empty past
+  // the end of the data; it now ends at the demo's now, and `/wind` holds one
+  // row per hour for the whole campaign (2,160 rows), so a day always has one.
+  const windSeries = useWind(useStableWindow(24))
   const wind = windSeries.data?.[windSeries.data.length - 1]
 
   const [showWind, setShowWind] = useState(true)
@@ -115,16 +115,24 @@ export function Scope() {
   const plumeQ = useDispersion({ site_id: site?.id })
   const concernsQ = useConcerns({ limit: 400 })
   const clustersQ = useConcernClusters()
-  // The last fortnight by default, as on every map (components/lib/reports).
-  const cursor = useSession((st) => st.time.cursor)
+  // The last fortnight by default, as on every map (components/lib/reports),
+  // ending at the demo's now — the same instant the row ages are measured from,
+  // so the window and the ages cannot disagree. Both lists are already cut at
+  // that moment by the server (`at`), clusters included.
   const windowed = useMemo(
-    () => windowReports(concernsQ.data ?? [], clustersQ.data ?? [], REPORT_WINDOW_DAYS, cursor),
-    [concernsQ.data, clustersQ.data, cursor],
+    () => windowReports(concernsQ.data ?? [], clustersQ.data ?? [], REPORT_WINDOW_DAYS, now),
+    [concernsQ.data, clustersQ.data, now],
   )
 
+  // Live means begun and not yet ended AT THE MOMENT SHOWN (`isOngoing`), not
+  // `status` active/acknowledged. Measured on Ridgeline, checked-in build: the
+  // status filter listed 5 alerts at the end of the data, 3 of which had ended
+  // (one- and two-hour exceedances on Aug 24 and 27) — 2 were actually up. At
+  // Aug 12 it listed the same 5, none of which had begun. `status` is the final
+  // one and cannot say when.
   const live = useMemo(
-    () => (alertsQ.data ?? []).filter((a: Alert) => LIVE_STATUSES.has(a.status)),
-    [alertsQ.data],
+    () => (alertsQ.data ?? []).filter((a: Alert) => isOngoing(a, now)),
+    [alertsQ.data, now],
   )
   // Only alerts with a place relative to the site. The one without (measured
   // wind vs the dispersion study) is the wind panel's, and on a range-sorted
@@ -722,8 +730,10 @@ export function Scope() {
               </span>
               <span className={s.spacer} />
               <Caps>
+                {/* The window the server actually binned, from the payload. It
+                    printed "72 h" over a two-week field. */}
                 {windQ.data
-                  ? `72 h · ${fmtCompact(windQ.data.n_obs)} fleet obs · ${fmtNum(windQ.data.cells.length, 0)} cells`
+                  ? `${fmtSpan(hoursBetween(windQ.data.from, windQ.data.to))} · ${fmtCompact(windQ.data.n_obs)} fleet obs · ${fmtNum(windQ.data.cells.length, 0)} cells`
                   : 'no field'}
               </Caps>
             </div>
@@ -843,6 +853,7 @@ function ContactRibbon({
   selected: string | null
   onSelect(id: string | null): void
 }) {
+  // Raw ends: the timeline rewinds them to the demo's now itself.
   const rows = useMemo(
     () => alerts.map((a) => ({
       id: a.id,
@@ -868,6 +879,11 @@ function ContactRibbon({
       />
     </Panel>
   )
+}
+
+/** A window's length for a label: "36 h", "14 d". */
+function fmtSpan(hours: number): string {
+  return hours >= 48 ? `${fmtNum(hours / 24, 0)} d` : `${fmtNum(hours, 0)} h`
 }
 
 /** "Turbine bank A (4 x 14.6 MW)" → "TURBINE BANK A". */

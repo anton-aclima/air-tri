@@ -21,7 +21,10 @@ import {
 } from '@/apps/community/FeedCards'
 import {
   adviceFor,
+  clustersAsOf,
   distanceFromHome,
+  feedBy,
+  inForce,
   kindEmoji,
   kindLabel,
   nearWords,
@@ -42,6 +45,9 @@ import {
 } from '@/apps/community/parts'
 import { Avatar, Button, Skeleton, SkeletonText } from '@/app/ui'
 import { RiskDial } from '@/components'
+import { parseCampaign } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { happenedBy } from '@/core/events'
 import { countOf, relativeTime } from '@/core/format'
 import {
   useAdvisories,
@@ -52,11 +58,12 @@ import {
   useFleet,
   useFlags,
 } from '@/core/queries'
-import { resolveNow, useTime } from '@/core/session'
+import { useNowCampaign } from '@/core/session'
 import type { FeedItem } from '@/core/types'
 
-function greeting(now: Date): string {
-  const h = now.getHours()
+/** By the demo's hour, not the viewer's: replaying 2 a.m. says "Still up". */
+function greeting(now: CampaignTime): string {
+  const h = parseCampaign(now).getHours()
   if (h < 5) return 'Still up'
   if (h < 12) return 'Good morning'
   if (h < 18) return 'Good afternoon'
@@ -65,20 +72,34 @@ function greeting(now: Date): string {
 
 export function Feed() {
   const navigate = useNavigate()
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const me = useMe()
   const places = usePlaces()
 
   const feed = useFeed({ limit: 40 })
+  // `concern_count_7d` and `advisory_count_active` are counted by the server
+  // back from ITS now — the same instant as ours at the end of the data, and
+  // the `at` the hook sends in replay. This page never counts its own week.
   const stats = useCommunityStats().data
-  const clusters = useConcernClusters().data ?? []
-  const concerns = useConcerns({ limit: 60 }).data ?? []
-  const advisories = useAdvisories({ audience: 'community' }).data ?? []
+  const concernsQ = useConcerns({ limit: 60 }).data
+  const clustersQ = useConcernClusters().data
+  const advisoriesQ = useAdvisories({ audience: 'community' }).data
   const fleet = useFleet().data ?? []
   const delayMin = useFlags()?.community_fleet_delay_min ?? 180
 
-  const items = feed.data ?? []
+  // Everything below is as of the demo's now (docs/PLAN-refocus.md D2).
+  const items = useMemo(() => feedBy(feed.data, now), [feed.data, now])
+  const concerns = useMemo(() => happenedBy(concernsQ, now), [concernsQ, now])
+  const clusters = useMemo(
+    () => clustersAsOf(clustersQ, concernsQ ?? [], now),
+    [clustersQ, concernsQ, now],
+  )
+  // "Notices in force" means in force: at the end of the data four of the five
+  // have expired, and the rail listed them under the heading anyway.
+  const advisories = useMemo(
+    () => (advisoriesQ ?? []).filter((a) => inForce(a, now)),
+    [advisoriesQ, now],
+  )
 
   /**
    * One card per moment. Two measures from the same sensor is one story, and
@@ -393,7 +414,7 @@ function FeedRow({
   home,
 }: {
   item: FeedItem
-  now: Date
+  now: CampaignTime
   home: [number, number]
 }) {
   switch (item.type) {

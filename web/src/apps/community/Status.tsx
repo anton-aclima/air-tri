@@ -9,14 +9,16 @@
 import { Link } from '@tanstack/react-router'
 
 import s from '@/apps/community/community.module.css'
-import { usePlaces } from '@/apps/community/lib'
+import { inForce, usePlaces } from '@/apps/community/lib'
 import { FootNote, RiskPill, SimNote, VoiceTag } from '@/apps/community/parts'
 import { Badge, Empty } from '@/app/ui'
+import { happenedBy } from '@/core/events'
 import { distanceBetween, fmtDistanceImperial, relativeTime } from '@/core/format'
 import { plainName, riskFromValue, SEVERITY_PLAIN } from '@/core/measures'
 import { useAdvisories, useBootstrap, useMeasures, useMonitors, useOrgs } from '@/core/queries'
-import { resolveNow, useTime } from '@/core/session'
-import type { MeasureCode, Monitor, Position } from '@/core/types'
+import { useNowCampaign } from '@/core/session'
+import type { CampaignTime } from '@/core/clock'
+import type { Advisory, MeasureCode, Monitor, Position } from '@/core/types'
 
 const STATUS_WORD: Record<Monitor['status'], string> = {
   online: 'Working',
@@ -33,8 +35,7 @@ const STATUS_TONE: Record<Monitor['status'], 'ok' | 'watch' | 'critical' | 'neut
 }
 
 export function Status() {
-  const time = useTime()
-  const now = resolveNow(time)
+  const now = useNowCampaign()
   const places = usePlaces()
   const orgs = useOrgs()
   // 'modality', deliberately NOT PICKABLE. This screen asks what the agency's
@@ -45,7 +46,15 @@ export function Status() {
   const measures = useMeasures('modality')
   const bootstrap = useBootstrap().data
   const monitors = useMonitors().data ?? []
-  const advisories = useAdvisories({ audience: 'community' }).data ?? []
+  // Everything the agency had posted by the demo's now (D2) — a notice issued
+  // later is the future. Expired ones stay, since this is its whole record, but
+  // under their own heading: listed together under "in force", Aug 12 showed
+  // one ended notice "in force" beside the feed's "0 notices from the air
+  // agency", and the end showed five against the feed's one. `inForce` is the
+  // test the server's `advisory_count_active` makes, so the two counts agree.
+  const posted = happenedBy(useAdvisories({ audience: 'community' }).data, now)
+  const current = posted.filter((a) => inForce(a, now))
+  const earlier = posted.filter((a) => !inForce(a, now))
 
   const agencyMonitors = monitors.filter((m) => m.owner_type === 'regulator')
   const otherMonitors = monitors.filter((m) => m.owner_type !== 'regulator')
@@ -80,26 +89,26 @@ export function Status() {
       {/* ── notices ──────────────────────────────────────────────────── */}
       <h2 className={s.sectionLabel}>Notices in force</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)', marginTop: 'var(--s-3)' }}>
-        {advisories.length === 0 ? (
+        {current.length === 0 ? (
           <Empty icon="megaphone" title="No notices right now">
             When the agency issues a warning or an all-clear, it appears here and in your feed.
           </Empty>
         ) : null}
-        {advisories.map((a) => (
-          <article key={a.id} className={s.post} style={{ ['--voice' as string]: 'var(--actor-regulator)' }}>
-            <div className={s.postTags}>
-              <VoiceTag voice="agency">Air agency</VoiceTag>
-              <Badge tone={a.severity}>{SEVERITY_PLAIN[a.severity]}</Badge>
-              {a.measure ? <Badge tone="neutral">About {measureName(a.measure)}</Badge> : null}
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
-                {relativeTime(a.created_at, now)}
-              </span>
-            </div>
-            <h3 className={s.postTitle}>{a.title}</h3>
-            <p className={s.postBody}>{a.body}</p>
-          </article>
+        {current.map((a) => (
+          <NoticeCard key={a.id} advisory={a} now={now} measureName={measureName} />
         ))}
       </div>
+
+      {earlier.length ? (
+        <>
+          <h2 className={s.sectionLabel}>Earlier notices</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)', marginTop: 'var(--s-3)' }}>
+            {earlier.map((a) => (
+              <NoticeCard key={a.id} advisory={a} now={now} measureName={measureName} />
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {/* ── the agency's own instruments ─────────────────────────────── */}
       <h2 className={s.sectionLabel}>The agency&rsquo;s fixed monitors</h2>
@@ -162,6 +171,32 @@ export function Status() {
         invented agency, invented people.
       </FootNote>
     </div>
+  )
+}
+
+function NoticeCard({
+  advisory: a,
+  now,
+  measureName,
+}: {
+  advisory: Advisory
+  now: CampaignTime
+  measureName: (c: MeasureCode) => string
+}) {
+  return (
+    <article className={s.post} style={{ ['--voice' as string]: 'var(--actor-regulator)' }}>
+      <div className={s.postTags}>
+        <VoiceTag voice="agency">Air agency</VoiceTag>
+        <Badge tone={a.severity}>{SEVERITY_PLAIN[a.severity]}</Badge>
+        {a.measure ? <Badge tone="neutral">About {measureName(a.measure)}</Badge> : null}
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)' }}>
+          {relativeTime(a.created_at, now)}
+          {a.expires_at && !inForce(a, now) ? ` · ended ${relativeTime(a.expires_at, now)}` : ''}
+        </span>
+      </div>
+      <h3 className={s.postTitle}>{a.title}</h3>
+      <p className={s.postBody}>{a.body}</p>
+    </article>
   )
 }
 

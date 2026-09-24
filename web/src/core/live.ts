@@ -13,13 +13,23 @@
  * The backend is written in parallel, so the connection is entirely optional:
  * if the stream 404s or the server is down we retry with backoff, report
  * `status: 'offline'`, and the app carries on.
+ *
+ * Two clocks live here and must not be confused. An event's `at` is CAMPAIGN
+ * time (core/clock): the server stamps every write at its frozen now, the end
+ * of the data, and an event without a stamp gets that same instant here. The
+ * `connectedAt` / `pulseAt` numbers are the viewer's wall clock, because they
+ * time a connection and a CSS flash, and nothing reads them as a moment in the
+ * campaign.
  */
 
 import type { QueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
 
 import { apiUrl } from '@/core/api'
+import { naive } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
 import { INVALIDATE, qk } from '@/core/queries'
+import { nowCampaign, useSession } from '@/core/session'
 import type { Role, Severity } from '@/core/types'
 import { humanize } from '@/core/format'
 import { uid } from '@/core/util'
@@ -33,7 +43,8 @@ export type LiveEventType =
 export interface LiveEvent {
   id: string
   type: LiveEventType
-  at: string
+  /** Naive campaign time — see the header. */
+  at: CampaignTime
   actorRole: Role | null
   verb: string | null
   objectType: string | null
@@ -54,7 +65,8 @@ export interface Toast {
   severity: Severity
   title: string
   body: string | null
-  at: string
+  /** Naive campaign time. Print with `relativeTime(at, useNowCampaign())`. */
+  at: CampaignTime
   /** Whose colour the toast wears. */
   actorRole: Role | null
   /** Where clicking it should go, when we can work it out. */
@@ -74,16 +86,23 @@ const TOAST_MS = 7000
 export interface LiveState {
   status: LiveStatus
   attempts: number
+  /** Wall-clock ms, for the connection only — not a campaign time. */
   connectedAt: number | null
   /** Increments on every event. Watch this to flash something. */
   pulse: number
+  /** Wall-clock ms of the last pulse, for animation timing only. */
   pulseAt: number
   /** Who caused the most recent pulse — flash *their* colour. */
   pulseRole: Role | null
   lastEvent: LiveEvent | null
   events: LiveEvent[]
   toasts: Toast[]
-  /** Unseen event count since the user last looked at the notification surface. */
+  /**
+   * Unseen event count since the user last looked at the notification surface.
+   * @deprecated Nothing ever calls `markSeen`, so it only grows; the shell's
+   * counter goes with the LIVE chip (docs/PLAN-refocus.md S3). Delete this once
+   * no screen reads it.
+   */
   unseen: number
 
   setStatus: (status: LiveStatus, attempts?: number) => void
@@ -128,7 +147,7 @@ export const useLive = create<LiveState>()((set) => ({
     set((s) => ({
       toasts: [
         ...s.toasts.filter((t) => t.title !== input.title || t.body !== input.body),
-        { ...input, id, at: input.at ?? new Date().toISOString() },
+        { ...input, id, at: input.at ? naive(input.at) : stampNow() },
       ].slice(-TOAST_MAX),
     }))
     if (!input.sticky) {
@@ -144,11 +163,24 @@ export const useLive = create<LiveState>()((set) => ({
   markSeen: () => set({ unseen: 0 }),
 }))
 
+/**
+ * The stamp for an event that arrived without one: the instant the server
+ * stamps writes with (`timeutil.now` — the end of the data), not the wall
+ * clock, which is weeks past it, and not the cursor, because a write lands at
+ * the end whatever moment is being replayed. Toasts then read "just now" on
+ * every screen (D1).
+ */
+function stampNow(): CampaignTime {
+  const { time } = useSession.getState()
+  return time.bounds?.end ?? nowCampaign(time)
+}
+
 // ───────────────────────────────────────────────────────────────── selectors
 
 export const useLiveStatus = (): LiveStatus => useLive((s) => s.status)
 export const useLiveToasts = (): Toast[] => useLive((s) => s.toasts)
 export const useLiveEvents = (): LiveEvent[] => useLive((s) => s.events)
+/** @deprecated See `LiveState.unseen`. */
 export const useLiveUnseen = (): number => useLive((s) => s.unseen)
 
 /** `{ pulse, at, role }` — bump a CSS animation off `pulse`. */
@@ -216,11 +248,13 @@ export function parseLiveEvent(eventName: string, raw: string): LiveEvent | null
     str(data, 'title', 'summary') ??
     str(payload, 'title', 'summary') ??
     (verb ? humanize(`${verb} ${objectType ?? ''}`.trim()) : humanize(type))
+  // A `Z` or offset is dropped, not converted: the digits are the truth.
+  const ts = str(data, 'ts', 'at', 'created_at')
 
   return {
     id: str(data, 'id', 'event_id') ?? uid('ev'),
     type,
-    at: str(data, 'ts', 'at', 'created_at') ?? new Date().toISOString(),
+    at: ts ? naive(ts) : stampNow(),
     actorRole: asRole(data.actor_role ?? data.actorRole ?? payload.actor_role),
     verb,
     objectType,
@@ -375,7 +409,7 @@ export function emitLocal(
 ): void {
   handleLiveEvent(qc, {
     id: uid('local'),
-    at: new Date().toISOString(),
+    at: stampNow(),
     actorRole: role,
     verb: null,
     objectType: null,

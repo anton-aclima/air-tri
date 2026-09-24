@@ -22,12 +22,15 @@ import { Link } from '@tanstack/react-router'
 
 import { Sparkline } from '@/components'
 import { Button } from '@/app/ui'
+import { campaignMs } from '@/core/clock'
+import { happenedBy } from '@/core/events'
 import { compassPoint, fmtBearing, fmtDistance, fmtNum, relativeShort } from '@/core/format'
 import { useConcernClusters, useConcerns, useWind } from '@/core/queries'
+import { useNowCampaign } from '@/core/session'
 import type { Concern } from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Tag, bearingFrom, placeReports, styles as s, useNowTick, useSiteLock,
+  Caps, Panel, Readout, Tag, bearingFrom, placeReports, styles as s, useSiteLock,
   useStableWindow,
 } from './lib'
 
@@ -35,10 +38,19 @@ const DAYS = 21
 
 export function Community() {
   const site = useSiteLock()
-  const now = useNowTick(30_000)
-  const concerns = useConcerns({ limit: 400 }).data ?? []
-  const clusters = useConcernClusters().data ?? []
-  const windSeries = useWind(useStableWindow(24 * 14)).data
+  const now = useNowCampaign()
+  // Reports filed by the moment shown (D2). The server already cuts at `at`;
+  // the second cut is for the frames in between — a clock-keyed query keeps
+  // the previous moment's list on screen while the next loads, and scrubbing
+  // back, that list is the future.
+  const allConcerns = useConcerns({ limit: 400 }).data
+  const concerns = useMemo(() => happenedBy(allConcerns, now), [allConcerns, now])
+  // Cut at `at` by the server, which also rebuilds a cluster still forming
+  // then from the reports it had so far.
+  const clustersData = useConcernClusters().data
+  const clusters = useMemo(() => clustersData ?? [], [clustersData])
+  // The latest hourly observation at the moment shown — see Scope.
+  const windSeries = useWind(useStableWindow(24)).data
   const wind = windSeries?.[windSeries.length - 1]
   const transport = wind ? (wind.dir_deg + 180) % 360 : null
   const [picked, setPicked] = useState<string | null>(null)
@@ -58,9 +70,9 @@ export function Community() {
    */
   const trend = useMemo(() => {
     const buckets = new Array<number>(DAYS).fill(0)
-    const end = now.getTime()
+    const end = campaignMs(now)
     for (const { concern: c } of near) {
-      const age = (end - Date.parse(c.created_at)) / 86_400_000
+      const age = (end - campaignMs(c.created_at)) / 86_400_000
       if (age >= 0 && age < DAYS) buckets[DAYS - 1 - Math.floor(age)] += 1
     }
     return buckets

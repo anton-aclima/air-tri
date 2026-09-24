@@ -23,7 +23,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from air.server import cache, coverage, touchdown as td
+from air.server import cache, coverage, domain
+from air.server import touchdown as td
 from air.server.db import get_db, one, resolve_campaign
 
 router = APIRouter(tags=["coverage"])
@@ -161,6 +162,7 @@ def coverage_siting(
 
 @router.get("/coverage/calibration")
 def coverage_calibration(
+    at: str | None = None,
     campaign_id: str | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
@@ -174,38 +176,49 @@ def coverage_calibration(
     No DAG, no hop counts, no residual histogram, no new tables: the finding is
     stronger stated than drawn, and it is read straight off `measures_json`
     plus colocation computed from `segment_pass` x `monitor`.
+
+    `at` is the moment ages are measured from (`domain.as_of`: no `at` is the
+    end, past the end is the end, garbage is a 422). It was `MAX(ts) FROM
+    monitor_reading` — its own "now", 54 min before the server's — and the age
+    was `abs()`, so at Aug 12 the NO2 row read "11 d" for Weaver Road's Aug 18
+    calibration, six days in the future. Only the LAST calibration is stored,
+    so an anchor calibrated after `at` has no known stamp then: its
+    `last_calibrated` is null and it does not set the channel's age. A channel
+    whose every anchor is like that has `age_days: None`, never a negative or
+    mirrored age. Which channels are anchored does not move: the instruments
+    were standing all campaign.
     """
     import json as _json
 
     cid = resolve_campaign(conn, campaign_id)
+    now = domain.as_of(conn, cid, at)
     key = ("calibration", cid, cache.version())
-    hit = cache.get(key)
-    if hit is not None:
-        return hit
-
-    measures = [
-        {"code": r[0], "plain_name": r[1], "family": r[2]}
-        for r in conn.execute(
-            "SELECT code, plain_name, family FROM measure_def ORDER BY sort_order, code"
-        )
-    ]
-    anchors: dict[str, list[dict[str, Any]]] = {}
-    for mid, name, grade, last_cal, mj in conn.execute(
-        "SELECT id, name, grade, last_calibrated, measures_json FROM monitor "
-        "WHERE campaign_id = ? AND grade = 'reference'",
-        (cid,),
-    ):
-        for code in _json.loads(mj or "[]"):
-            anchors.setdefault(code, []).append(
-                {"monitor_id": mid, "name": name, "grade": grade, "last_calibrated": last_cal}
+    base = cache.get(key)
+    if base is None:
+        measures = [
+            {"code": r[0], "plain_name": r[1], "family": r[2]}
+            for r in conn.execute(
+                "SELECT code, plain_name, family FROM measure_def ORDER BY sort_order, code"
             )
+        ]
+        anchors: dict[str, list[dict[str, Any]]] = {}
+        for mid, name, grade, last_cal, mj in conn.execute(
+            "SELECT id, name, grade, last_calibrated, measures_json FROM monitor "
+            "WHERE campaign_id = ? AND grade = 'reference'",
+            (cid,),
+        ):
+            for code in _json.loads(mj or "[]"):
+                anchors.setdefault(code, []).append(
+                    {"monitor_id": mid, "name": name, "grade": grade, "last_calibrated": last_cal}
+                )
+        base = cache.put(key, {"measures": measures, "anchors": anchors})
 
-    now = conn.execute(
-        "SELECT MAX(ts) FROM monitor_reading"
-    ).fetchone()[0]
     out = []
-    for m in measures:
-        anch = anchors.get(m["code"], [])
+    for m in base["measures"]:
+        anch = [
+            {**a, "last_calibrated": _by(a["last_calibrated"], now)}
+            for a in base["anchors"].get(m["code"], [])
+        ]
         newest = max((a["last_calibrated"] or "" for a in anch), default="")
         out.append({
             **m,
@@ -220,17 +233,25 @@ def coverage_calibration(
                 "can calibrate this channel."
             ),
         })
-    payload = {
+    return {
         "campaign_id": cid,
         "as_of": now,
         "n_measures": len(out),
         "n_anchored": sum(1 for m in out if m["anchored"]),
         "channels": out,
     }
-    return cache.put(key, payload)
+
+
+def _by(stamp: str | None, now: str) -> str | None:
+    """`stamp` if it had happened by `now`. `last_calibrated` is a bare date
+    (`2026-08-18`), which sorts before any time on that day, so a calibration
+    on the day `now` falls in counts from midnight."""
+    return stamp if stamp and stamp[:19] <= now else None
 
 
 def _age_days(stamp: str, now: str | None) -> float | None:
+    """Days from `stamp` to `now`; None when either is missing or `stamp` is
+    after `now` — a calibration that has not happened yet has no age."""
     if not stamp or not now:
         return None
     import datetime as dt
@@ -240,7 +261,8 @@ def _age_days(stamp: str, now: str | None) -> float | None:
         b = dt.datetime.fromisoformat(now[:19])
     except ValueError:
         return None
-    return round(abs((b - a).total_seconds()) / 86400.0, 1)
+    seconds = (b - a).total_seconds()
+    return None if seconds < 0 else round(seconds / 86400.0, 1)
 
 
 _ = math

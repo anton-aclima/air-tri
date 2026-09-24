@@ -318,14 +318,19 @@ export interface MonitorsParams {
   grade?: 'reference' | 'fem' | 'lowcost'
   site_id?: string
   campaign_id?: string
+  /**
+   * Upper bound, naive campaign time: `latest` is the last reading at or
+   * before it. Without it every tower read its Aug 28 value at a June cursor.
+   */
+  at?: string
 }
 
 export function listMonitors(params: MonitorsParams = {}, signal?: AbortSignal): Promise<Monitor[]> {
   return getList<Monitor>('/monitors', { ...params }, signal, 'monitors')
 }
 
-export function getMonitor(id: string, signal?: AbortSignal): Promise<Monitor> {
-  return request<Monitor>(`/monitors/${encodeURIComponent(id)}`, { signal })
+export function getMonitor(id: string, at?: string, signal?: AbortSignal): Promise<Monitor> {
+  return request<Monitor>(`/monitors/${encodeURIComponent(id)}`, { signal, params: { at } })
 }
 
 export interface MonitorReadingsParams {
@@ -346,12 +351,22 @@ export function getMonitorReadings(
   })
 }
 
+// ─────────────────────────────────────────────────────── the upper bound
+// `at` on /concerns, /clusters, /alerts, /feed and /stats/community is the
+// moment on screen, as naive campaign time (core/clock). The server cuts at it
+// BEFORE its LIMIT: filtered in the browser instead, the newest-N rows at Aug 12
+// were all in the future and the list came back empty (docs/PLAN-refocus.md F2).
+// Omitted, it means the server's now — the end of the data — so a paused-at-
+// the-end session sends nothing and the two sides still agree.
+
 // ────────────────────────────────────────────────────────────── concerns
 
 export interface ConcernsParams {
   status?: ConcernStatus
   kind?: ConcernKind
   since?: string
+  /** Upper bound, naive campaign time. See "the upper bound" above. */
+  at?: string
   /** `near=lon,lat,radius_m` */
   near?: { lon: number; lat: number; radius_m?: number }
   cluster_id?: string
@@ -366,6 +381,7 @@ export function listConcerns(params: ConcernsParams = {}, signal?: AbortSignal):
       status: params.status,
       kind: params.kind,
       since: params.since,
+      at: params.at,
       near: nearParam(params.near?.lon, params.near?.lat, params.near?.radius_m),
       cluster_id: params.cluster_id,
       campaign_id: params.campaign_id,
@@ -380,8 +396,19 @@ export function getConcern(id: string, signal?: AbortSignal): Promise<Concern> {
   return request<Concern>(`/concerns/${encodeURIComponent(id)}`, { signal })
 }
 
-export function listClusters(campaignId?: string, signal?: AbortSignal): Promise<ConcernCluster[]> {
-  return getList<ConcernCluster>('/clusters', { campaign_id: campaignId }, signal, 'clusters')
+export interface ClustersParams {
+  campaign_id?: string
+  /** Upper bound, naive campaign time: clusters that had formed by then. */
+  at?: string
+}
+
+export function listClusters(params: ClustersParams = {}, signal?: AbortSignal): Promise<ConcernCluster[]> {
+  return getList<ConcernCluster>(
+    '/clusters',
+    { campaign_id: params.campaign_id, at: params.at },
+    signal,
+    'clusters',
+  )
 }
 
 // ───────────────────────────────────────────────────────────────── sites
@@ -427,6 +454,8 @@ export interface AlertsParams {
   /** Supplying this makes the API add `bearing_deg` + `distance_m` — the RWR geometry. */
   site_id?: string
   since?: string
+  /** Upper bound, naive campaign time. The server marks `ongoing` as of it. */
+  at?: string
   limit?: number
 }
 
@@ -434,9 +463,15 @@ export function listAlerts(params: AlertsParams = {}, signal?: AbortSignal): Pro
   return getList<Alert>('/alerts', { ...params }, signal, 'alerts')
 }
 
-/** Detail: adds `samples[]` for the sparkline plus related concerns/mitigations. */
-export function getAlert(id: string, siteId?: string, signal?: AbortSignal): Promise<Alert> {
-  return request<Alert>(`/alerts/${encodeURIComponent(id)}`, { signal, params: { site_id: siteId } })
+/**
+ * Detail: adds `samples[]` for the sparkline plus related concerns/mitigations.
+ * `at` bounds those as the list does: the related reports come back already
+ * cut at the moment, because the server takes the nearest 40 BEFORE the
+ * browser could drop the future ones (at Aug 12 that left none of the one
+ * that existed).
+ */
+export function getAlert(id: string, siteId?: string, at?: string, signal?: AbortSignal): Promise<Alert> {
+  return request<Alert>(`/alerts/${encodeURIComponent(id)}`, { signal, params: { site_id: siteId, at } })
 }
 
 export function listActionLevels(signal?: AbortSignal): Promise<ActionLevel[]> {
@@ -448,6 +483,8 @@ export function listActionLevels(signal?: AbortSignal): Promise<ActionLevel[]> {
 export interface FeedParams {
   role?: Role
   since?: string
+  /** Upper bound, naive campaign time; reading items are built as of it. */
+  at?: string
   limit?: number
   campaign_id?: string
 }
@@ -460,7 +497,7 @@ export function getFeed(params: FeedParams = {}, signal?: AbortSignal): Promise<
 // ───────────────────────────────────────────────────────────────── fleet
 
 export interface FleetParams {
-  /** ISO timestamp — pass the session time cursor. */
+  /** Naive campaign time — the session's `timeParam(time)`. */
   at?: string
   /** Community MUST pass ≥ 180 (CONTRACT §9.5). */
   delay_min?: number
@@ -614,9 +651,12 @@ export function getSiting(limit = 10, signal?: AbortSignal): Promise<Siting> {
   return request<Siting>('/coverage/siting', { signal, params: { limit } })
 }
 
-/** Per-channel anchoring state. */
-export function getCalibration(signal?: AbortSignal): Promise<Calibration> {
-  return request<Calibration>('/coverage/calibration', { signal })
+/**
+ * Per-channel anchoring state as of `at`: an anchor's age is measured from the
+ * moment on screen, and a calibration that has not happened yet has no age.
+ */
+export function getCalibration(at?: string, signal?: AbortSignal): Promise<Calibration> {
+  return request<Calibration>('/coverage/calibration', { signal, params: { at } })
 }
 
 // ──────────────────────────────────────────────────────────── climatology
@@ -710,8 +750,15 @@ export function getCoverage(
 
 // ────────────────────────────────────────────────────────────────── stats
 
+export interface CommunityStatsParams {
+  window?: StatWindow
+  campaign_id?: string
+  /** Upper bound, naive campaign time: report counts as of that moment. */
+  at?: string
+}
+
 export function getCommunityStats(
-  params: { window?: StatWindow; campaign_id?: string } = {},
+  params: CommunityStatsParams = {},
   signal?: AbortSignal,
 ): Promise<CommunityStats> {
   return request<CommunityStats>('/stats/community', { signal, params: { ...params } })

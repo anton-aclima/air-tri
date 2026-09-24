@@ -17,17 +17,18 @@ import { useMemo, useState } from 'react'
 
 import { ALERT_KIND_LABEL, AlertTimeline, TimeSeries } from '@/components'
 import { Button, Segmented } from '@/app/ui'
-import { fmtNum, relativeShort } from '@/core/format'
+import { addHours, campaignMs, floorTo } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { fmtNum } from '@/core/format'
 import { severityRank, severityVar } from '@/core/measures'
 import { useAcknowledgeAlert, useAlert, useAlerts, useMonitorReadings } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { Alert, Severity } from '@/core/types'
 
 import { PushComposer, subjectFromAlert } from './Push'
 import {
-  Caps, Panel, Readout, Sev, Tag, Unit, fmtRatio, liveAlerts, overBy, shortWhere,
-  SOURCE_TAG_LABEL, sourceTag, styles as s, tinyCode, useMeasureMap, useNowTick,
-  useStableWindow, useTowers,
+  Caps, Panel, Readout, Sev, Tag, Unit, alertSpan, fmtRatio, liveAlerts, overBy, queueAlerts,
+  shortWhere, SOURCE_TAG_LABEL, sourceTag, styles as s, timelineRow, useMeasureMap, useTowers,
 } from './lib'
 
 type KindFilter = 'all' | 'spike' | 'integrated' | 'community' | 'model'
@@ -48,7 +49,7 @@ function kindOf(a: Alert): KindFilter {
 }
 
 export function AlertsQueue() {
-  const now = useNowTick()
+  const now = useNowCampaign()
   const alertsQ = useAlerts({})
   const towers = useTowers().data ?? []
   const towerIds = useMemo(() => new Set(towers.map((m) => m.id)), [towers])
@@ -57,10 +58,14 @@ export function AlertsQueue() {
   const [kind, setKind] = useState<KindFilter>('all')
   const [selected, setSelected] = useState<string | null>(null)
 
-  const live = useMemo(() => liveAlerts(alertsQ.data), [alertsQ.data])
+  // The header counts what is live at the demo's now; the queue also keeps what
+  // has ended but still waits on the agency (lib `queueAlerts`). Both drop
+  // anything that begins after the moment on screen.
+  const live = useMemo(() => liveAlerts(alertsQ.data, now), [alertsQ.data, now])
+  const queue = useMemo(() => queueAlerts(alertsQ.data, now), [alertsQ.data, now])
   const rows = useMemo(
     () =>
-      live
+      queue
         .filter((a) => kind === 'all' || kindOf(a) === kind)
         .sort(
           (a, b) =>
@@ -68,7 +73,7 @@ export function AlertsQueue() {
             (overBy(b) ?? 0) - (overBy(a) ?? 0) ||
             b.started_at.localeCompare(a.started_at),
         ),
-    [live, kind],
+    [queue, kind],
   )
 
   const active = rows.find((a) => a.id === selected) ?? rows[0]
@@ -83,16 +88,9 @@ export function AlertsQueue() {
 
   const timeline = useMemo(
     () =>
-      rows.slice(0, 22).map((a) => ({
-        id: a.id,
-        label: `${a.measure ? a.measure.toUpperCase() : 'CLSTR'} · ${shortWhere(a)}`,
-        code: tinyCode(a),
-        severity: a.severity,
-        startedAt: a.started_at,
-        endedAt: a.ended_at,
-        acknowledged: a.status === 'acknowledged',
-      })),
-    [rows, towerIds],
+      rows.slice(0, 22).map((a) =>
+        timelineRow(a, now, `${a.measure ? a.measure.toUpperCase() : 'CLSTR'} · ${shortWhere(a)}`)),
+    [rows, now],
   )
 
   return (
@@ -118,7 +116,7 @@ export function AlertsQueue() {
         <div className={s.verdictStats}>
           <Readout label="Tower-seen" value={fmtNum(towerSeen, 0)} tone="tower" />
           <Readout label="Fleet-only" value={fmtNum(fleetOnly, 0)} tone="fleet" big />
-          <Readout label="Unacknowledged" value={fmtNum(live.filter((a) => a.status === 'active').length, 0)} tone="over" />
+          <Readout label="Unacknowledged" value={fmtNum(queue.filter((a) => a.status === 'active').length, 0)} tone="over" />
         </div>
       </div>
 
@@ -155,12 +153,13 @@ export function AlertsQueue() {
               <span style={{ textAlign: 'right' }}>reading</span>
               <span style={{ textAlign: 'right' }}>limit</span>
               <span style={{ textAlign: 'right' }}>×</span>
-              <span style={{ textAlign: 'right' }}>up for</span>
+              <span style={{ textAlign: 'right' }}>up / ended</span>
             </div>
             {rows.map((a) => {
               const src = sourceTag(a, towerIds)
               const def = a.measure ? measures.get(a.measure) : undefined
               const r = a.kind === 'wind_shift' ? null : overBy(a)
+              const span = alertSpan(a, now)
               return (
                 <button
                   key={a.id}
@@ -187,7 +186,7 @@ export function AlertsQueue() {
                   <span className={s.rowNum} style={{ color: (r ?? 0) >= 1 ? severityVar(a.severity) : undefined }}>
                     {fmtRatio(r)}
                   </span>
-                  <span className={`${s.rowNum} ${s.dim}`}>{relativeShort(a.started_at, now)}</span>
+                  <span className={`${s.rowNum} ${s.dim}`} title={span.long}>{span.short}</span>
                 </button>
               )
             })}
@@ -196,7 +195,7 @@ export function AlertsQueue() {
         </Panel>
 
         <div className={s.stack}>
-          {active ? <AlertDetail alert={active} towerIds={towerIds} /> : (
+          {active ? <AlertDetail alert={active} towerIds={towerIds} now={now} /> : (
             <Panel title="Detail"><div className={s.empty}>Select an event.</div></Panel>
           )}
         </div>
@@ -207,14 +206,14 @@ export function AlertsQueue() {
 
 // ─────────────────────────────────────────────────────────────── detail
 
-function AlertDetail({ alert, towerIds }: { alert: Alert; towerIds: Set<string> }) {
+function AlertDetail({ alert, towerIds, now }: { alert: Alert; towerIds: Set<string>; now: CampaignTime }) {
   const detail = useAlert(alert.id).data ?? alert
   const ack = useAcknowledgeAlert()
   const userId = useSession((x) => x.user?.id)
   const measures = useMeasureMap()
   const def = detail.measure ? measures.get(detail.measure) : undefined
   const src = sourceTag(detail, towerIds)
-  const win = useStableWindow(48)
+  const win = useMemo(() => traceWindow(detail, now), [detail, now])
 
   // The alert carries its own samples; a monitor-sourced one also has the
   // instrument's full hourly trace, which is what puts the spike in context.
@@ -316,4 +315,18 @@ function AlertDetail({ alert, towerIds }: { alert: Alert; towerIds: Set<string> 
       </Panel>
     </>
   )
+}
+
+/**
+ * The 48 h around the alert, never past the demo's now. A window trailing the
+ * now missed every alert that ended more than two days before it, and the queue
+ * holds those: at the end of the checked-in data, Riverport Road's Aug 25 NO2
+ * warning ended three days earlier and is still unacknowledged. Hour-floored so
+ * the key holds still while the cursor plays.
+ */
+function traceWindow(a: Alert, now: CampaignTime): { from: CampaignTime; to: CampaignTime } {
+  const after = a.ended_at ? addHours(a.ended_at, 12) : now
+  const end = campaignMs(after) < campaignMs(now) ? after : now
+  const to = floorTo(end, 60)
+  return { from: addHours(to, -48), to }
 }

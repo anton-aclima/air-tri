@@ -11,6 +11,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from air.server import timeutil
 from air.server.db import jload
 
 Row = sqlite3.Row
@@ -285,7 +286,14 @@ def concern_response(r: Row, org_name: str | None = None) -> dict[str, Any]:
     }
 
 
-def concern_cluster(r: Row) -> dict[str, Any]:
+def concern_cluster(r: Row, last_posted_at: str | None = None) -> dict[str, Any]:
+    """`first_at`/`last_at` are when reports were NOTICED (`occurred_at`);
+    `last_posted_at` is when the last counted one was POSTED (`created_at`),
+    which is the moment the cluster is whole on every list bounded by `at`.
+    Posting runs hours behind noticing: at cl-00's `last_at` (Jun 5 04:56)
+    2 of its 9 reports were posted and /clusters did not list it at all; its
+    last report was posted at 08:48. The table does not store it, so the
+    caller passes it in from the members it counted."""
     return {
         "id": r["id"],
         "label": r["label"],
@@ -295,6 +303,7 @@ def concern_cluster(r: Row) -> dict[str, Any]:
         "kinds": jload(r["kinds_json"], []) or [],
         "first_at": r["first_at"],
         "last_at": r["last_at"],
+        "last_posted_at": last_posted_at,
         "status": r["status"],
         "site_id": r["site_id"],
     }
@@ -375,7 +384,22 @@ def site_post(r: Row) -> dict[str, Any]:
     }
 
 
-def mitigation(r: Row) -> dict[str, Any]:
+def mitigation(r: Row, now: str | None = None) -> dict[str, Any]:
+    """With `now`, the status as it stood then, rebuilt from the stamps: a
+    mitigation completed after `now` was still in progress, with no
+    `completed_at` yet. Without it, at Aug 12 the community feed said the
+    operator "has finished" mt-003, which completes on Aug 18. Only a
+    downgrade: `proposed` and `withdrawn` carry no stamp to rebuild from."""
+    status, started, completed = r["status"], r["started_at"], r["completed_at"]
+    if now is not None:
+        if completed and completed > now:
+            completed = None
+            if status == "completed":
+                status = "in_progress"
+        if started and started > now:
+            started = None
+            if status == "in_progress":
+                status = "proposed"
     return {
         "id": r["id"],
         "site_id": r["site_id"],
@@ -384,18 +408,48 @@ def mitigation(r: Row) -> dict[str, Any]:
         "alert_id": r["alert_id"],
         "title": r["title"],
         "body": r["body"],
-        "status": r["status"],
+        "status": status,
         "measure": r["measure"],
         "expected_reduction_pct": r["expected_reduction_pct"],
-        "started_at": r["started_at"],
-        "completed_at": r["completed_at"],
+        "started_at": started,
+        "completed_at": completed,
         "created_at": r["created_at"],
     }
 
 
 # ── shared alert bus ──────────────────────────────────────────────────────────
 
-def alert(r: Row) -> dict[str, Any]:
+# When an alert enters the record — the moment every read bounded by `at` shows
+# it from. `started_at` for everything but a concern cluster, whose
+# `started_at` is when the episode was first NOTICED, hours before a single
+# report was posted: al-cluster-01 "started" Jun 17 05:58, its first report was
+# posted 07:38, the cluster formed (third report) at 08:51, and the alert was
+# raised at 10:58 (datagen raises every cluster alert 5 h after the episode).
+# Bounded on `started_at`, /alerts served that 7-report alert at 07:00 while
+# /clusters, correctly, said nothing had formed. `created_at` is never before
+# the CLUSTER_MIN_COUNT-th member was posted — live, `detect_cluster` raises
+# the alert in the same write as that report — so an alert shown is always one
+# whose cluster /clusters shows too. An exceedance's `started_at` is the
+# reading that crossed, which existed at that moment, so it stays.
+ALERT_BEGUN_SQL = "(CASE WHEN kind = 'concern_cluster' THEN created_at ELSE started_at END)"
+
+
+def alert_begun_at(r: Row) -> str | None:
+    """`ALERT_BEGUN_SQL`, for a row already in hand."""
+    return r["created_at"] if r["kind"] == "concern_cluster" else r["started_at"]
+
+
+def alert(r: Row, now: str | None = None) -> dict[str, Any]:
+    """`ongoing` is begun and not yet ended at `now` — the served moment, or the
+    demo's now. It is what "live" means, the same test as `isOngoing` in
+    web/src/core/events.ts, and it is NOT `status == 'active'`: on the pinned
+    build seven 'active' alerts ended one to four days before the end of the
+    data, and a status field cannot say when. "Begun" is `alert_begun_at`,
+    which for a concern cluster is later than `started_at`. Plain string
+    comparison, like the SQL bounds: every stamp is naive
+    `YYYY-MM-DDTHH:MM:SS` (timeutil)."""
+    now = now or timeutil.now_iso()
+    begun, ended = alert_begun_at(r), r["ended_at"]
     return {
         "id": r["id"],
         "kind": r["kind"],
@@ -419,6 +473,7 @@ def alert(r: Row) -> dict[str, Any]:
         "audience": jload(r["audience_json"], ["regulator", "industry", "admin"])
         or ["regulator", "industry", "admin"],
         "created_at": r["created_at"],
+        "ongoing": bool(begun) and begun <= now and (ended is None or ended > now),
     }
 
 

@@ -10,6 +10,12 @@
  *   line  → the median, 2px
  *   rule  → an action level; dashed *because* it is a threshold, not a gridline
  *   shade → time spent over that action level
+ *
+ * Timestamps are naive campaign time (core/clock). They are read with
+ * `parseCampaign`, so a date-only daily point is local midnight rather than the
+ * UTC midnight `Date.parse` gives (the evening before, in the Americas), and a
+ * brush hands back naive strings — `toISOString()` wrote UTC, and the server
+ * then served a window hours away from the one selected.
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -17,6 +23,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { scaleLinear, scaleTime } from 'd3-scale';
 import { area, curveMonotoneX, line } from 'd3-shape';
 import type { SeriesPoint, Severity } from '@/core/types';
+import { parseCampaign, toCampaign } from '@/core/clock';
 import { severityVar } from '@/core/measures';
 import { fmtNum, fmtDay, fmtTime24 } from '@/core/format';
 import { niceTicks } from '../lib/vizmeta';
@@ -26,6 +33,9 @@ import {
 } from './primitives';
 import type { LegendSeries, Margins, TipRow } from './primitives';
 import s from './chart.module.css';
+
+/** Local-epoch ms of a naive timestamp: the axis `scaleTime` draws on. */
+const tMs = (t: string) => parseCampaign(t).getTime();
 
 export interface BandPoint { t: string; lo: number | null; hi: number | null }
 
@@ -51,6 +61,7 @@ export interface TimeSeriesThreshold {
   shade?: boolean;
 }
 
+/** Naive campaign time, ready for a `from`/`to` query param. */
 export interface TimeSeriesRange { from: string; to: string }
 
 export interface TimeSeriesProps {
@@ -107,7 +118,7 @@ export function TimeSeries(props: TimeSeriesProps) {
   const times = useMemo(() => {
     const all: number[] = [];
     for (const x of series) for (const p of x.points) {
-      const t = Date.parse(p.t);
+      const t = tMs(p.t);
       if (Number.isFinite(t)) all.push(t);
     }
     return all;
@@ -115,7 +126,7 @@ export function TimeSeries(props: TimeSeriesProps) {
 
   const anchor = shown[0] ?? series[0];
   const stamps = useMemo(
-    () => (anchor?.points ?? []).map((p) => Date.parse(p.t)).filter(Number.isFinite),
+    () => (anchor?.points ?? []).map((p) => tMs(p.t)).filter(Number.isFinite),
     [anchor],
   );
 
@@ -181,8 +192,8 @@ export function TimeSeries(props: TimeSeriesProps) {
     // A flick without a drag clears the selection rather than making a 3px one.
     if (p1 - p0 < 6) { onBrush?.(null); return; }
     onBrush?.({
-      from: new Date(x.invert(Math.max(0, p0))).toISOString(),
-      to: new Date(x.invert(Math.min(innerW, p1))).toISOString(),
+      from: toCampaign(x.invert(Math.max(0, p0))),
+      to: toCampaign(x.invert(Math.min(innerW, p1))),
     });
   };
 
@@ -192,8 +203,8 @@ export function TimeSeries(props: TimeSeriesProps) {
       return { x0: Math.max(0, a), x1: Math.min(innerW, b), live: true };
     }
     if (brush) {
-      const a = x(Date.parse(brush.from));
-      const b = x(Date.parse(brush.to));
+      const a = x(tMs(brush.from));
+      const b = x(tMs(brush.to));
       if (Number.isFinite(a) && Number.isFinite(b)) {
         return { x0: Math.min(a, b), x1: Math.max(a, b), live: false };
       }
@@ -214,7 +225,7 @@ export function TimeSeries(props: TimeSeriesProps) {
       let start: number | null = null;
       src.points.forEach((p, i) => {
         const over = p.v !== null && Number.isFinite(p.v) && p.v > th.value;
-        const t = Date.parse(p.t);
+        const t = tMs(p.t);
         if (over && start === null) start = t;
         if (!over && start !== null) {
           out.push({ id: `${th.id}-${i}`, x0: x(start), x1: x(t), color });
@@ -222,7 +233,7 @@ export function TimeSeries(props: TimeSeriesProps) {
         }
       });
       if (start !== null) {
-        const last = Date.parse(src.points[src.points.length - 1].t);
+        const last = tMs(src.points[src.points.length - 1].t);
         out.push({ id: `${th.id}-end`, x0: x(start), x1: x(last), color });
       }
     }
@@ -328,7 +339,7 @@ export function TimeSeries(props: TimeSeriesProps) {
               {shown.map((v) => v.band?.length ? (
                 <path
                   key={`${v.id}-band`}
-                  d={mkBand(v.band.map((b) => ({ t: Date.parse(b.t), lo: b.lo, hi: b.hi }))) ?? ''}
+                  d={mkBand(v.band.map((b) => ({ t: tMs(b.t), lo: b.lo, hi: b.hi }))) ?? ''}
                   fill={colorOf(v.id)}
                   opacity={0.12}
                 />
@@ -359,7 +370,7 @@ export function TimeSeries(props: TimeSeriesProps) {
               {shown.map((v) => (
                 <path
                   key={v.id}
-                  d={mkLine(v.points.map((p) => ({ t: Date.parse(p.t), v: p.v }))) ?? ''}
+                  d={mkLine(v.points.map((p) => ({ t: tMs(p.t), v: p.v }))) ?? ''}
                   fill="none"
                   stroke={colorOf(v.id)}
                   strokeWidth={2}

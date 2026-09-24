@@ -23,6 +23,9 @@ import {
 } from '@/components'
 import type { ConcernBubble, ReportWindowDays } from '@/components'
 import { Button, Segmented } from '@/app/ui'
+import { campaignMs } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { happenedBy } from '@/core/events'
 import { fmtCompact, fmtNum, fmtWind, relativeShort } from '@/core/format'
 import { INDEX_DOMAIN, PICKABLE } from '@/core/measures'
 import {
@@ -30,13 +33,13 @@ import {
   useConcerns, useFleet, useMeasures, useMonitors, useSegments, useSites,
   useUpdateConcernStatus, useWind, useWindField,
 } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 import type {
   Concern, ConcernCluster, MeasureCode, Monitor, SegmentMetric,
 } from '@/core/types'
 
 import {
-  Caps, Panel, Readout, Tag, liveAlerts, styles as s, towerMeasures, useNowTick, useReach,
+  Caps, Panel, Readout, Tag, liveAlerts, styles as s, towerMeasures, useReach,
   useStableWindow, useTowers,
 } from './lib'
 
@@ -51,16 +54,21 @@ export function MapScreen() {
   // 200 limit); the map and the panel draw the window. See components/lib/reports.
   const allConcerns = useConcerns({ limit: 400 }).data
   const allClusters = useConcernClusters().data
-  const cursor = useSession((x) => x.time.cursor)
+  // One instant for the report window, the row ages and the live count: the
+  // demo's now (the cursor, or the end of the data). The window used to anchor
+  // on the newest report when no cursor was set while the ages measured from
+  // the wall clock, so "Last 14 d" listed a cluster reading "last 27d".
+  const now = useNowCampaign()
   const [reportDays, setReportDays] = useState<ReportWindowDays>(REPORT_WINDOW_DAYS)
+  const asOf = useMemo(() => reportsAsOf(allConcerns, allClusters, now), [allConcerns, allClusters, now])
   const windowed = useMemo(
-    () => windowReports(allConcerns ?? [], allClusters ?? [], reportDays, cursor),
-    [allConcerns, allClusters, reportDays, cursor],
+    () => windowReports(asOf.concerns, asOf.clusters, reportDays, now),
+    [asOf, reportDays, now],
   )
   const concerns = windowed.concerns
   const clusters = windowed.clusters
   const alerts = useAlerts({}).data
-  const live = useMemo(() => liveAlerts(alerts), [alerts])
+  const live = useMemo(() => liveAlerts(alerts, now), [alerts, now])
 
   // PICKABLE, not 'modality' — the composite is a lens here too. What it is not
   // is an instrument channel, which is why the blind-verdict banner below has to
@@ -111,7 +119,6 @@ export function MapScreen() {
    */
   const [pickedCluster, setPickedCluster] = useState<string | null>(null)
   const [pickedConcern, setPickedConcern] = useState<string | null>(null)
-  const now = useNowTick(30_000)
   const setStatus = useUpdateConcernStatus()
   const picked = pickedConcern ? concerns.find((c) => c.id === pickedConcern) ?? null : null
   const clusterConcerns = pickedCluster
@@ -264,7 +271,11 @@ export function MapScreen() {
                       const c = info.object as Concern | undefined
                       if (!c?.id) return
                       setPickedConcern(c.id)
-                      setPickedCluster(c.cluster_id ?? null)
+                      // Its group only if that had formed by now: `cluster_id`
+                      // is the final grouping, set before the third report.
+                      setPickedCluster(
+                        c.cluster_id && clusters.some((g) => g.id === c.cluster_id) ? c.cluster_id : null,
+                      )
                     },
                     onClusterClick: (info) => {
                       const cl = info.object as ConcernCluster | undefined
@@ -406,7 +417,7 @@ export function MapScreen() {
                 </span>
               ) : clusters.map((cl) => {
                 const on = pickedCluster === cl.id
-                const alert = liveAlerts(alerts).find((a) => a.source_id === cl.id)
+                const alert = live.find((a) => a.source_id === cl.id)
                 return (
                   <button
                     key={cl.id}
@@ -536,6 +547,42 @@ export function MapScreen() {
       </div>
     </div>
   )
+}
+
+/**
+ * The reports as they stood at the demo's now. Replay rewinds events too
+ * (docs/PLAN-refocus.md D2): a report is drawn once it was filed (`created_at`,
+ * up to 6.7 h after it `occurred_at` in the checked-in data), and a cluster
+ * only once one of its reports was, with its count and "last" taken from the
+ * reports filed by then. The stored row carries the cluster's final count,
+ * which in replay is the future.
+ */
+function reportsAsOf(
+  allConcerns: Concern[] | undefined,
+  allClusters: ConcernCluster[] | undefined,
+  now: CampaignTime,
+): { concerns: Concern[]; clusters: ConcernCluster[] } {
+  const concerns = happenedBy(allConcerns, now)
+  const at = campaignMs(now)
+  const begun = (allClusters ?? []).filter((g) => campaignMs(g.first_at) <= at)
+  // Until the reports load there are no members to count from.
+  if (!allConcerns) return { concerns, clusters: begun }
+  const members = new Map<string, { count: number; last: string }>()
+  for (const c of concerns) {
+    if (!c.cluster_id) continue
+    const m = members.get(c.cluster_id)
+    if (!m) members.set(c.cluster_id, { count: 1, last: c.occurred_at })
+    else {
+      m.count += 1
+      if (campaignMs(c.occurred_at) > campaignMs(m.last)) m.last = c.occurred_at
+    }
+  }
+  const clusters = begun.flatMap((g) => {
+    const m = members.get(g.id)
+    if (!m) return []
+    return m.count === g.count ? [g] : [{ ...g, count: m.count, last_at: m.last }]
+  })
+  return { concerns, clusters }
 }
 
 function TowerRow({

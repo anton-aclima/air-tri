@@ -1,5 +1,6 @@
-/* The mandatory persistent SIMULATED DATA marker (CONTRACT §9.1).
-   Tasteful, not ugly: hairline hatch, micro-caps, never louder than the data. */
+/* The mandatory persistent SIMULATED DATA marker (CONTRACT §9.1), and inside a
+   role, the clock. Tasteful, not ugly: hairline hatch, micro-caps, never
+   louder than the data. */
 
 .badge {
   display: inline-flex;
@@ -18,6 +19,9 @@
   white-space: nowrap;
   user-select: none;
   overflow: clip;
+  /* Never shrinks. In the header's flex row it used to give up width first,
+     and with `overflow: clip` that cut the words of a non-negotiable marker. */
+  flex: none;
 }
 
 .hatch {
@@ -41,9 +45,18 @@
   flex: none;
 }
 
-.compact .label {
-  display: none;
+/* ── the clock, after the words ────────────────────────────────────────── */
+/* Neutral ink on purpose: the moment on screen is information, not a warning,
+   and the watch colour already means something in every room. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-2);
 }
+.sep { color: var(--ink-3); }
+.when { letter-spacing: var(--tracking-wide); font-weight: var(--weight-medium); }
+.playing { color: var(--ink-2); fill: currentColor; flex: none; }
 
 :global([data-role='community']) .badge {
   border-radius: var(--r-pill);
@@ -66,7 +79,8 @@
 }
 :global([data-role='industry']) .dot { background: var(--accent-2); box-shadow: none; }
 
-/* Clickable inside a role: the marker is also the door to the generator. */
+/* Clickable inside a role: the marker is also the door to the clock. */
 .badgeButton { cursor: pointer; font: inherit; font-size: var(--text-3xs); }
-.badgeButton:hover { color: var(--ink-2); border-color: var(--accent); }
+.badgeButton:hover,
+.badgeOpen { color: var(--ink-2); border-color: var(--accent); }
 .badgeButton:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

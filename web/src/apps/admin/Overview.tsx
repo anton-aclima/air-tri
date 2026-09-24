@@ -15,12 +15,13 @@ import {
   BaseMap, BoundaryLayer, MapLegend, MapOverlay, MapScale, SeasonalStrip,
   SegmentLayer, makeColorScale, measureDomain, robustDomain, segmentDomain,
 } from '@/components'
+import { happenedBy, isOngoing, isOpenCase } from '@/core/events'
 import { fmtCompact, fmtDay, fmtNum } from '@/core/format'
 import {
   useActiveMeasure, useAdvisories, useAlerts, useBootstrapSites, useCampaignBoundary,
   useCampaignInfo, useCampaignStats, useConcerns, usePosts, useSegments, useVehicles,
 } from '@/core/queries'
-import { useSession } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 
 import {
   ACTOR_VAR, Caps, KV, Readout, Readouts, Sheet, TitleBlock, campaignView,
@@ -37,11 +38,16 @@ export function Overview() {
   const plan = useActivePlan()
   const planRoutes = usePlanRoutes(plan?.id)
   const vehicles = useVehicles()
-  const concerns = useConcerns({ limit: 100 })
+  // The whole campaign's reports (204 in the checked-in build), so the ledger
+  // can count what had been filed by the moment on screen. At 100 it was a
+  // page, so the ledger read the server's campaign total instead — which says
+  // 204 on June 1, when none had been filed.
+  const concerns = useConcerns({ limit: 1000 })
   const posts = usePosts()
   const advisories = useAdvisories()
   const alerts = useAlerts({ role: 'admin' })
   const sites = useBootstrapSites()
+  const now = useNowCampaign()
 
   const d = stats.data
   const domain = useMemo(
@@ -68,7 +74,14 @@ export function Overview() {
   const driving = (vehicles.data ?? []).filter((v) => v.status === 'driving').length
   const coverage = d ? (100 * d.segments_at_target) / Math.max(1, d.segments) : null
 
-  const activeAlerts = (alerts.data ?? []).filter((a) => a.status !== 'resolved')
+  // The three parties' ledger follows the clock (D2): only what had happened
+  // by the moment on screen. "Up" is `isOngoing` — begun and not ended — not a
+  // status: at the end of the data 7 of the 13 "active" alerts had already
+  // ended (Aug 24–27), and `!== 'resolved'` also counted the expired one.
+  const concernsNow = happenedBy(concerns.data, now)
+  const postsNow = happenedBy(posts.data, now)
+  const advisoriesNow = happenedBy(advisories.data, now)
+  const activeAlerts = (alerts.data ?? []).filter((a) => isOngoing(a, now))
 
   return (
     <div className={`${s.page} ${s.rowsFoot}`}>
@@ -216,20 +229,19 @@ export function Overview() {
               <LedgerCell
                 role="community"
                 label="concerns"
-                /* The campaign total, not the length of a limited fetch. */
-                value={fmtNum(d?.concerns_total ?? concerns.data?.length ?? null, 0)}
-                foot={`${d?.concerns_open ?? 0} open`}
+                value={fmtNum(concerns.data ? concernsNow.length : null, 0)}
+                foot={`${concernsNow.filter((c) => isOpenCase(c, now)).length} open`}
               />
               <LedgerCell
                 role="industry"
                 label="claimed sites"
                 value={fmtNum(sites.length, 0)}
-                foot={`${posts.data?.length ?? 0} posts`}
+                foot={`${postsNow.length} posts`}
               />
               <LedgerCell
                 role="regulator"
                 label="advisories"
-                value={fmtNum(advisories.data?.length ?? null, 0)}
+                value={fmtNum(advisories.data ? advisoriesNow.length : null, 0)}
                 foot={`${activeAlerts.length} alerts up`}
               />
             </div>
@@ -242,12 +254,16 @@ export function Overview() {
       </div>
 
       {/* ── the 90-day build, one cell per day ───────────────────────── */}
+      {/* The whole campaign, whatever the clock says: `/stats/campaign` takes no
+          `at`, so at Aug 12 this sheet plotted days through Aug 28 and counted
+          56,673 passes when 44,667 had been driven. So it says it is the whole
+          campaign instead of implying "so far". */}
       <Sheet
         code="01-E"
         title="Ninety days of driving"
         aside={
           <Caps ink>
-            {d ? `${fmtCompact(d.passes_total, 0)} passes · ${fmtCompact(d.km_driven, 0)} km · ${driving} vehicles out now` : ''}
+            {d ? `whole campaign · ${fmtCompact(d.passes_total, 0)} passes · ${fmtCompact(d.km_driven, 0)} km · ${driving} vehicles out now` : ''}
           </Caps>
         }
       >
@@ -261,7 +277,7 @@ export function Overview() {
               decimals={0}
               height={42}
               domain={robustDomain(passPoints.map((x) => x.v))}
-              subtitle={`${fmtDay(passPoints[0].t)} → ${fmtDay(passPoints[passPoints.length - 1].t)} · passes per day`}
+              subtitle={`${fmtDay(passPoints[0].t)} → ${fmtDay(passPoints[passPoints.length - 1].t)} · passes per day · whole campaign`}
             />
           </div>
         ) : (

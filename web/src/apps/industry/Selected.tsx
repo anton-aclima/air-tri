@@ -17,6 +17,7 @@ import { Button } from '@/app/ui'
 import { fmtBearing, fmtDistance, fmtNum, fmtPct, relativeShort } from '@/core/format'
 import { SEVERITY_LABEL, severityVar } from '@/core/measures'
 import type { SegmentFeature } from '@/components'
+import type { CampaignTime } from '@/core/clock'
 import type { EmissionPoint, IndustrySite, MeasureDef, Monitor } from '@/core/types'
 
 import { Caps, Panel, Tag, styles as s } from './lib'
@@ -33,7 +34,8 @@ export type MapPick =
 export interface SelectedProps {
   pick: MapPick | null
   onClear: () => void
-  now: Date
+  /** The demo's now (`useNowCampaign`). Every age on the panel is measured from it. */
+  now: CampaignTime
   site: IndustrySite
   measure: MeasureDef | undefined
   reports: PlacedReport[]

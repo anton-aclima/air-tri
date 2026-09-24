@@ -7,17 +7,20 @@
  * seven dashboards that happen to share a skin.
  */
 
-import { useMemo, useRef } from 'react'
+import { useRef } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { create } from 'zustand'
 
 import { API_BASE } from '@/core/api'
+import { campaignMs } from '@/core/clock'
+import type { CampaignTime } from '@/core/clock'
+import { hasStarted } from '@/core/events'
 import { fmtNum } from '@/core/format'
 import { useDrivePlan as useDrivePlanRaw } from '@/core/queries'
-import { DEFAULT_VIEW, useDemoClock } from '@/core/session'
-import type { Campaign, DrivePlan, Position, Role, SegmentCollection } from '@/core/types'
+import { DEFAULT_VIEW } from '@/core/session'
+import type { Campaign, DrivePlan, Mitigation, Position, Role, SegmentCollection } from '@/core/types'
 
 import s from './admin.module.css'
 
@@ -366,25 +369,39 @@ export const useDraft = create<DraftState>((set) => ({
 }))
 
 // ════════════════════════════════════════════════════════════════ time bits
+//
+// "Now" on every admin sheet is the demo's (`useNowCampaign`, core/session):
+// the cursor, or the end of the data when paused there. `useStableWindow` and
+// `useNowTick` used to live here. The first built its window from `Date.now()`
+// with `toISOString()` — UTC digits the server reads as Chicago time, a month
+// after the data ends — and nothing on these sheets called it. The second only
+// forwarded to `useDemoClock` under a name that promised a ticking clock.
 
 /**
- * A window quantised to a bucket. `timeRange()` in core/session re-derives `to`
- * from `new Date()` on every call, so any hook that defaults its window gets a
- * fresh query key every render and refetches forever.
+ * `happenedBy` for rows stamped `ts` or `at` instead of `started_at` /
+ * `created_at`: the activity log, the feed and the live-event ring. The test
+ * is still `hasStarted` (core/events), so "had happened by the moment on
+ * screen" means the same thing on these sheets as in every other room.
  */
-export function useStableWindow(hours: number, bucketMin = 5): { from: string; to: string } {
-  const bucket = Math.floor(Date.now() / (bucketMin * 60_000))
-  return useMemo(() => {
-    const to = new Date(bucket * bucketMin * 60_000)
-    const from = new Date(to.getTime() - hours * 3_600_000)
-    return { from: from.toISOString(), to: to.toISOString() }
-  }, [bucket, bucketMin, hours])
+export function stampedBy<T>(
+  list: readonly T[] | null | undefined,
+  now: CampaignTime,
+  stamp: (row: T) => string | null | undefined,
+): T[] {
+  return (list ?? []).filter((row) => hasStarted({ created_at: stamp(row) }, now))
 }
 
-/** A ticking clock, for "up for 4 m" labels that stay honest. */
-/** The demo's clock. Honours a pinned simulation cursor — see `useDemoClock`. */
-export function useNowTick(ms = 30_000): Date {
-  return useDemoClock(ms)
+/**
+ * A mitigation's status as it stood at `now`. `status` is the row's FINAL one:
+ * at Aug 12 the oversight lane tagged mt-003 "completed", though its
+ * `completed_at` is Aug 18. Completed only once that stamp is on or before
+ * now (a null one — the server blanks a stamp after `at` — is not yet); until
+ * then it was in progress. `started_at` equals `created_at` on every row in the
+ * checked-in data, so "proposed" needs no rebuilding.
+ */
+export function mitigationStatusAt(m: Mitigation, now: CampaignTime): Mitigation['status'] {
+  if (m.status !== 'completed') return m.status
+  return hasStarted({ started_at: m.completed_at }, now) ? 'completed' : 'in_progress'
 }
 
 /** Keeps the previous non-undefined value so a refetch never blanks a panel. */
@@ -401,9 +418,10 @@ export function pct(part: number, whole: number, decimals = 1): string {
   return `${fmtNum((100 * part) / whole, decimals)}%`
 }
 
+/** Whole days between two campaign dates, on the campaign axis (core/clock). */
 export function daysBetween(a: string, b: string): number {
-  const t0 = new Date(a).getTime()
-  const t1 = new Date(b).getTime()
+  const t0 = campaignMs(a)
+  const t1 = campaignMs(b)
   if (!Number.isFinite(t0) || !Number.isFinite(t1)) return 0
   return Math.round((t1 - t0) / 86_400_000)
 }
