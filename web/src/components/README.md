@@ -90,7 +90,7 @@ Internal to `BaseMap`; you should never mount them directly. `GoogleBackend` tak
 
 ---
 
-## Layers (8)
+## Layers (9)
 
 ### `SegmentLayer` — **the hero**
 
@@ -103,16 +103,47 @@ Internal to `BaseMap`; you should never mount them directly. `GoogleBackend` tak
 | `metric` | `'median' \| 'p90' \| 'max' \| 'persistence' \| 'risk'` | labels + unit handling |
 | `dualEncode` | `'width' \| 'opacity' \| 'both' \| 'none'` | how persistence reads. Default `'width'` |
 | `baseWidthM` `widthMinPixels` `widthMaxPixels` | `number` | keeps the grid visible zoomed out |
-| `casing` | `boolean` | basemap-coloured halo under every line. Default `true` — leave it |
+| `tone` | `'ramp' \| 'context'` | `'ramp'` (default) paints the value. `'context'` draws every street in `data` as one neutral hairline — `CONTEXT_STROKE`: `--ink-3` at 50%, 1.25 px at every zoom — with no value colour, no casing, no rings, never pickable. For "measured earlier, not in this window": build it as its own call **below** the coloured window's call. It is measurement, so a solid line, never the model's dash (§10b). Only `id`, `visible`, `opacity` apply in this tone |
+| `casing` | `boolean` | basemap-coloured halo under every line. Default `true` — leave it. Not drawn under few-pass streets on a dark skin (see `fewPassesBelow`) |
 | `minPasses` | `number` | below this, segments draw as "not enough data", not as a value |
+| `fewPassesBelow` | `number` | streets with ≥ `minPasses` but fewer than this still draw their value, **thin** (40% width, 0.7× pixel floor) and without the persistence width — a short street window (a day, or the Network's 24 h / 7 d, R4). Light skins: 72% alpha, cased. Dark skins: 90% alpha, **no casing** — a `--bg` casing under a translucent stroke darkened the stroke itself (the old stop 0 composited to 1.07:1 against the regulator `--bg`). `fewPassAlpha(theme)` gives the alpha for a matching swatch. Never dashed or dotted: those are the model's strokes (§10b). Default 0 = off |
+| `highlightIds` | `string[]` | ring these segments with the soft accent halo (the streets inside a selected monitor's ring). Default none |
 | `opacity` | `number` | |
 
 Companions: `SegmentHighlightLayer(…)` for the selected segment, `segmentDomain(data)`,
-`segmentTooltipRows(props, { unit?, decimals?, metric? })`.
+`segmentTooltipRows(props, { unit?, decimals?, metric? })`, `fewPassAlpha(theme)`,
+`CONTEXT_STROKE` (both imported from `map/layers/SegmentLayer`; `MapLegend` draws its
+swatches with them).
 
 ```tsx
 layers={(t) => [...SegmentLayer({ data: segs, theme: t, metric: 'p90', dualEncode: 'both' })]}
+
+// A window over a quiet context grid: to-date streets in grey, the window's in colour.
+layers={(t) => [
+  ...SegmentLayer({ id: 'streets-context', data: toDate, theme: t, tone: 'context' }),
+  ...SegmentLayer({ id: 'streets', data: week, theme: t, scale, dualEncode: 'none', fewPassesBelow: 3 }),
+]}
 ```
+
+**The ramp on a dark skin.** Every dark skin (regulator, industry, admin, the landing)
+binds `--ramp-map-*` to `--ramp-intensity-dark-*`, the analytical ramp lifted so its
+lowest stop reads as a line on a dark ground; charts that name `'intensity'` keep
+`--ramp-intensity-*`. Non-text contrast of each stop against the skin's `--bg`:
+
+| stop | before `--ramp-intensity-*` | reg | ind | adm | after `--ramp-intensity-dark-*` | reg | ind | adm |
+|---|---|---|---|---|---|---|---|---|
+| 0 | `#10182F` | 1.10 | 1.15 | 1.08 | `#3769CA` | 3.72 | 3.88 | 3.66 |
+| 1 | `#24356F` | 1.67 | 1.74 | 1.65 | `#636DE6` | 4.48 | 4.67 | 4.41 |
+| 2 | `#4B3D9B` | 2.25 | 2.34 | 2.21 | `#9470C6` | 4.97 | 5.18 | 4.89 |
+| 3 | `#823C93` | 2.78 | 2.90 | 2.74 | `#C374B5` | 5.98 | 6.23 | 5.88 |
+| 4 | `#C0417F` | 3.97 | 4.13 | 3.91 | `#DB779C` | 6.58 | 6.85 | 6.47 |
+| 5 | `#E6614F` | 5.71 | 5.94 | 5.61 | `#FE826B` | 7.95 | 8.28 | 7.82 |
+| 6 | `#F79B3D` | 8.95 | 9.33 | 8.81 | `#F79B3D` | 8.95 | 9.33 | 8.81 |
+| 7 | `#FFD84D` | 14.00 | 14.58 | 13.77 | `#FFD84D` | 14.00 | 14.58 | 13.77 |
+
+Same hue order, same top two stops, luminance rising at every step for normal vision and
+under simulated deuteranopia and protanopia. The community skin (AQI) and the light
+`--ramp-intensity-light-*` are untouched.
 
 ### `MonitorLayer`
 
@@ -126,14 +157,61 @@ coverage, default true), `measure` (which `latest.exceeds` drives the alarm),
   monitor is muted, labelled only while hovered or selected (pass `hoveredId`), and never
   pulses. Omitted = every monitor full strength (the old behaviour); `[]` mutes them all.
 
-Helper: `monitorExceeds(monitor, measure)`.
+The regulator Network's options (R3). All optional; omitted, every existing map is unchanged.
+
+| prop | type | notes |
+|---|---|---|
+| `labelFor` | `(m) => string` | the name part of the label, overriding `labelBy` ("Riverport Rd") |
+| `labelCase` | `'upper' \| 'asis'` | default `'upper'`; `'asis'` keeps the caller's case |
+| `readingFor` | `(m) => string \| null` | the reading **at the moment shown**, formatted, appended: "Riverport Rd 10.6". Not `m.latest`, which is always the end of the data |
+| `ratioFor` | `(m) => number \| null` | reading ÷ action level; appended as "· 0.62×" only at `RATIO_LABEL_FROM` (0.5) or more |
+| `overIds` | `string[]` | when given, alone drives the alarm pulse and the critical tint — the caller applies the same-averaging-period rule; the layer never infers "over" from `m.latest` |
+| `mutedIds` + `mutedNote` | `string[]`, `string \| (m) => string` | no channel for the measure: muted, no pulse, no reading, always labelled "West Shelby Dr · no NO2 channel" in muted ink |
+| `collision` | `LabelCollision` | take part in a shared label-collision pass (below) |
+| `labelPlate` | `boolean` | the label on a `--bg` plate (80%, 3 px padding), so plume hairlines stop at the reading instead of running through it. Default false |
+
+Helpers: `monitorExceeds(monitor, measure)`, `formatRatio(r, from?)` (the label's "0.62×", "1.03×" — two decimals below 1.1× so an over reading never prints "1.0×" —
+null below the floor — use it in the panel too so the two cannot disagree), `RATIO_LABEL_FROM`.
 
 ### `SiteLayer`
 
 Industry sites + emission points. `data: IndustrySite[]`, `emissionPoints`, `labels`,
 `branding` (brand emoji), `pulse`, `footprint: 'fill' | 'outline'` (default `'fill'`;
 `'outline'` drops the wash, keeps the edge and the click target — for maps where CONTRACT
-§10b makes measurement the only filled thing).
+§10b makes measurement the only filled thing), `labelCase: 'upper' | 'asis'` (default
+`'upper'`), `collision` (below).
+
+### Label collision — `labelCollision()` (in `layers/labelCollision.ts`)
+
+A monitor's name and a site's name hide each other instead of overprinting; monitors win.
+Create one collider per layer build and hand it to every layer that takes part — order in
+the `layers` array does not matter, priority does (`LABEL_PRIORITY`: reference monitor >
+low-cost sensor > site; selected / hovered / over lift within a tier, never across one). A
+monitor's mast is an obstacle too. Placement runs against deck's own viewport each time it
+changes, so no zoom has to be threaded through, and a hidden name returns once there is room.
+
+```tsx
+layers={(t) => {
+  const collision = labelCollision();
+  return [...SiteLayer({ …, collision }), ...MonitorLayer({ …, collision })];
+}}
+```
+
+Give every participating layer a distinct `id` — the collider keys registrations by it.
+Not deck's `CollisionFilterExtension`: that tests only each label's anchor point (both of
+these labels are pixel-offset from theirs) and compares picking colours that repeat across
+layers, so monitor #0 and site #0 never collide. See the file header.
+
+### `CoverageMaskLayer`
+
+Dims the ground the fleet never drove (§10b's "outside the driven-coverage mask", R2): a
+world veil in `--bg`, cut away along a corridor around every driven street (deck's
+`MaskExtension`, inverted). `data` — the driven streets, e.g. the week to the moment shown,
+`GET /segments?window=trailing:168h&at=…` (a stored `date:…` day is still fine in a room
+without a time cursor); `null` draws nothing, an empty collection dims everything.
+`corridorM` (full width, default 120), `strength` (default 0.2 — very low; no stroke),
+`minPasses` (default 1). Place it directly above the basemap / `BoundaryLayer`, below the
+streets and every model layer.
 
 ### `ConcernLayer`
 
@@ -150,7 +228,7 @@ for smooth interpolation. `trails` / `trailLength` (default 40), `labels` (call 
 ### `BoundaryLayer`
 
 Campaign edge. `data` accepts a FeatureCollection, a Feature or a bare geometry.
-`mask` dims everything outside (default true, `maskStrength` 0.62), `glow`, `colorToken`
+`mask` dims everything outside (default true, `maskStrength` 0.28), `glow`, `colorToken`
 (default `accent`), `edgeWidthPx`.
 
 ### `DrivePlanLayer`
@@ -176,7 +254,9 @@ The modelled plume, in one of two registers — `style`:
   back to a fill. The two outline parts are clipped at the axis's own envelope line and the
   cut between them is dropped, so the register changes in one place, on the tick.
   `pickable` + `onHover` / `onClick` pick the solid outline and axis (`info.object.properties`);
-  the dashed part never picks.
+  the dashed part never picks. `mutedSiteIds` draws those sites' plumes outline-only at
+  `MUTED_PLUME` (0.4×) of the register's alpha, with no axis, tick or `truncated` — the
+  Network's "axis only for a plume that touches something" (R2).
 
 `hasBeyondEnvelope(data)` says whether to print `BEYOND_ENVELOPE_NOTE` (either shape).
 `plumeOutlineGeometry(data)` returns the drawn runs, axis parts, ticks and truncated ends.
@@ -218,6 +298,7 @@ per frame — the trail; 0.94 medium, 0.98 smear, 0.85 dots) · `speedDomain` ·
 
 `colorMode="neutral"` paints every particle in `--ink-2` with speed on alpha. Use it on a
 map whose `--ramp-map-*` is the **measured** street ramp (industry: `--ramp-map-*` =
+`--ramp-intensity-dark-*`, the same hue order and top stops as the wind's default
 `--ramp-intensity-*`), so the wind never reads as measured ink over ground nobody drove
 (CONTRACT §10b). The legend key is then a plain `--ink-2` line. Default `'ramp'` is unchanged.
 
@@ -264,7 +345,7 @@ Each goes inside `<MapOverlay place=…>`.
 
 | component | props |
 |---|---|
-| `MapLegend` | `scale` (pass the same `ColorScale` the layer got and domain/stops follow), `domain`, `measure`, `metric`, `dualEncode`, `plainLanguage`, `showNoData`, `compact`, `title` |
+| `MapLegend` | `scale` (pass the same `ColorScale` the layer got and domain/stops follow), `domain`, `measure`, `metric`, `dualEncode`, `plainLanguage`, `showNoData`, `compact`, `title`, `fewPassesNote` (a thin-stroke row for `SegmentLayer`'s `fewPassesBelow` streets), `contextNote` (a row with the `tone: 'context'` hairline, e.g. "grey: measured earlier, not in this window"; kept when `empty` is set), `empty` (the window has no streets: this one line replaces the ramp, ticks, key, few-pass and no-data rows, e.g. "No NO2 passes in the 7 days to Aug 24 06:00 · last one Aug 15 20:30"), `control` (a node placed under the title row, e.g. the street-window switch) |
 | `MapScale` | `zoom` / `latitude` (override the context), `maxWidth` (110), `units: 'metric' \| 'imperial' \| 'both'` |
 | `NorthCompass` | `bearing`, `pitch`, `onReset`, `size`, `alwaysVisible` (default false — hidden when north-up), `readout` |
 | `MiniRose` | `rose` (`WindClimatology.rose` or any `{ dir_deg, freq }[]`; any unit — petals scale to the largest sector), `size` (64), `caption` (a short line beside it), `label` (accessible name; default names the most common direction in words), `className`, `style`. **Outline only, 16 sectors, no numbers** — the community map's "Usually" key, tied to no company. Renders nothing until the rose has data |
@@ -273,7 +354,7 @@ Each goes inside `<MapOverlay place=…>`.
 | `MetricPicker` | `value`, `onChange`, `metrics` (community should pass `['risk']` only), `variant`, `longLabels`, `label` |
 | `MapTooltip` | `x`, `y` (straight from `PickingInfo`), `title`, `subtitle`, `hero: { value, unit }`, `rows: TooltipRow[]`, `severity`, `visible`, `offset` |
 | `MapPopover` | `x`, `y`, `title`, `subtitle`, `children`, `actions: { label, onClick, primary? }[]`, `onClose`, `offset` |
-| `SegmentInspector` | `segment` (from picking), `detail` (`GET /segments/{id}` — unlocks the charts), `measure`, `measureCode`, `metric`, `plainLanguage`, `campaignValues` (for the percentile chart), `domain` (so the header swatch matches the map exactly), `onClose`, `children` |
+| `SegmentInspector` | `segment` (from picking), `detail` (`GET /segments/{id}` — unlocks the charts; pass `at=<naive campaign time>` wherever the screen has a time cursor, so `daily`, `diurnal`, `stats`, `n_passes` and `rank_pct` come only from passes at or before the moment shown — with no `at` they are the whole campaign's stored windows), `measure`, `measureCode`, `metric`, `plainLanguage`, `campaignValues` (for the percentile chart), `domain` (so the header swatch matches the map exactly), `onClose`, `children` |
 | `PlumeSwatch` | `register: 'model' \| 'beyond' \| 'filed'`, `width` (22). An inline legend mark drawn from `PLUME_STROKE`, the same table the plume layers draw with — put it beside the words, e.g. `BEYOND_ENVELOPE_NOTE` |
 
 ```tsx

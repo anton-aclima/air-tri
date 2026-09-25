@@ -108,12 +108,12 @@ USERS = [
 ]
 
 ACTION_LEVELS = [
-    ("al_no2_spike", "no2", "NO2 1-hour action level", "spike", 60.0, "ppb", 1.0, "warning", "EPA NAAQS 1-hr (guess)"),
+    ("al_no2_spike", "no2", "NO2 1-hour action level", "spike", 60.0, "ppb", 1.0, "warning", "National standard 1-hr (guess)"),
     ("al_no2_int", "no2", "NO2 8-hour integrated exposure", "integrated", 38.0, "ppb", 8.0, "watch", "local"),
-    ("al_pm25_spike", "pm25", "PM2.5 1-hour action level", "spike", 35.0, "µg/m³", 1.0, "warning", "EPA NAAQS 24-hr (guess)"),
+    ("al_pm25_spike", "pm25", "PM2.5 1-hour action level", "spike", 35.0, "µg/m³", 1.0, "warning", "National standard 24-hr (guess)"),
     ("al_pm25_int", "pm25", "PM2.5 24-hour integrated exposure", "integrated", 18.0, "µg/m³", 24.0, "watch", "local"),
     ("al_bc_spike", "bc", "Black carbon spike", "spike", 3.0, "µg/m³", 1.0, "watch", "local"),
-    ("al_o3_spike", "o3", "Ozone 8-hour action level", "spike", 70.0, "ppb", 8.0, "warning", "EPA NAAQS 8-hr (guess)"),
+    ("al_o3_spike", "o3", "Ozone 8-hour action level", "spike", 70.0, "ppb", 8.0, "warning", "National standard 8-hr (guess)"),
     ("al_ch4_spike", "ch4", "Methane anomaly", "spike", 3.2, "ppm", 1.0, "watch", "local"),
 ]
 

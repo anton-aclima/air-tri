@@ -48,10 +48,14 @@ export type { SkinPalette, GoogleStyleRule } from './map/styles/mapStyles';
 // ── layers (factory functions, not components — call them in `layers=[]`) ──
 export { SegmentLayer, SegmentHighlightLayer, measureDomain, segmentDomain, segmentTooltipRows } from './map/layers/SegmentLayer';
 export type { SegmentLayerProps, SegmentFeature, DualEncoding } from './map/layers/SegmentLayer';
-export { MonitorLayer, monitorExceeds } from './map/layers/MonitorLayer';
+export { MonitorLayer, monitorExceeds, formatRatio, RATIO_LABEL_FROM } from './map/layers/MonitorLayer';
 export type { MonitorLayerProps } from './map/layers/MonitorLayer';
 export { SiteLayer, pickedSite } from './map/layers/SiteLayer';
 export type { SiteLayerProps } from './map/layers/SiteLayer';
+export { LabelCollision, labelCollision, LABEL_PRIORITY, textBox } from './map/layers/labelCollision';
+export type { LabelCandidate } from './map/layers/labelCollision';
+export { CoverageMaskLayer } from './map/layers/CoverageMaskLayer';
+export type { CoverageMaskLayerProps } from './map/layers/CoverageMaskLayer';
 export { ConcernLayer, concernStatusToken, BUBBLE_SPLIT_ZOOM } from './map/layers/ConcernLayer';
 export type { ConcernLayerProps, ConcernBubble } from './map/layers/ConcernLayer';
 export { REPORT_WINDOW_DAYS, windowReports, reportAnchor, useWindowedReports } from './lib/reports';
@@ -59,7 +63,7 @@ export type { ReportWindowDays, WindowedReports } from './lib/reports';
 export { FleetLayer } from './map/layers/FleetLayer';
 export type { FleetLayerProps } from './map/layers/FleetLayer';
 export {
-  BEYOND_ENVELOPE_NOTE, DispersionLayer, FiledStudyLayer, hasBeyondEnvelope, plumeOutlineGeometry,
+  BEYOND_ENVELOPE_NOTE, DispersionLayer, FiledStudyLayer, hasBeyondEnvelope, MUTED_PLUME, plumeOutlineGeometry,
 } from './map/layers/WindLayer';
 export { SoftPlumeLayer } from './map/layers/SoftPlumeLayer';
 export type { SoftPlumeLayerProps } from './map/layers/SoftPlumeLayer';

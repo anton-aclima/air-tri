@@ -146,6 +146,46 @@ def cluster_as_of(
     return count, posted
 
 
+def load_clusters(
+    conn: sqlite3.Connection, campaign_id: str, now: str, *, status: str | None = None
+) -> list[dict[str, Any]]:
+    """Clusters as they stood at `now` (an `as_of` moment), newest first.
+
+    The body of `GET /clusters`, here so the regulator's network reads the
+    very same rows (see that route's docstring for why `first_at <= now` is
+    only a prefilter and `cluster_as_of` is the rule)."""
+    sql = ["SELECT * FROM concern_cluster WHERE campaign_id = ? AND first_at <= ?"]
+    params: list[Any] = [campaign_id, now]
+    if status:
+        sql.append("AND status = ?")
+        params.append(status)
+    sql.append("ORDER BY last_at DESC")
+    found = rows(conn, " ".join(sql), params)
+    if not found:
+        return []
+
+    members = cluster_members(conn, [r["id"] for r in found])
+    out = []
+    for r in found:
+        mine = members.get(r["id"], [])
+        stood = cluster_as_of(r["count"], mine, now)
+        if stood is None:
+            continue  # had not formed yet
+        count, posted = stood
+        c = shapes.concern_cluster(r, max((m["created_at"] for m in posted), default=None))
+        if len(posted) < len(mine):
+            noticed = sorted(m["occurred_at"] for m in posted)
+            c.update(count=count, last_at=noticed[-1])
+            # Only with every member on file can the first report and the kinds
+            # be rebuilt; otherwise the row's stand (as clusterAsOf does).
+            if len(posted) == count:
+                c.update(first_at=noticed[0], kinds=sorted({m["kind"] for m in posted}))
+        out.append(c)
+    # A rebuilt last_at can move a cluster; stay newest-last first.
+    out.sort(key=lambda c: c["last_at"] or "", reverse=True)
+    return out
+
+
 def load_concerns(
     conn: sqlite3.Connection,
     campaign_id: str,

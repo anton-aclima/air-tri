@@ -1,0 +1,39 @@
+/* The one-line page title (PLAN-refocus F4): "a status band appears only on
+   the overview; other pages get a one-line title". It replaces the verdict
+   strip — the 30px mono word ("15 LIVE", "ACTION LEVELS") that at 1080 was
+   wider than its column and printed up to 87px over its own headline. One
+   line, 32px: the summary ellipsizes before anything wraps, and the aside
+   (a filter, a restore button) never shrinks. */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  min-height: 32px;
+}
+.title {
+  margin: 0;
+  flex: none;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: 1.2;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.summary {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.aside {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}

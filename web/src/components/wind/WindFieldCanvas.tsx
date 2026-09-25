@@ -79,7 +79,7 @@ export interface WindFieldCanvasProps {
    * particle in one quiet ink (`--ink-2`, or `colorToken` when given), speed
    * carried by alpha over a floor so slow air still reads. For a map whose
    * ramp is also the MEASURED street ramp — industry's `--ramp-map-*` is
-   * `--ramp-intensity-*` — where wind drawn in that ramp reads as measured
+   * `--ramp-intensity-dark-*` — where wind drawn in that ramp reads as measured
    * ink over ground nobody drove (CONTRACT §10b: measurement is the only
    * inked thing). Matches a plain `--ink-2` legend line.
    */

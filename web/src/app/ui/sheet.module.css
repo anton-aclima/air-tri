@@ -1,0 +1,43 @@
+/* Sheet, non-modal (`modal={false}`) — the drawer without its scrim.
+   The modal Sheet sits inside a full-screen blurred scrim (primitives
+   `.scrim.sheetScrim`), so whatever it was opened from goes unreadable: the
+   regulator's alert list vanished behind its own detail. This one is pinned
+   to the viewport edge on its own, below the shell header (`--sheet-top`, set
+   by the component from the header it measures), and the page beside it
+   stays readable, scrollable and live.
+
+   It reuses the primitive's `.sheet` surface, border, shadow and entrance,
+   and only replaces the geometry. The class is doubled to outrank `.sheet`,
+   which sets `height: 100%` and `margin-left: auto` for the scrim's grid:
+   both are wrong for a fixed box with a top and a bottom. */
+
+.floating.floating {
+  position: fixed;
+  top: var(--sheet-top, 0px);
+  bottom: 0;
+  right: 0;
+  left: auto;
+  height: auto;
+  max-width: 100vw;
+  margin: 0;
+  /* Over the page and its map overlays; under the header's own popovers
+     (the timeline), modals and toasts. */
+  z-index: calc(var(--z-popover) - 1);
+}
+
+.floating.left {
+  left: 0;
+  right: auto;
+}
+
+.floating.bottom {
+  top: auto;
+  left: 0;
+  right: 0;
+  max-height: calc(80dvh - var(--sheet-top, 0px));
+}
+
+/* Focused on open (tabIndex -1) so Esc and the keyboard reach it. No ring
+   for a pointer; an inset one for the keyboard, inside the viewport edge. */
+.floating:focus { outline: none; }
+.floating:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

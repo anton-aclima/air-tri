@@ -104,18 +104,26 @@ export const ROLES: Record<Role, RoleMeta> = {
     narrative: 'tower defence',
     blurb:
       'What your reference monitors report, what the fleet measures on every street between them, where each site\'s plume is modelled to go, and what residents are reporting — with one button to warn the public.',
-    wants: ['Watch the action levels', 'Extend the network', 'Push an advisory'],
+    wants: [
+      'See what your reference monitors report',
+      'See what the streets between them add',
+      'Set action levels and warn the public',
+    ],
     accentVar: 'var(--actor-regulator)',
     icon: 'tower',
     landing: '/regulator',
     chrome: 'watchfloor',
     hotkey: '2',
+    // Three items, in words (D6, F4). Network is one map that answers the
+    // owner's three questions in order — monitors, then the fleet and the
+    // modelled plumes, then residents — so Watchfloor and Map were one screen
+    // split in two, and Coverage and Analysis are a monitor's detail on it
+    // (their routes redirect there). "Levels" and not "Action levels": the
+    // rail word has to fit 60px unclipped.
     nav: [
-      { to: '/regulator', label: 'Watchfloor', code: 'WATCH', icon: 'shield', hint: 'Network status at a glance' },
-      { to: '/regulator/map', label: 'Map', code: 'MAP', icon: 'map', hint: 'Monitors, fleet, road grid' },
-      { to: '/regulator/alerts', label: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Exceedances and exposures', badge: 'alerts' },
-      { to: '/regulator/thresholds', label: 'Action levels', code: 'THRS', icon: 'threshold', hint: 'The action levels you set' },
-      { to: '/regulator/analysis', label: 'Analysis', code: 'ANLY', icon: 'analysis', hint: 'Diurnal, dispersion, ranking' },
+      { to: '/regulator', label: 'Network', short: 'Network', code: 'NET', icon: 'map', hint: 'Your reference monitors, the streets measured between them, the modelled plumes and resident reports' },
+      { to: '/regulator/alerts', label: 'Alerts', short: 'Alerts', code: 'ALRT', icon: 'alert', hint: 'Exceedances and resident clusters at the time shown', badge: 'alerts' },
+      { to: '/regulator/thresholds', label: 'Action levels', short: 'Levels', code: 'LVLS', icon: 'threshold', hint: 'The action levels you set, and what each one would trip' },
     ],
   },
 

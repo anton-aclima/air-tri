@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
 
 R_EARTH = 6371008.8
 
@@ -273,6 +277,35 @@ _NOSE_MAX_SHARE = 0.4
 _CUT_CLEARANCE_M = 3.0
 
 
+@dataclass(frozen=True)
+class OutlineFrame:
+    """A site's modelled outline in the axis's own frame, before projection.
+
+    `x` is metres along the transport axis from `origin`, `y` metres to its
+    right (clockwise), polar on the sphere: a vertex at (x, y) is projected as
+    one geodesic hop of `hypot(x, y)` on bearing `axis_deg + atan2(y, x)`, so a
+    point's (x, y) is read back exactly by the inverse (`plumegeom`).
+
+    `left` and `right` both run near -> far and both END on the tip — the
+    point on the axis at the reach — so each rail is a function of `x`. That is
+    what lets `plumegeom` answer "is this point inside the outline the map
+    draws" with one interpolation per rail against the very vertices the ring
+    is projected from, rather than with a second shape (R0,
+    docs/PLAN-refocus.md section 3.3).
+    """
+
+    origin: tuple[float, float]
+    axis_deg: float
+    left: tuple[tuple[float, float], ...]
+    right: tuple[tuple[float, float], ...]
+    x_start: float
+    x_end: float
+    #: The envelope as asked for, and the cut actually made (None when the
+    #: envelope falls outside the ring's span: the whole ring is one part).
+    split_at: float | None
+    cut: float | None
+
+
 def plume_outline(
     origin: tuple[float, float],
     wind_from_deg: float,
@@ -280,7 +313,7 @@ def plume_outline(
     x_onset: float,
     x_reach: float,
     split_at: float | None,
-    half_width: Callable[[float], float],
+    half_width: Callable[[Any], Any],
     steps: int = 28,
 ) -> dict[str, list[list[float]]]:
     """A site's modelled plume as ONE outline, split once at the envelope.
@@ -314,10 +347,34 @@ def plume_outline(
       Both parts carry the SAME two cut vertices, so they share an edge
       exactly and a client clip at that line is a no-op.
 
+    `half_width` must accept an array (`air.dispersion.half_width` does): the
+    rails are evaluated for every station and source at once, because the
+    regulator's coverage surfaces now build this outline for all 2,160 hours
+    (R0) and the scalar loop cost ~6 ms per Ridgeline hour. Elementwise the
+    arithmetic is the same IEEE operations, so the ring is unchanged.
+
     Returns `{"inside": ring, "beyond": ring}` with whichever parts exist
     (closed GeoJSON rings, five decimals). `split_at` None or outside the
     ring's span returns the whole ring under the part it lies in.
     """
+    frame = plume_outline_frame(
+        origin, wind_from_deg, sources, x_onset, x_reach, split_at, half_width, steps
+    )
+    return {} if frame is None else outline_rings(frame)
+
+
+def plume_outline_frame(
+    origin: tuple[float, float],
+    wind_from_deg: float,
+    sources: list[tuple[float, float]],
+    x_onset: float,
+    x_reach: float,
+    split_at: float | None,
+    half_width: Callable[[Any], Any],
+    steps: int = 28,
+) -> OutlineFrame | None:
+    """`plume_outline`'s ring in the axis frame, unprojected. None when there
+    is no ring to draw. See `plume_outline` for how it is built."""
     o_lon, o_lat = origin
     axis = (wind_from_deg + 180.0) % 360.0
     local: list[tuple[float, float]] = []
@@ -325,26 +382,37 @@ def plume_outline(
         d = haversine_m(o_lon, o_lat, lon, lat)
         th = math.radians(bearing_deg(o_lon, o_lat, lon, lat) - axis) if d > 0 else 0.0
         local.append((d * math.cos(th), d * math.sin(th)))
+    if not local:
+        return None
 
     x_end = float(x_reach)
     starts = [u + x_onset for u, _v in local]
     x_start = min(starts)
-    if not local or x_end - x_start < 1.0:
-        return {}
+    if x_end - x_start < 1.0:
+        return None
+
+    src_u = np.array([u for u, _v in local], dtype=float)
+    src_v = np.array([v for _u, v in local], dtype=float)
+    src_s = np.array(starts, dtype=float)
+
+    def rails_many(xs: list[float]) -> tuple[np.ndarray, np.ndarray]:
+        """(lo, hi) at each station: the union of the started sources' cones.
+        lo > hi (inf > -inf) where no source has started."""
+        x = np.asarray(xs, dtype=float)[:, None]
+        started = ~(x < src_s[None, :] - 1e-9)
+        w = np.asarray(half_width(np.maximum(x - src_u[None, :], 0.0)), dtype=float)
+        lo = np.where(started, src_v[None, :] - w, np.inf).min(axis=1)
+        hi = np.where(started, src_v[None, :] + w, -np.inf).max(axis=1)
+        return lo, hi
 
     def rails(x: float) -> tuple[float, float] | None:
-        lo, hi = math.inf, -math.inf
-        for (u, v), s in zip(local, starts, strict=True):
-            if x < s - 1e-9:
-                continue
-            w = half_width(max(x - u, 0.0))
-            lo, hi = min(lo, v - w), max(hi, v + w)
-        return None if lo > hi else (lo, hi)
+        lo, hi = rails_many([x])
+        return None if lo[0] > hi[0] else (float(lo[0]), float(hi[0]))
 
     # The nose: one half-width long, never more than a share of the plume.
     end = rails(x_end)
     if end is None:
-        return {}
+        return None
     nose = min(0.5 * (end[1] - end[0]), _NOSE_MAX_SHARE * (x_end - x_start))
     x_c = x_end - nose
 
@@ -364,14 +432,14 @@ def plume_outline(
 
     left: list[tuple[float, float]] = []
     right: list[tuple[float, float]] = []
-    for x in stations:
-        r = rails(x)
-        if r is None:
+    los, his = rails_many(stations)
+    for x, lo, hi in zip(stations, los, his, strict=True):
+        if lo > hi:
             continue
-        left.append((x, r[0]))
-        right.append((x, r[1]))
+        left.append((x, float(lo)))
+        right.append((x, float(hi)))
     if len(left) < 2:
-        return {}
+        return None
 
     # Each side of the nose leaves its rail on the rail's own heading (so
     # there is no corner where it starts) and arrives at the axis crosswind
@@ -400,10 +468,24 @@ def plume_outline(
             ))
         return pts
 
+    # Both arcs end on the same tip (at t = 1 the cubic is exactly p3), so
+    # each rail carries it and each is a function of x out to the reach.
     left += arc(lo_c, (lo_c - lo_b) / back)
     right += arc(hi_c, (hi_c - hi_b) / back)
-    # Both arcs end on the same tip; `right` keeps it so the ring has it once.
-    left.pop()
+    return OutlineFrame(
+        origin=(o_lon, o_lat), axis_deg=axis, left=tuple(left), right=tuple(right),
+        x_start=x_start, x_end=x_end, split_at=split_at, cut=cut,
+    )
+
+
+def outline_rings(frame: OutlineFrame) -> dict[str, list[list[float]]]:
+    """Project a frame to GeoJSON rings, cut once at the envelope."""
+    o_lon, o_lat = frame.origin
+    axis = frame.axis_deg
+    cut, split_at, x_start = frame.cut, frame.split_at, frame.x_start
+    # `right` keeps the tip so the ring has it once.
+    left = list(frame.left[:-1])
+    right = list(frame.right)
 
     def to_lonlat(x: float, y: float) -> list[float]:
         br = (axis + math.degrees(math.atan2(y, x))) % 360.0

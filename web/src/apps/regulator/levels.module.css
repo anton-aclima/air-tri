@@ -1,0 +1,251 @@
+/* /regulator/thresholds (Thresholds.tsx). Two panes (PLAN-refocus F4): the
+   level list, which is the page's one scrolling area, and the consequence
+   pinned beside it. No stacking breakpoint: the rule that dropped to one
+   column below 1180px is what buried the histogram and "Act on it" under
+   1,693px of list at 1080. Rows are at most 64px (R7). Every colour a token. */
+
+.page {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+.moved { font-size: var(--text-xs); color: var(--fleet); white-space: nowrap; }
+
+.body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 360px);
+  gap: var(--s-2);
+}
+.listPanel { min-height: 0; }
+.side {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  overflow: auto;
+}
+.side > .grow { flex: 1 1 auto; min-height: 96px; }
+.grow { min-height: 0; }
+
+.legend {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.fleetMark { color: var(--fleet); font-family: var(--font-mono); margin-right: 4px; }
+
+.section {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: 6px var(--s-3);
+  background: var(--bg-sunk);
+  border-bottom: 1px solid var(--line-strong);
+}
+.sectionTitle { flex: none; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--accent); }
+.sectionHint {
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ───────────────────────────────────────────────────────── one level
+   label | slider | number | state | disclosure. The number column holds a
+   72px input and "µg/m³"; the state column "3 ongoing" over "worst 1.51×".
+   The label takes two shares to the slider's one: at 1080 the list pane is
+   659px, and at an even split "Black carbon 1-hour spike" and "Diesel
+   exposure 8-hour" (about 230px with their code chip) were cut to an
+   ellipsis while the slider had 200px it did not need. */
+.level { border-bottom: 1px solid var(--line); }
+.level:hover { background: var(--surface-2); }
+.levelActive { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
+.levelActive:hover { background: var(--surface-raised); }
+.levelOff .row { opacity: 0.55; }
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(228px, 2fr) minmax(96px, 1fr) auto 84px 28px;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 52px;
+  padding: 7px var(--s-3);
+}
+
+.label { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.labelHead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.code {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  line-height: 16px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.name {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.labelSub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.avg { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.avgSlider { width: 112px; }
+.slider { min-width: 0; }
+
+.value { display: inline-flex; align-items: baseline; gap: 4px; }
+.num {
+  width: 72px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.numEdited { color: var(--fleet); }
+.unit {
+  width: 36px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.stateDim { color: var(--ink-3); }
+
+.more {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.more:hover { color: var(--ink); border-color: var(--line-strong); }
+.more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.editedDot {
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--fleet);
+}
+
+.settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  padding: 0 var(--s-3) var(--s-3);
+  font-size: var(--text-xs);
+}
+.settingsNote { font-size: var(--text-2xs); color: var(--ink-3); white-space: nowrap; }
+.revert { display: inline-flex; align-items: center; gap: var(--s-2); margin-left: auto; }
+
+/* ───────────────────────────────────────────────────── the consequence */
+.pending { font-size: var(--text-2xs); color: var(--accent); white-space: nowrap; }
+.basis { font-size: var(--text-2xs); color: var(--ink-3); white-space: nowrap; }
+.impact { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); }
+.hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--bg-sunk);
+}
+.heroCell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.heroNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xl);
+  line-height: 1;
+  color: var(--ink);
+}
+.heroHot { color: var(--sev-warning); }
+.heroLabel { font-size: var(--text-2xs); color: var(--ink-3); }
+.delta {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg);
+  line-height: 1.1;
+}
+.deltaUp { color: var(--sev-warning); }
+.deltaDown { color: var(--tower); }
+.deltaFlat { color: var(--ink-3); }
+.note { margin: 0; font-size: var(--text-2xs); line-height: 1.5; color: var(--ink-2); }
+
+.over { font-size: var(--text-2xs); color: var(--ink-2); white-space: nowrap; }
+.chart { padding: var(--s-2) var(--s-3) var(--s-3); }
+
+.ledger { display: flex; flex-direction: column; }
+.ledgerRow {
+  display: grid;
+  grid-template-columns: 14px 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 5px var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-2xs);
+}
+.ledgerGlyph { font-family: var(--font-mono); text-align: center; }
+.ledgerWho { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A place wraps rather than ellipsizes: in the 320px pane at 1080 "Paul R
+   Lowry Road" needed 97px of the 86 a one-line cell had. */
+.ledgerWhere { min-width: 0; color: var(--ink); line-height: 1.35; overflow-wrap: anywhere; }
+.ledgerVal { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+.cleared { margin: 0; padding: 5px var(--s-3); font-size: var(--text-2xs); color: var(--ink-2); }
+.empty { margin: 0; padding: var(--s-4); text-align: center; font-size: var(--text-xs); color: var(--ink-3); }
+.act { padding: var(--s-3); }
+
+@keyframes flashIn {
+  0% { background: color-mix(in srgb, var(--sev-warning) 30%, transparent); }
+  100% { background: transparent; }
+}
+@keyframes flashOut {
+  0% { background: color-mix(in srgb, var(--tower) 30%, transparent); }
+  100% { background: transparent; }
+}
+.flashIn { animation: flashIn 1400ms var(--ease-out) 1; }
+.flashOut { animation: flashOut 1400ms var(--ease-out) 1; }
+@media (prefers-reduced-motion: reduce) {
+  .flashIn, .flashOut { animation: none; }
+}

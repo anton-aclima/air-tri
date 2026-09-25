@@ -14,6 +14,10 @@
  * if the stream 404s or the server is down we retry with backoff, report
  * `status: 'offline'`, and the app carries on.
  *
+ * There is one stream per BROWSER, not per tab: one tab holds it and relays
+ * every frame to the others ("the connection", below). A stream per tab used
+ * up the browser's six connections to the host and starved every fetch.
+ *
  * Two clocks live here and must not be confused. An event's `at` is CAMPAIGN
  * time (core/clock): the server stamps every write at its frozen now, the end
  * of the data, and an event without a stamp gets that same instant here. The
@@ -298,8 +302,9 @@ export function invalidationsFor(event: LiveEvent): readonly (readonly unknown[]
     case 'activity':
     default:
       // An unclassified activity row could be anything — refresh the cheap,
-      // shared surfaces rather than guessing.
-      return [qk.feed.all, qk.activity.all, qk.alerts.all, qk.concerns.all, qk.stats.all]
+      // shared surfaces rather than guessing. The regulator's Network payload
+      // counts the alerts and the reports, so it goes with them.
+      return [qk.feed.all, qk.activity.all, qk.alerts.all, qk.concerns.all, qk.stats.all, qk.regulator.all]
   }
 }
 
@@ -342,6 +347,36 @@ function shouldToast(event: LiveEvent, role: Role | null): boolean {
 }
 
 // ─────────────────────────────────────────────────────────── the connection
+//
+// ONE stream per browser, not one per tab.
+//
+// Over HTTP/1.1 — the vite dev server, or any plain-http host — a browser
+// keeps at most six connections open to one host:port for ALL its tabs
+// together, and an EventSource holds one for as long as its tab is open. With
+// five tabs on the demo (a role each, and one more), every fetch in every tab
+// shared the one connection left. Measured in phase 5: /regulator/network
+// requests queued 5–25 s and failed at the 25 s timeout without reaching the
+// server, and the timeline's event ticks never loaded.
+//
+// So the tabs elect a leader with a Web Lock. The leader holds the only
+// EventSource and relays every frame over a BroadcastChannel; every other tab
+// handles a relayed frame exactly as if its own stream had read it — its own
+// role decides the toast and the link. When the leader goes, the lock passes
+// to another tab, which reconnects with `?since=` the newest id any tab has
+// seen, so the handover replays what fell between and nothing older. A browser
+// without either API opens a stream per tab, as it always did.
+
+const LOCK_NAME = 'air.live.stream'
+const CHANNEL_NAME = 'air.live'
+
+/** What the tabs say to each other on `CHANNEL_NAME`. */
+type Relay =
+  /** One SSE frame, as the leader's stream read it. */
+  | { kind: 'frame'; name: string; data: string; id: string }
+  /** The leader's connection state, and the newest id it has seen. */
+  | { kind: 'status'; status: LiveStatus; attempts: number; lastId: number }
+  /** A tab that just started asks the leader for its status. */
+  | { kind: 'ask' }
 
 interface Connection {
   refs: number
@@ -351,6 +386,17 @@ interface Connection {
   pending: Set<string>
   pendingKeys: (readonly unknown[])[]
   closed: boolean
+  /** Bumped on every start, so a lock granted to an earlier start lets go at once. */
+  gen: number
+  /** This tab holds the stream. Always, when the browser cannot share one. */
+  leader: boolean
+  channel: BroadcastChannel | null
+  /** Withdraws a lock request that has not been granted yet. */
+  abort: AbortController | null
+  /** Settles the held lock's promise, which releases the lock. */
+  unlock: (() => void) | null
+  /** The newest SSE id this tab has seen, read or relayed: `?since=` on a reconnect. */
+  lastId: number
 }
 
 const conn: Connection = {
@@ -361,6 +407,31 @@ const conn: Connection = {
   pending: new Set(),
   pendingKeys: [],
   closed: false,
+  gen: 0,
+  leader: false,
+  channel: null,
+  abort: null,
+  unlock: null,
+  lastId: 0,
+}
+
+function relay(msg: Relay): void {
+  try {
+    conn.channel?.postMessage(msg)
+  } catch {
+    /* the channel closed under us: this tab is stopping */
+  }
+}
+
+/** Set this tab's status and, when it holds the stream, every other tab's. */
+function report(status: LiveStatus, attempts: number): void {
+  useLive.getState().setStatus(status, attempts)
+  if (conn.leader) relay({ kind: 'status', status, attempts, lastId: conn.lastId })
+}
+
+function noteId(id: string | number): void {
+  const n = typeof id === 'number' ? id : Number(id)
+  if (id !== '' && Number.isFinite(n) && n > conn.lastId) conn.lastId = n
 }
 
 /** Coalesce a burst of events into one round of invalidation. */
@@ -428,60 +499,122 @@ export function emitLocal(
 
 const BACKOFF = [1000, 2000, 4000, 8000, 15000, 30000]
 
+/** Both halves of the shared stream exist here (see "the connection"). */
+function canShare(): boolean {
+  return typeof BroadcastChannel !== 'undefined'
+    && typeof navigator !== 'undefined'
+    && 'locks' in navigator
+    && navigator.locks != null
+}
+
 /**
- * Open the stream. Returns a disposer. Reference-counted, so React StrictMode's
- * double-mount does not open two sockets.
+ * Open the stream — or join the one another tab holds. Returns a disposer.
+ * Reference-counted, so React StrictMode's double-mount does not open two.
  */
 export function startLive(qc: QueryClient, getRole: () => Role | null): () => void {
   conn.refs += 1
   if (conn.refs > 1) return () => release()
 
   conn.closed = false
+  conn.gen += 1
+  const gen = conn.gen
+  const stopped = () => conn.closed || gen !== conn.gen
+
+  const deliver = (name: string, data: string, id: string) => {
+    noteId(id)
+    const event = parseLiveEvent(name, data)
+    if (event) handleLiveEvent(qc, event, getRole())
+  }
 
   const open = (attempt: number) => {
-    if (conn.closed) return
-    useLive.getState().setStatus(attempt === 0 ? 'connecting' : 'retrying', attempt)
+    if (stopped()) return
+    report(attempt === 0 ? 'connecting' : 'retrying', attempt)
 
+    // A reconnect asks only for what it missed. Without `since` the server
+    // replays its whole buffer, and every old write toasted again.
+    const params = conn.lastId > 0 ? { since: conn.lastId } : undefined
     let source: EventSource
     try {
-      source = new EventSource(apiUrl('/events/stream'))
+      source = new EventSource(apiUrl('/events/stream', params))
     } catch {
       retry(attempt + 1)
       return
     }
     conn.source = source
 
-    source.onopen = () => {
-      useLive.getState().setStatus('open', 0)
+    source.onopen = () => report('open', 0)
+
+    const onFrame = (name: string) => (e: MessageEvent<string>) => {
+      relay({ kind: 'frame', name, data: e.data, id: e.lastEventId })
+      deliver(name, e.data, e.lastEventId)
     }
 
-    const onEvent = (name: string) => (e: MessageEvent<string>) => {
-      const event = parseLiveEvent(name, e.data)
-      if (event) handleLiveEvent(qc, event, getRole())
-    }
-
-    for (const name of EVENT_TYPES) source.addEventListener(name, onEvent(name) as EventListener)
-    source.onmessage = onEvent('activity')
+    for (const name of EVENT_TYPES) source.addEventListener(name, onFrame(name) as EventListener)
+    source.onmessage = onFrame('activity')
 
     source.onerror = () => {
       source.close()
-      conn.source = null
+      if (conn.source === source) conn.source = null
       retry(attempt + 1)
     }
   }
 
   const retry = (attempt: number) => {
-    if (conn.closed) return
+    if (stopped()) return
     const delay = BACKOFF[Math.min(attempt, BACKOFF.length - 1)]
-    useLive.getState().setStatus(attempt >= BACKOFF.length ? 'offline' : 'retrying', attempt)
+    report(attempt >= BACKOFF.length ? 'offline' : 'retrying', attempt)
     conn.timer = setTimeout(() => open(attempt), delay)
   }
 
-  open(0)
+  if (!canShare()) {
+    conn.leader = true
+    open(0)
+  } else {
+    const channel = new BroadcastChannel(CHANNEL_NAME)
+    conn.channel = channel
+    channel.onmessage = (e: MessageEvent<Relay>) => {
+      const msg = e.data
+      if (!msg || typeof msg !== 'object') return
+      if (msg.kind === 'frame') {
+        if (!conn.leader) deliver(msg.name, msg.data, msg.id)
+      } else if (msg.kind === 'status') {
+        if (conn.leader) return
+        noteId(msg.lastId)
+        useLive.getState().setStatus(msg.status, msg.attempts)
+      } else if (msg.kind === 'ask' && conn.leader) {
+        const st = useLive.getState()
+        relay({ kind: 'status', status: st.status, attempts: st.attempts, lastId: conn.lastId })
+      }
+    }
+
+    // Until the leader answers — or this tab becomes it — the stream is
+    // being reached for, as far as this tab can tell.
+    useLive.getState().setStatus('connecting', 0)
+    relay({ kind: 'ask' })
+
+    const abort = new AbortController()
+    conn.abort = abort
+    navigator.locks
+      .request(LOCK_NAME, { signal: abort.signal }, () => {
+        if (stopped()) return undefined
+        conn.abort = null
+        conn.leader = true
+        open(0)
+        // Held until this tab stops; closing the tab releases it too.
+        return new Promise<void>((resolve) => {
+          conn.unlock = resolve
+        })
+      })
+      .catch(() => {
+        /* withdrawn: this tab stopped before its turn came */
+      })
+  }
 
   function release() {
     conn.refs = Math.max(0, conn.refs - 1)
     if (conn.refs > 0) return
+    // The tabs left behind wait for the next leader rather than read "open".
+    if (conn.leader) relay({ kind: 'status', status: 'connecting', attempts: 0, lastId: conn.lastId })
     conn.closed = true
     if (conn.timer) clearTimeout(conn.timer)
     if (conn.flush) clearTimeout(conn.flush)
@@ -489,6 +622,13 @@ export function startLive(qc: QueryClient, getRole: () => Role | null): () => vo
     conn.flush = null
     conn.source?.close()
     conn.source = null
+    conn.abort?.abort()
+    conn.abort = null
+    conn.unlock?.()
+    conn.unlock = null
+    conn.channel?.close()
+    conn.channel = null
+    conn.leader = false
     useLive.getState().setStatus('idle', 0)
   }
 

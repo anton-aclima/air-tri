@@ -38,6 +38,9 @@ air-server = "air.server.__main__:main"
 | `advisor_rules.py` | deterministic fallback for `POST /advisor`, keyed to the site's kind |
 | `advisor_copy.py` | the never-say / cockpit / attribution / action screen, run on the rules answer (tests) and on the model's reply before it is swapped in |
 | `naming.py` | F7 on the server: wind at the alert's start + the placebo-checked downwind test, or no site is named |
+| `plumegeom.py` | **the one modelled-plume geometry** (R0): the outline `/wind/dispersion?outline=1` draws, and the in/beyond test every "inside the modelled plume" is judged by — coverage, residency, the network |
+| `network.py` | `GET /regulator/network`: reference monitors as of `at`, plumes and what their solid part reaches, residents, one generated headline |
+| `passwindow.py` | street statistics over a window that ENDS AT `at` (`trailing:<N>h`, `todate`), computed from `segment_pass` exactly as datagen computed the stored rows — `todate` at the end equals `'all'` field for field |
 | `routers/*.py` | one module per domain |
 | `_smoketest_seed.py` | **backend testing only** — tiny fixture, writes `data/air_smoketest.db` |
 
@@ -50,8 +53,8 @@ air-server = "air.server.__main__:main"
 | GET | `/bootstrap` | `{campaign, measures[], orgs[], users[], action_levels[], sites[], flags}`; `flags.now` is always live |
 | GET | `/campaigns` · `/campaigns/{id}` | |
 | GET | `/campaigns/{id}/boundary` | always a `FeatureCollection`, whatever the column holds |
-| GET | `/segments` | **flagship.** `measure` `metric` `window` `bbox=w,s,e,n` `min_passes` `limit`. GeoJSON LineStrings, coords at 5 dp, `x-air-cache: hit\|miss` |
-| GET | `/segments/{id}` | detail + daily + 24 h diurnal + per-measure stats + `rank_pct` + `nearest_site` |
+| GET | `/segments` | **flagship.** `measure` `metric` `window` `at` `bbox=w,s,e,n` `min_passes` `limit`. GeoJSON LineStrings, coords at 5 dp, `x-air-cache: hit\|miss`. `window` is STORED (`all`, `date:YYYY-MM-DD`, `hour:HH`; `at` ignored) or COMPUTED from `segment_pass` and bounded by `at` (`trailing:<N>h` = `at-N h < ts <= at`, `todate` = `ts <= at`; same statistics, `min_passes` defaults to 1, plus a foreign member `window: {name, from, to, last_pass_at}`). Anything else is a 422. See `passwindow.py` |
+| GET | `/segments/{id}` | `at` (optional) → detail + daily + 24 h diurnal + per-measure stats + `rank_pct` + `nearest_site`. No `at`: the stored windows, every pass in the campaign. With `at` (through `domain.as_of`; garbage is a 422): the same shape computed from passes with `ts <= at` — `stats`, `daily` (`date:` floor 2 passes), `diurnal` (`hour:` floor 4), `n_passes`, `first_pass`/`last_pass` and `rank_pct` (against every street's `todate` median) — so a replayed moment never plots a later pass. At the end of the data it equals the stored body |
 | GET | `/monitors` | `owner_type` `grade` `site_id`; each carries `latest` per measure with `exceeds` |
 | GET | `/monitors/{id}` | |
 | GET | `/monitors/{id}/readings` | `measure` `from` `to` `interval=hour\|day` + the action levels for that measure |
@@ -65,6 +68,7 @@ air-server = "air.server.__main__:main"
 | GET | `/enforcement` † | `enforcement_action` rows |
 | GET | `/alerts` | `role` `status` `severity` `kind` `site_id` `radius_m` `since`. **With `site_id`, every alert gains `bearing_deg` (0–360 true, from the site centroid) and `distance_m`, sorted nearest-first — this is the RWR scope.** |
 | GET | `/alerts/{id}` | + `samples[]`, related `concerns[]`, `mitigations[]`, `acknowledged_by[]`. `?site_id=` adds RWR geometry |
+| GET | `/regulator/network` | `at` `measure` `streets=24h\|7d\|todate` (default `7d`) → the regulator's Network screen: `monitors` (reading as of `at`; `level` {name, threshold, averaging_hours, ratio} is the highest enabled 1-hour level the reading exceeds, else the tightest (D15), and is the level the headline names; `over` is over the tightest; `exceedance_hours_7d` counts against `exceedance_level` {name, threshold}, the tightest, null with no channel or no 1-hour level; `in_plume`, `plume_share`), `plumes` (`touches` from the solid part only, `named` by F7), `residents`, `numbers`, `headline`, and `streets_window {kind, hours, from, to, last_pass_at}` — every street figure (`numbers.street_km`, `touches.streets_driven`, `driven_share`, `below_coverage_floor`) counts the set `/segments` draws for that window ending at `at`; `plumes[].streets_inside` is the streets inside the solid part whether driven or not, so a floor the plume's geometry cannot clear (`streets_inside < 8`) reads apart from one the driving did not. See `network.py` |
 | GET | `/action-levels` | `measure` |
 | GET | `/feed` | `role` `since` `limit` `include_readings`. Merged concerns + advisories + posts + mitigations + exceeding readings, newest first |
 | GET | `/fleet` | `at` `delay_min` `role`. **`role=community` clamps `delay_min` to ≥180**; positions come from `now − delay` |

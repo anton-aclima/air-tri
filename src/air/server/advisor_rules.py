@@ -349,7 +349,7 @@ def build(ctx: dict[str, Any]) -> dict[str, Any]:
         "label": "Check your fenceline sensors",
         "detail": (
             f"Compare the {short} reading with your own fenceline sensors and the nearest "
-            "reference monitor for the same hours. One sensor over the line does not say where "
+            "reference monitor for the same hours. One sensor above a level does not say where "
             "the air came from."
         ),
         "impact": None,

@@ -11,7 +11,11 @@
  *
  * The two-ramp rule gets its own block at the bottom, because "never mix the
  * health ramp with the analytical ramp" is a rule about this product, and this
- * is the sheet that documents the product.
+ * is the sheet that documents the product. The analytical ramp shows twice
+ * there: `--ramp-intensity` as charts read it, and `--ramp-map` as the dark
+ * skins' road grids paint it (`--ramp-intensity-dark`, lifted for a dark
+ * ground). This page renders in the admin skin, so `rampGradient('map')` IS
+ * that lifted ramp.
  */
 
 import { useMemo, useState } from 'react'
@@ -113,8 +117,11 @@ export function Data() {
                   />
                   <ScaleTicks def={def} />
                   <p className={s.noteDim} style={{ marginTop: 'var(--s-2)' }}>
-                    Admin reads this on <strong>--ramp-intensity</strong>; the community reads the
-                    same number on --ramp-aqi as a unitless 0–100 score. Two languages, one measure.
+                    This bar is the chart ramp, <strong>--ramp-intensity</strong>. The regulator,
+                    industry and admin road grids paint the same number on --ramp-map, which in
+                    those skins is --ramp-intensity-dark: the same ramp lifted so its low end reads
+                    on a dark map. The community reads it on --ramp-aqi as a unitless 0–100 score.
+                    Two languages, one measure.
                   </p>
                 </div>
                 <KV
@@ -235,9 +242,15 @@ export function Data() {
           />
           <RampCard
             name="--ramp-intensity"
-            who="regulator · industry · admin"
-            note="Analytical magnitude. Never used where a resident is being told about risk."
+            who="charts · regulator · industry · admin"
+            note="Analytical magnitude, the chart ramp: histograms, spec bars, distributions. Never used where a resident is being told about risk."
             family="intensity"
+          />
+          <RampCard
+            name="--ramp-map → --ramp-intensity-dark"
+            who="road grid · regulator · industry · admin"
+            note="The same analytical ramp lifted for a line on a dark map: its near-black low end would hide a street measured low, so stop 0 is #3769CA. What these skins' road grids paint."
+            family="map"
           />
           <div className={s.dualNode} style={{ gap: 6 }}>
             <span className={s.dualLabel}>risk bands · 0–100</span>
@@ -389,7 +402,7 @@ function RampCard({
   name: string
   who: string
   note: string
-  family: 'aqi' | 'intensity'
+  family: 'aqi' | 'intensity' | 'map'
 }) {
   return (
     <div className={s.dualNode} style={{ gap: 6 }}>

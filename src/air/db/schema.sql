@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS action_level (
   averaging_hours REAL NOT NULL DEFAULT 1,
   severity       TEXT NOT NULL CHECK (severity IN ('info','watch','warning','critical')),
   enabled        INTEGER NOT NULL DEFAULT 1,
-  source         TEXT,                     -- 'EPA NAAQS 1-hr', 'IL EPA', 'local'
+  source         TEXT,                     -- 'National standard 1-hr', 'DRAQA local screening' (no real body: fictional actors)
   notify_community INTEGER NOT NULL DEFAULT 1,
   notify_industry  INTEGER NOT NULL DEFAULT 1,
   updated_at     TEXT

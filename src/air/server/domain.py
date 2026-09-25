@@ -593,8 +593,10 @@ def evaluate_action_level(
                     + (f", {int(near['distance_m'])} m {brg} of {near['name']}." if near else ".")
                     + wind_txt
                 ),
+                # Agency-facing, like narrative.py's: the industry room swaps
+                # it for its site's lever (routers/alerts.py `_GENERIC_NO2`).
                 recommendation=(
-                    "Throttle the nearest emission points and confirm with the fenceline ring "
+                    "Read it against the wind, the fleet's street passes and the fenceline ring "
                     "before the next hourly average closes."
                 ),
                 audience=_al_audience(al),

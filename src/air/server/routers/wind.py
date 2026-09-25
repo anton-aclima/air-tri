@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
@@ -40,7 +39,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 # bare import shadowed it into an AttributeError at request time.
 from air import dispersion as plume
 from air.server import (
-    cache, climatology, domain, forecast, geo, loaders, shapes, timeutil, windfield,
+    cache, climatology, domain, forecast, geo, loaders, plumegeom, shapes, timeutil, windfield,
 )
 from air.server.db import get_db, one, resolve_campaign, rows
 
@@ -220,6 +219,12 @@ def dispersion(
             )
 
         if outline:
+            # The outline is `plumegeom`'s, the one geometry every "inside the
+            # modelled plume" in the product is judged by (R0) — built from
+            # the same wind row, class and points as the bands above.
+            sp = plumegeom.site_plume(sid, plumegeom.points_of(pts), plumegeom.weather(wind))
+            if sp is None:
+                continue
             common: dict[str, Any] = {
                 "site_id": sid,
                 "measure": measure,
@@ -227,36 +232,28 @@ def dispersion(
                 "wind_dir_deg": wind["dir_deg"],
                 "stability": stability,
                 "detection_envelope_m": envelope,
-                "x_onset_m": round(site.x_onset, 1),
-                "x_reach_m": round(site.x_reach, 1),
-                "truncated": site.truncated,
+                "x_onset_m": round(sp.reach.x_onset, 1),
+                "x_reach_m": round(sp.reach.x_reach, 1),
+                "truncated": sp.reach.truncated,
             }
             if coercion_note:
                 common["stability_coerced_from"] = reported
                 common["stability_note"] = coercion_note
-            outlines.extend(
-                _outline_features(pts, srcs, site, envelope, float(wind["dir_deg"]), width, common)
-            )
+            outlines.extend(_outline_features(sp, common))
     return {"type": "FeatureCollection", "features": features + outlines}
 
 
-def _outline_features(
-    pts: list[dict[str, Any]],
-    srcs: list[plume.Source],
-    site: plume.Reach,
-    envelope: float,
-    wind_from_deg: float,
-    width: Callable[[float], float],
-    common: dict[str, Any],
-) -> list[dict[str, Any]]:
+def _outline_features(sp: plumegeom.SitePlume, common: dict[str, Any]) -> list[dict[str, Any]]:
     """CONTRACT 10b's register for Aclima's model: an outline and an axis, never a fill.
 
     WHY A SERVER SHAPE AND NOT A CLIENT UNION. The bands are three rings that
     share edges; stroking them draws two interior contour lines the reader
     takes for boundaries of something. The outer edge alone is what 10b asks
     for, with the same sigma_y rail the bands use. Rebuilding it in the
-    browser would be a second plume computation, and the product already has
-    two that disagree (R0).
+    browser would be a second plume computation — and a second computation is
+    exactly what R0 found disagreeing with this one about Riverport Road
+    (`plumegeom`'s docstring has the numbers). The coverage surfaces and the
+    regulator's network now count against THIS ring.
 
     ONE RING, CUT ONCE (phase 3 review). The parts used to be built one per
     side of the envelope, each as a union of per-source cones measured from
@@ -274,37 +271,24 @@ def _outline_features(
     A lofted plume whose onset is already past the envelope has no inside
     part at all: nothing is drawn over the aloft segment.
 
+    The axis starts at the EMISSION-weighted source (`plumegeom.origin_of`),
+    with the kernel's own weights — the ones that shaped the profile being
+    drawn. Measured on the three sites it sits 7-28 m from the plain mean of
+    the points and 40-98 m from the site centroid: small against a 1.5 km
+    envelope, but the site centroid is a map label position, not a release.
+    Rounded to the served five decimals BEFORE anything is placed from it, so
+    a client measuring from the axis's first vertex measures from the same
+    point the outline was built in.
+
     The bands (the default response) are untouched and still per-source; the
     outline is a drawing of the same model, not a second evaluation of it.
     """
     out: list[dict[str, Any]] = []
-    onset, reach_m = site.x_onset, site.x_reach
+    reach_m, envelope = sp.reach.x_reach, sp.envelope_m
+    o_lon, o_lat = sp.origin
+    toward = sp.toward_deg
 
-    # The axis starts at the EMISSION-WEIGHTED source, with the kernel's own
-    # weights (`Source.emission`) — the ones that shaped the profile being
-    # drawn. Measured on the three sites it sits 7-28 m from the plain mean of
-    # the points and 40-98 m from the site centroid: small against a 1.5 km
-    # envelope, but the site centroid is a map label position, not a release.
-    # Rounded to the served five decimals BEFORE anything is placed from it,
-    # so a client measuring from the axis's first vertex measures from the
-    # same point the outline was built in.
-    weights = [s.emission() for s in srcs]
-    if sum(weights) <= 0.0:
-        weights = [1.0] * len(weights)
-    total = sum(weights)
-    o_lon = round(sum(w * float(p["lon"]) for w, p in zip(weights, pts, strict=True)) / total, 5)
-    o_lat = round(sum(w * float(p["lat"]) for w, p in zip(weights, pts, strict=True)) / total, 5)
-    toward = (wind_from_deg + 180.0) % 360.0
-
-    parts = geo.plume_outline(
-        (o_lon, o_lat),
-        wind_from_deg,
-        [(float(p["lon"]), float(p["lat"])) for p in pts],
-        onset,
-        reach_m,
-        envelope,
-        width,
-    )
+    parts = sp.rings()
     for part in ("inside", "beyond"):
         ring = parts.get(part)
         if not ring:

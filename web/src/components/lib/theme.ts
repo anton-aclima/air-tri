@@ -174,7 +174,10 @@ function readVars(el: Element | null): Record<string, string> {
     out[t] = val;
   }
   for (let i = 0; i < 8; i++) {
-    out[`ramp-map-${i}`] = get(`ramp-map-${i}`) || get(`ramp-intensity-${i}`);
+    // Outside every role subtree the skin falls back to 'dark' (NEUTRAL), so
+    // the road grid falls back to the dark skins' lifted ramp, not the chart
+    // ramp whose low end is invisible on a dark ground.
+    out[`ramp-map-${i}`] = get(`ramp-map-${i}`) || get(`ramp-intensity-dark-${i}`) || get(`ramp-intensity-${i}`);
     out[`ramp-intensity-${i}`] = get(`ramp-intensity-${i}`);
   }
   for (let i = 0; i < 7; i++) out[`ramp-aqi-${i}`] = get(`ramp-aqi-${i}`);

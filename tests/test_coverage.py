@@ -1,15 +1,18 @@
 """P7 — does the regulator's fixed network stand where the plume goes?
 
-Everything here is MODELLED. "In a plume" means inside a cone from
-`air.dispersion` driven by this campaign's wind record; nobody measured the air
-at these instruments and compared it to anything. The tests assert that the
-payloads say so, because the honesty of this screen is carried by one word in
-a field rather than by a caption someone can edit.
+Everything here is MODELLED. "In a plume" means inside the outline
+`/wind/dispersion?outline=1` draws (`plumegeom`, R0), driven by this campaign's
+wind record; nobody measured the air at these instruments and compared it to
+anything. The tests assert that the payloads say so, because the honesty of
+this screen is carried by one word in a field rather than by a caption someone
+can edit.
 
-The headline, recomputed on the current kernel: **a reference tower stands
-inside a modelled plume in 30.1% of hours, and two of the four do so in under
-2%.** An earlier design quoted 20.1%, derived from the `base_reach` formula
-phase 1 deleted; if you find that number written anywhere it is stale.
+The headline, recomputed on the drawn outline (R0, 2026-09-24): **Riverport
+Road stands inside a modelled plume in 39.4% of the 2,150 hours, 29.6% inside
+measurement range; two of the four reference monitors do so in under 2%.** It
+was 19.0% on the single-wedge cone test R0 retired, and 20.1% before that on
+the `base_reach` formula phase 1 deleted; either number written anywhere is
+stale.
 """
 
 from __future__ import annotations
@@ -50,9 +53,10 @@ def test_the_reference_network_is_in_a_plume_a_minority_of_hours(intercept) -> N
 
 def test_two_of_the_four_towers_are_effectively_never_in_a_plume(intercept) -> None:
     """The plan said "never". On the current kernel it is "almost never" — the
-    bigger stable-air plumes of phase 1 do occasionally reach them, 25 and 18
-    hours out of 2,160. The finding survives; the word does not, and a screen
-    that said "never" would be wrong."""
+    bigger stable-air plumes of phase 1 do occasionally reach them, 30 and 28
+    hours out of 2,150 on the drawn outline (25 and 18 on the cone test R0
+    retired). The finding survives; the word does not, and a screen that said
+    "never" would be wrong."""
     rarely = [i for i in intercept.reference if i.share < 0.02]
     assert len(rarely) == 2, {i.name: i.share for i in intercept.reference}
     for i in rarely:

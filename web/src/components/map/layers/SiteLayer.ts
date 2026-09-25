@@ -7,13 +7,16 @@
  * around it — strokes, labels, inactive states — still comes from tokens.
  */
 
-import { IconLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import { IconLayer, PathLayer, PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
+import type { TextLayerProps } from '@deck.gl/layers';
 import type { LayersList, PickingInfo } from 'deck.gl';
 import type { EmissionPoint, IndustrySite, Position } from '@/core/types';
 import type { Theme } from '../../lib/theme';
 import { parseColor, withAlpha } from '../../lib/theme';
 import { toPolygons } from '../../lib/geo';
 import { emissionGlyph, icon } from '../../lib/glyphs';
+import { LABEL_PRIORITY, collidingText, textBox } from './labelCollision';
+import type { LabelCandidate, LabelCollision } from './labelCollision';
 
 export interface SiteLayerProps {
   id?: string;
@@ -36,6 +39,18 @@ export interface SiteLayerProps {
    * clickable either way.
    */
   footprint?: 'fill' | 'outline';
+  /**
+   * `'upper'` (default) prints site names in capitals, as before; `'asis'`
+   * prints them as given, for maps that keep an all-caps budget (R9).
+   */
+  labelCase?: 'upper' | 'asis';
+  /**
+   * Take part in a shared label-collision pass (`labelCollision()`). A site's
+   * name and badge step aside wherever a monitor's label or mast would be
+   * printed over — monitors always win, whatever the call order. Omit and
+   * every label draws, as before.
+   */
+  collision?: LabelCollision | null;
   /** 0–1 pulse — active emission points breathe. Feed from `usePulse()`. */
   pulse?: number;
   hoveredId?: string | null;
@@ -96,11 +111,15 @@ const STATUS_ALPHA: Record<string, number> = {
 export function SiteLayer(props: SiteLayerProps): LayersList {
   const {
     id = 'sites', data, theme, emissionPoints = true, labels = true, branding = true,
-    footprint = 'fill', pulse = 0, hoveredId, selectedId, onHover, onClick, visible = true, pickable = true,
+    footprint = 'fill', labelCase = 'upper', collision,
+    pulse = 0, hoveredId, selectedId, onHover, onClick, visible = true, pickable = true,
   } = props;
 
   const sites = data ?? [];
-  if (!sites.length) return [];
+  if (!sites.length) {
+    collision?.register(id, []);
+    return [];
+  }
 
   const rings: Ring[] = [];
   const outlines: Outline[] = [];
@@ -215,62 +234,101 @@ export function SiteLayer(props: SiteLayerProps): LayersList {
   }
 
   // ── labels ────────────────────────────────────────────────────────────────
+  const nameOf = (st: IndustrySite) => (labelCase === 'upper' ? st.name.toUpperCase() : st.name);
+  const badged = branding ? sites.filter((st) => Boolean(st.logo_emoji)) : [];
+  const NAME_SIZE = 11;
+  const NAME_OFFSET: [number, number] = [0, 14];
+  const BADGE_SIZE = 20;
+  const BADGE_OFFSET: [number, number] = [0, -8];
+
+  if (collision) {
+    // Every site ranks under every monitor (LABEL_PRIORITY's tier gap); among
+    // sites, the one being looked at keeps its name.
+    const rank = (st: IndustrySite) => LABEL_PRIORITY.site
+      + (st.id === selectedId ? LABEL_PRIORITY.selected : st.id === hoveredId ? LABEL_PRIORITY.hovered : 0);
+    const candidates: LabelCandidate[] = [];
+    if (labels) {
+      for (const st of sites) {
+        candidates.push({
+          key: `${id}:label:${st.id}`, owner: `site:${st.id}`, position: [st.centroid[0], st.centroid[1]],
+          box: textBox(nameOf(st), NAME_SIZE, 'middle', 'center', NAME_OFFSET), priority: rank(st),
+        });
+      }
+    }
+    for (const st of badged) {
+      // A badge is one glyph, about 1 em square.
+      const h = BADGE_SIZE / 2 + 1;
+      candidates.push({
+        key: `${id}:badge:${st.id}`, owner: `site:${st.id}`, position: [st.centroid[0], st.centroid[1]],
+        box: [-h, BADGE_OFFSET[1] - h, h, BADGE_OFFSET[1] + h], priority: rank(st),
+      });
+    }
+    collision.register(id, candidates);
+  }
+
   if (labels) {
-    layers.push(new TextLayer<IndustrySite>({
-      id: `${id}-label`,
-      data: sites,
-      visible,
-      pickable: false,
-      getPosition: (s) => s.centroid as unknown as [number, number],
-      getText: (s) => s.name.toUpperCase(),
-      getSize: 11,
+    const text: Omit<TextLayerProps<IndustrySite>, 'id' | 'data'> = {
+      getPosition: (st) => st.centroid as unknown as [number, number],
+      getText: nameOf,
+      getSize: NAME_SIZE,
       sizeUnits: 'pixels',
-      getColor: (s) => theme.color('ink', dim(s)),
+      getColor: (st) => theme.color('ink', dim(st)),
       getTextAnchor: 'middle',
       getAlignmentBaseline: 'center',
-      getPixelOffset: [0, 14],
+      getPixelOffset: NAME_OFFSET,
       fontFamily: theme.css('font-mono') || 'monospace',
       fontWeight: 700,
       characterSet: 'auto',
       outlineWidth: 3.5,
       outlineColor: theme.color('bg', 0.92),
       fontSettings: { sdf: true },
-      updateTriggers: { getColor: theme.css('ink'), outlineColor: theme.css('bg') },
+      updateTriggers: { getText: labelCase, getColor: theme.css('ink'), outlineColor: theme.css('bg') },
+    };
+    layers.push(collidingText<IndustrySite>({
+      id: `${id}-label`,
+      items: sites,
+      keyOf: (st) => `${id}:label:${st.id}`,
+      collision,
+      visible,
+      pickable: false,
+      text,
     }));
   }
 
-  if (branding) {
-    const badged = sites.filter((s) => Boolean(s.logo_emoji));
-    if (badged.length) {
-      layers.push(new TextLayer<IndustrySite>({
-        id: `${id}-brand`,
-        data: badged,
-        visible,
-        pickable,
-        getPosition: (s) => s.centroid as unknown as [number, number],
-        getText: (s) => s.logo_emoji ?? '',
-        getSize: 20,
-        sizeUnits: 'pixels',
-        /*
-          A COLOUR emoji ignores this tint and renders in its own colours, so
-          white was fine for ⚒️ and 🚚. A geometric glyph does not: Ridgeline's
-          badge is `▲`, a plain character, and hardcoded white painted it white
-          on the community skin's light background — invisible, and therefore
-          unhittable. Tint only the glyphs that actually take a tint.
-        */
-        getColor: (s) => (PICTOGRAPHIC.test(s.logo_emoji ?? '')
-          ? [255, 255, 255, 255]
-          : theme.color('ink', dim(s))),
-        getTextAnchor: 'middle',
-        getAlignmentBaseline: 'center',
-        getPixelOffset: [0, -8],
-        characterSet: 'auto',
-        fontSettings: { sdf: false },
-        updateTriggers: { getColor: theme.css('ink') },
-        onHover,
-        onClick,
-      }));
-    }
+  if (badged.length) {
+    const text: Omit<TextLayerProps<IndustrySite>, 'id' | 'data'> = {
+      getPosition: (st) => st.centroid as unknown as [number, number],
+      getText: (st) => st.logo_emoji ?? '',
+      getSize: BADGE_SIZE,
+      sizeUnits: 'pixels',
+      /*
+        A COLOUR emoji ignores this tint and renders in its own colours, so
+        white was fine for ⚒️ and 🚚. A geometric glyph does not: Ridgeline's
+        badge is `▲`, a plain character, and hardcoded white painted it white
+        on the community skin's light background — invisible, and therefore
+        unhittable. Tint only the glyphs that actually take a tint.
+      */
+      getColor: (st) => (PICTOGRAPHIC.test(st.logo_emoji ?? '')
+        ? [255, 255, 255, 255]
+        : theme.color('ink', dim(st))),
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'center',
+      getPixelOffset: BADGE_OFFSET,
+      characterSet: 'auto',
+      fontSettings: { sdf: false },
+      updateTriggers: { getColor: theme.css('ink') },
+    };
+    layers.push(collidingText<IndustrySite>({
+      id: `${id}-brand`,
+      items: badged,
+      keyOf: (st) => `${id}:badge:${st.id}`,
+      collision,
+      visible,
+      pickable,
+      onHover,
+      onClick,
+      text,
+    }));
   }
 
   return layers;

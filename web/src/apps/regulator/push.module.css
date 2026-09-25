@@ -1,0 +1,18 @@
+/* The push composer (Push.tsx). Sentence case throughout: it sits inside a
+   side sheet next to a trace, and a block of caps labels there was the kind of
+   noise the owner's review called out. Every colour is a token. */
+
+.push { display: flex; flex-direction: column; gap: var(--s-2); }
+.row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.note { margin: 0; font-size: var(--text-2xs); line-height: 1.45; color: var(--ink-3); }
+.text { font-size: var(--text-xs); line-height: 1.5; }
+.error { font-size: var(--text-2xs); color: var(--sev-warning); }
+.sent {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--tower) 45%, transparent);
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--tower) 8%, transparent);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+}

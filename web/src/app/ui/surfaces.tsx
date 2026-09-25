@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 
 import s from '@/design/primitives.module.css'
 import p from '@/app/ui/popover.module.css'
+import sh from '@/app/ui/sheet.module.css'
 import { Icon } from '@/app/ui/Icon'
 import { IconButton } from '@/app/ui/controls'
 import type { IconName } from '@/core/roles'
@@ -296,6 +297,11 @@ export function Popover({
     ;(first ?? el)?.focus({ preventScroll: true })
   }, [open, placed])
 
+  useDismiss(open, () => {
+    onClose()
+    anchor.current?.focus({ preventScroll: true })
+  })
+
   useEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => {
@@ -304,18 +310,9 @@ export function Popover({
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return
       onClose()
     }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      onClose()
-      anchor.current?.focus({ preventScroll: true })
-    }
     // Capture, so a map or a chart that stops propagation still closes it.
     document.addEventListener('pointerdown', onDown, true)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('pointerdown', onDown, true)
-      window.removeEventListener('keydown', onKey)
-    }
+    return () => document.removeEventListener('pointerdown', onDown, true)
   }, [open, onClose, anchor])
 
   if (!open) return null
@@ -342,20 +339,46 @@ export function Popover({
   )
 }
 
-// ──────────────────────────────────────────────────────────── Modal / Sheet
+// ──────────────────────────────────────────────────────────── Esc, topmost
 
-function useDismiss(onClose: () => void) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+/**
+ * Every open Modal, Sheet and Popover, oldest first. Esc closes the top one
+ * only. Each used to listen on `window` for itself, so one Esc shut both the
+ * timeline popover and the alert sheet beneath it — and Modal and Sheet
+ * listened even while closed. One listener for the whole stack, not one per
+ * surface: a per-surface "am I on top?" check is not enough, because React may
+ * commit the top one's close (and pop it) between two listeners of the same
+ * keydown, and the next one down would then see itself on top and close too.
+ */
+const dismissStack: { close: { current: () => void } }[] = []
+
+function onDismissKey(e: KeyboardEvent) {
+  // A field that handles Esc itself (revert an edit) calls preventDefault.
+  if (e.key !== 'Escape' || e.defaultPrevented) return
+  const top = dismissStack[dismissStack.length - 1]
+  if (!top) return
+  e.preventDefault()
+  top.close.current()
 }
+
+/** Esc closes this surface while it is open and nothing opened after it is. */
+function useDismiss(open: boolean, onClose: () => void) {
+  const close = useRef(onClose)
+  useLayoutEffect(() => { close.current = onClose })
+  useEffect(() => {
+    if (!open) return
+    const entry = { close }
+    if (!dismissStack.length) window.addEventListener('keydown', onDismissKey)
+    dismissStack.push(entry)
+    return () => {
+      const i = dismissStack.lastIndexOf(entry)
+      if (i >= 0) dismissStack.splice(i, 1)
+      if (!dismissStack.length) window.removeEventListener('keydown', onDismissKey)
+    }
+  }, [open])
+}
+
+// ──────────────────────────────────────────────────────────── Modal / Sheet
 
 export interface ModalProps {
   open: boolean
@@ -368,7 +391,7 @@ export interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, footer, wide, className, children }: ModalProps) {
-  useDismiss(onClose)
+  useDismiss(open, onClose)
   if (!open) return null
   return createPortal(
     <div className={s.scrim} onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -389,36 +412,98 @@ export function Modal({ open, onClose, title, footer, wide, className, children 
 
 export interface SheetProps extends Omit<ModalProps, 'wide'> {
   side?: 'right' | 'left' | 'bottom'
+  /**
+   * `true` (the default): a blurred scrim covers the page, and a press on it
+   * closes the sheet. `false`: no scrim — the sheet is pinned to the viewport
+   * edge below the shell header, and the page beside it stays readable,
+   * scrollable and clickable, so a list can stay in view next to the detail
+   * it opened (picking another row just changes what the sheet shows). Esc
+   * and the close button still close it; a press outside does not.
+   */
+  modal?: boolean
+}
+
+/**
+ * The bottom edge of the shell header, px — where a non-modal sheet starts,
+ * so it never covers the header's clock and persona. 0 off the shell.
+ */
+function shellHeaderBottom(): number {
+  const head = document.querySelector<HTMLElement>('[data-shell-head]')
+  return head ? Math.max(0, Math.round(head.getBoundingClientRect().bottom)) : 0
 }
 
 /** Edge-anchored drawer — segment detail, alert detail, report form. */
-export function Sheet({ open, onClose, title, footer, side = 'right', className, children }: SheetProps) {
-  useDismiss(onClose)
+export function Sheet({
+  open, onClose, title, footer, side = 'right', modal = true, className, children,
+}: SheetProps) {
+  useDismiss(open, onClose)
+  const titleId = useId()
+  const [top, setTop] = useState(0)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Non-modal: focus the sheet when it opens, so Esc and the keyboard reach
+  // it without a click first, and hand focus back to whatever held it (the
+  // row that opened it) when it closes. Only when focus was lost with the
+  // sheet — it is in no man's land on `body` — never away from a field the
+  // reader has since moved to on the page beside it.
+  useEffect(() => {
+    if (!open || modal) return
+    const back = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const panel = panelRef.current
+    panel?.focus({ preventScroll: true })
+    return () => {
+      const at = document.activeElement
+      const lost = !at || at === document.body || !!panel?.contains(at)
+      if (lost && back?.isConnected) back.focus({ preventScroll: true })
+    }
+  }, [open, modal])
+
+  useLayoutEffect(() => {
+    if (!open || modal) return
+    const place = () => setTop(shellHeaderBottom())
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open, modal])
+
   if (!open) return null
+
+  const panel = (
+    <div
+      className={clsx(
+        s.sheet,
+        side === 'left' && s.sheetLeft,
+        side === 'bottom' && s.sheetBottom,
+        !modal && sh.floating,
+        !modal && side === 'left' && sh.left,
+        !modal && side === 'bottom' && sh.bottom,
+        className,
+      )}
+      style={modal ? undefined : { ['--sheet-top' as string]: `${top}px` }}
+      ref={panelRef}
+      tabIndex={modal ? undefined : -1}
+      role="dialog"
+      aria-modal={modal}
+      aria-labelledby={title ? titleId : undefined}
+    >
+      {title ? (
+        <header className={s.modalHeader}>
+          <h2 id={titleId} className={s.modalTitle}>{title}</h2>
+          <IconButton icon="close" label="Close" size="sm" onClick={onClose} />
+        </header>
+      ) : null}
+      <div className={s.modalBody}>{children}</div>
+      {footer ? <footer className={s.modalFooter}>{footer}</footer> : null}
+    </div>
+  )
+
+  if (!modal) return createPortal(panel, document.body)
   return createPortal(
     <div
       className={clsx(s.scrim, s.sheetScrim)}
       onPointerDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className={clsx(
-          s.sheet,
-          side === 'left' && s.sheetLeft,
-          side === 'bottom' && s.sheetBottom,
-          className,
-        )}
-        role="dialog"
-        aria-modal="true"
-      >
-        {title ? (
-          <header className={s.modalHeader}>
-            <h2 className={s.modalTitle}>{title}</h2>
-            <IconButton icon="close" label="Close" size="sm" onClick={onClose} />
-          </header>
-        ) : null}
-        <div className={s.modalBody}>{children}</div>
-        {footer ? <footer className={s.modalFooter}>{footer}</footer> : null}
-      </div>
+      {panel}
     </div>,
     document.body,
   )

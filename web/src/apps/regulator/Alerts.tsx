@@ -1,332 +1,783 @@
 /**
- * /regulator/alerts — the queue.
+ * /regulator/alerts — the queue, as episodes (docs/PLAN-refocus.md R6).
  *
- * Two kinds of event share this list and the distinction is the whole point of
- * the action-level screen: a MAGNITUDE spike is one averaging period over the
- * line, an INTEGRATED EXPOSURE is a dose accumulated by an emission that never
- * spiked at all. Both are exceedances; only one of them is visible to a person
- * watching a peak.
+ * One row per source and pollutant, not one per alert. At the end of the
+ * checked-in data nine of the queue's rows were one instrument: every
+ * Riverport Road NO2 hour over 100 ppb trips both the 60 ppb watch and the
+ * 100 ppb standard, so four mornings and two evenings (Aug 24–27) read as
+ * nine identical "Riverport Road · Exceedance" rows. Now:
  *
- * The `who saw it` column is doing quiet work. Rows tagged TOWER came from
- * DRAQA's own reference instruments; rows tagged FLEET came from ours, on
- * channels no tower carries, on streets no ring covers. Reading down that
- * column is the network gap without a word of argument.
+ *   - an EPISODE is one source's alerts for one pollutant over consecutive
+ *     hours — overlapping or touching runs merge, a gap of a full hour starts
+ *     a new one — and the highest level tripped wins (the same key and the
+ *     same rule as `foldConcurrent`, so the rows and the one count agree);
+ *   - a ROW is that source and pollutant's episodes, open ones and closed
+ *     ones apart: "NO2 at Riverport Road · 6 episodes Aug 24–27 · peak
+ *     121.4 ppb".
+ *
+ * Everything follows the moment shown (core/events): nothing that had not
+ * begun is listed, an alert whose end lies after the moment is still ongoing,
+ * and an ended one says "ended 1 d ago" — never "up for 29d", which is what
+ * the old age column printed for a one-hour exceedance. The count in the title
+ * is `useLiveAlerts('regulator')`, the same number as the nav badge.
+ *
+ * The source column is doing quiet work: reading down it shows which rows a
+ * reference monitor raised and which only the mobile fleet or residents could,
+ * on channels and streets the reference network does not carry. The detail
+ * and the push composer open in a side sheet, so the list keeps the page.
  */
 
 import { useMemo, useState } from 'react'
 
-import { ALERT_KIND_LABEL, AlertTimeline, TimeSeries } from '@/components'
-import { Button, Segmented } from '@/app/ui'
+import { AlertTimeline, SEVERITY_GLYPH, TimeSeries } from '@/components'
+import type { TimelineAlert } from '@/components'
+import { Button, Segmented, Sheet } from '@/app/ui'
+import { isInformational, useLiveAlerts } from '@/core/alerts'
 import { addHours, campaignMs, floorTo } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
-import { fmtNum } from '@/core/format'
-import { severityRank, severityVar } from '@/core/measures'
-import { useAcknowledgeAlert, useAlert, useAlerts, useMonitorReadings } from '@/core/queries'
+import { hasStarted, isOngoing } from '@/core/events'
+import { fmtDay, fmtDuration, fmtNum, fmtTime24, relativeTime } from '@/core/format'
+import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
+import { useAcknowledgeAlert, useActionLevels, useAlert, useAlerts, useMonitorReadings } from '@/core/queries'
 import { useNowCampaign, useSession } from '@/core/session'
-import type { Alert, Severity } from '@/core/types'
+import type { ActionLevel, Alert, MeasureCode, MeasureDef, Severity } from '@/core/types'
 
-import { PushComposer, subjectFromAlert } from './Push'
 import {
-  Caps, Panel, Readout, Sev, Tag, Unit, alertSpan, fmtRatio, liveAlerts, overBy, queueAlerts,
-  shortWhere, SOURCE_TAG_LABEL, sourceTag, styles as s, timelineRow, useMeasureMap, useTowers,
-} from './lib'
+  SOURCE_LABEL, endedBy, knownValue, levelName, sourceOf, subjectFor, unitText, whereOf,
+} from './alerting'
+import type { PushSource } from './alerting'
+import { PushComposer } from './Push'
+import { useMeasureMap, useTowers } from './lib'
+import { Panel } from './Panel'
+import a from './alerts.module.css'
+import t from './title.module.css'
 
-type KindFilter = 'all' | 'spike' | 'integrated' | 'community' | 'model'
+// ────────────────────────────────────────────────────────────── who saw it
 
-const KIND_TABS: { value: KindFilter; label: string; title: string }[] = [
-  { value: 'all', label: 'All', title: 'Everything in the queue' },
-  { value: 'spike', label: 'Magnitude', title: 'One averaging period over the line' },
-  { value: 'integrated', label: 'Integrated', title: 'A dose reached without a spike' },
-  { value: 'community', label: 'Residents', title: 'Concern clusters raised by the neighbourhood' },
-  { value: 'model', label: 'Model', title: 'Observed conditions diverging from a filed study' },
+type Filter = 'all' | 'monitor' | 'fleet' | 'residents' | 'other'
+
+const FILTERS: { value: Filter; label: string; title: string }[] = [
+  { value: 'all', label: 'All', title: 'Every source' },
+  { value: 'monitor', label: 'Reference monitors', title: 'Raised by a DRAQA reference monitor' },
+  { value: 'fleet', label: 'Mobile fleet', title: 'Raised by the mobile fleet' },
+  { value: 'residents', label: 'Residents', title: 'Clusters of resident reports' },
+  { value: 'other', label: 'Other', title: 'Fence sensors, model checks and fleet status' },
 ]
 
-function kindOf(a: Alert): KindFilter {
-  if (a.kind === 'integrated_exposure') return 'integrated'
-  if (a.kind === 'concern_cluster') return 'community'
-  if (a.kind === 'wind_shift' || a.kind === 'fleet_anomaly') return 'model'
-  return 'spike'
+const SOURCE_TONE: Partial<Record<PushSource, string>> = {
+  monitor: 'var(--tower)',
+  fleet: 'var(--fleet)',
+  residents: 'var(--actor-community)',
 }
+
+function filterOf(src: PushSource): Filter {
+  return src === 'monitor' || src === 'fleet' || src === 'residents' ? src : 'other'
+}
+
+function measureLabel(al: Alert, def: MeasureDef | undefined): string | null {
+  return al.measure ? (def?.short_label ?? al.measure.toUpperCase()) : null
+}
+
+/** The row's headline: what, and where. */
+function whatOf(al: Alert, src: PushSource, def: MeasureDef | undefined): string {
+  const m = measureLabel(al, def)
+  const where = whereOf(al)
+  if (src === 'residents') return `Resident reports near ${where}`
+  if (src === 'fleet') return m ? `${m} on ${where}` : where
+  if ((src === 'monitor' || src === 'fence') && m) return `${m} at ${where}`
+  return al.title
+}
+
+/**
+ * The timeline gutter holds 19 characters (AlertTimeline's 140px cap at
+ * 6.6px a character), so the street suffix goes before anything is cut.
+ */
+function gutterCode(al: Alert, src: PushSource, def: MeasureDef | undefined): string {
+  const place = whereOf(al).replace(/\s+(Road|Avenue|Drive|Street|Boulevard|Lane)$/i, '')
+  const tag = src === 'residents' ? 'Reports' : (measureLabel(al, def) ?? 'Alert')
+  const code = src === 'model' ? 'Study vs wind' : src === 'ops' ? 'Fleet status' : `${tag} ${place}`
+  return code.length > 19 ? `${code.slice(0, 18).trimEnd()}…` : code
+}
+
+// ───────────────────────────────────────────────────────────── episodes
+
+/** Statuses that leave an ended alert waiting on the agency. */
+const OPEN_STATUSES = new Set(['active', 'acknowledged'])
+
+/** Highest level first; a tie keeps the one that began first, as the fold does. */
+function worse(x: Alert, y: Alert): Alert {
+  const d = severityRank(y.severity) - severityRank(x.severity)
+  if (d !== 0) return d > 0 ? y : x
+  return campaignMs(y.started_at) < campaignMs(x.started_at) ? y : x
+}
+
+interface Episode {
+  /** The winning alert's id: what the timeline and the sheet select by. */
+  id: string
+  alerts: Alert[]
+  start: CampaignTime
+  /** Its end at the moment shown; null while it is still ongoing. */
+  end: CampaignTime | null
+  winner: Alert
+  peak: number | null
+  /** Ongoing, or ended but not yet resolved by the agency. */
+  open: boolean
+  /** Alerts in it nobody has acknowledged. */
+  awaiting: Alert[]
+}
+
+interface Group {
+  id: string
+  source: PushSource
+  open: boolean
+  /** Newest first. */
+  episodes: Episode[]
+  /** The highest level tripped across them, and the alert that tripped it. */
+  winner: Alert
+  peak: number | null
+  ongoing: Episode | null
+  awaiting: Alert[]
+  /** The newest activity, for the sort: an ongoing episode is "now". */
+  lastMs: number
+}
+
+/** The fold's key (core/alerts `foldConcurrent`), so rows and the count agree. */
+function keyOf(al: Alert): string {
+  return `${al.source_type}|${al.source_id ?? al.id}|${al.measure ?? al.kind}`
+}
+
+function makeEpisode(alerts: Alert[], now: CampaignTime, replaying: boolean): Episode {
+  const winner = alerts.reduce(worse)
+  const ongoing = alerts.some((al) => isOngoing(al, now))
+  const ends = alerts.map((al) => al.ended_at).filter((e): e is string => !!e)
+  const end = ongoing || !ends.length
+    ? null
+    : ends.reduce((x, y) => (campaignMs(y) > campaignMs(x) ? y : x))
+  const known = alerts.map((al) => knownValue(al, now, replaying)).filter((v): v is number => v != null)
+  return {
+    id: winner.id,
+    alerts,
+    start: alerts[0].started_at,
+    end,
+    winner,
+    peak: known.length ? Math.max(...known) : null,
+    open: alerts.some((al) => isOngoing(al, now) || OPEN_STATUSES.has(al.status)),
+    awaiting: alerts.filter((al) => al.status === 'active'),
+  }
+}
+
+/**
+ * Alerts → episodes → rows. Consecutive hours: an alert that begins at or
+ * before the running episode's end joins it (07:00 after a 05:00–07:00 run is
+ * the next hour); one that begins later starts a new episode.
+ *
+ * Operational news (`info`: the fleet's "Redwing out of service") is not a
+ * level exceeded and is never counted (core/alerts rule 5). It was an Open row
+ * labelled Info, a Duration bar and one of the "not acknowledged" while the
+ * title's count left it out; the page mentions it in one line instead.
+ */
+function buildGroups(
+  list: Alert[] | undefined,
+  now: CampaignTime,
+  replaying: boolean,
+  monitorIds: Set<string> | null,
+): Group[] {
+  const byKey = new Map<string, Alert[]>()
+  for (const al of list ?? []) {
+    if (!hasStarted(al, now) || isInformational(al)) continue
+    const k = keyOf(al)
+    const arr = byKey.get(k)
+    if (arr) arr.push(al)
+    else byKey.set(k, [al])
+  }
+
+  const groups: Group[] = []
+  const nowMs = campaignMs(now)
+  for (const [k, alerts] of byKey) {
+    alerts.sort((x, y) => campaignMs(x.started_at) - campaignMs(y.started_at))
+    const episodes: Episode[] = []
+    let run: Alert[] = []
+    let runEnd = -Infinity
+    for (const al of alerts) {
+      const s = campaignMs(al.started_at)
+      if (run.length && s > runEnd) {
+        episodes.push(makeEpisode(run, now, replaying))
+        run = []
+        runEnd = -Infinity
+      }
+      run.push(al)
+      runEnd = Math.max(runEnd, endedBy(al, now) ? campaignMs(al.ended_at as string) : Infinity)
+    }
+    if (run.length) episodes.push(makeEpisode(run, now, replaying))
+
+    const source = sourceOf(alerts[0], monitorIds)
+    for (const open of [true, false]) {
+      const eps = episodes.filter((e) => e.open === open).reverse()
+      if (!eps.length) continue
+      const winner = eps.map((e) => e.winner).reduce((x, y) => {
+        const d = severityRank(y.severity) - severityRank(x.severity)
+        if (d !== 0) return d > 0 ? y : x
+        return (y.value ?? 0) > (x.value ?? 0) ? y : x
+      })
+      const peaks = eps.map((e) => e.peak).filter((v): v is number => v != null)
+      const ongoing = eps.find((e) => e.end === null) ?? null
+      groups.push({
+        id: `${k}|${open ? 'open' : 'closed'}`,
+        source,
+        open,
+        episodes: eps,
+        winner,
+        peak: peaks.length ? Math.max(...peaks) : null,
+        ongoing,
+        awaiting: eps.flatMap((e) => e.awaiting),
+        lastMs: ongoing ? nowMs : campaignMs(eps[0].end ?? eps[0].start),
+      })
+    }
+  }
+  return groups.sort(
+    (x, y) =>
+      severityRank(y.winner.severity) - severityRank(x.winner.severity)
+      || Number(!!y.ongoing) - Number(!!x.ongoing)
+      || y.lastMs - x.lastMs,
+  )
+}
+
+// ──────────────────────────────────────────────────────────────── words
+
+const NOUN: Partial<Record<Alert['kind'], [string, string]>> = {
+  exceedance: ['episode', 'episodes'],
+  integrated_exposure: ['episode', 'episodes'],
+  mobile_detection: ['detection', 'detections'],
+  concern_cluster: ['cluster', 'clusters'],
+}
+
+function count(n: number, al: Alert): string {
+  const [one, many] = NOUN[al.kind] ?? ['alert', 'alerts']
+  return `${n} ${n === 1 ? one : many}`
+}
+
+/** "Aug 25 05:00–07:00", "since Aug 27 02:20", "Aug 24–27", "Jul 30–Aug 2". */
+function spanText(g: Group): string {
+  const eps = g.episodes
+  if (eps.length === 1) {
+    const e = eps[0]
+    if (g.source === 'fleet') return `${fmtDay(e.start)} ${fmtTime24(e.start)}`
+    if (!e.end) return `since ${fmtDay(e.start)} ${fmtTime24(e.start)}`
+    return fmtDay(e.end) === fmtDay(e.start)
+      ? `${fmtDay(e.start)} ${fmtTime24(e.start)}–${fmtTime24(e.end)}`
+      : `${fmtDay(e.start)} ${fmtTime24(e.start)} – ${fmtDay(e.end)} ${fmtTime24(e.end)}`
+  }
+  const first = eps[eps.length - 1].start
+  const last = eps[0].start
+  const [m0, d0] = fmtDay(first).split(' ')
+  const [m1, d1] = fmtDay(last).split(' ')
+  if (m0 === m1 && d0 === d1) return fmtDay(first)
+  return m0 === m1 ? `${m0} ${d0}–${d1}` : `${fmtDay(first)}–${fmtDay(last)}`
+}
+
+/** A level is written as issued: "100 ppb", not "100.0 ppb". */
+function levelText(v: number, unit: string | null): string {
+  const u = unitText(unit)
+  return `${fmtNum(v, Number.isInteger(v) ? 0 : 2)}${u ? ` ${u}` : ''}`
+}
+
+function valueText(v: number | null, unit: string | null, def: MeasureDef | undefined): string {
+  if (v == null) return '—'
+  const u = unitText(unit)
+  return `${fmtNum(v, def?.decimals ?? 1)}${u ? ` ${u}` : ''}`
+}
+
+/** "6 episodes Aug 24–27 · peak 121.4 ppb · 1.21× NO2 1-hour standard" */
+function summaryLine(g: Group, def: MeasureDef | undefined, levels: Map<string, ActionLevel>): string {
+  const parts = [`${count(g.episodes.length, g.winner)} ${spanText(g)}`]
+  if (g.source === 'residents') {
+    if (g.peak != null) parts.push(`${fmtNum(g.peak, 0)} reports`)
+  } else if (g.winner.measure) {
+    // A fleet detection's value is the street's 90th percentile, not a peak.
+    const word = g.source === 'fleet' ? 'flagged' : 'peak'
+    if (g.peak != null) {
+      parts.push(`${word} ${valueText(g.peak, g.winner.unit, def)}`)
+      const thr = g.winner.threshold
+      const name = levelName(g.winner, levels)
+      if (thr && thr > 0) parts.push(`${fmtNum(g.peak / thr, 2)}× ${name ?? 'the action level'}`)
+    } else if (g.ongoing) {
+      parts.push(`${g.source === 'fleet' ? 'flagged value' : 'peak'} not known yet at this moment`)
+    }
+  }
+  return parts.join(' · ')
+}
+
+/**
+ * Acknowledgement is counted in episodes, like the rows. Riverport Road's six
+ * Aug 24–27 episodes hold seven unacknowledged alerts (the watch and the
+ * standard are acknowledged separately), and "7 not acknowledged" under
+ * "6 episodes" read as a seventh episode.
+ */
+function ackWord(e: Episode): string {
+  if (!e.open) return 'closed'
+  if (!e.awaiting.length) return 'acknowledged'
+  return e.awaiting.length < e.alerts.length ? 'partly acknowledged' : 'not acknowledged'
+}
+
+function unacked(g: Group): number {
+  return g.episodes.filter((e) => e.awaiting.length > 0).length
+}
+
+function stateText(g: Group, now: CampaignTime): { head: string; sub: string } {
+  const n = unacked(g)
+  const sub = !g.open
+    ? 'closed'
+    : g.episodes.length === 1
+      ? ackWord(g.episodes[0])
+      : n
+        ? `${n} of ${g.episodes.length} not acknowledged`
+        : 'acknowledged'
+  if (g.ongoing) {
+    // A mobile detection is a finding raised at one moment ("Highest diesel
+    // … on the network"), not a reading that stays high: its alert has no
+    // end, so a duration would claim twelve hours of exposure nobody measured.
+    const since = g.source === 'fleet'
+      ? `raised ${relativeTime(g.ongoing.start, now)}`
+      : fmtDuration(campaignMs(now) - campaignMs(g.ongoing.start))
+    return { head: `ongoing · ${since}`, sub }
+  }
+  const lastEnd = g.episodes[0].end
+  return { head: lastEnd ? `ended ${relativeTime(lastEnd, now)}` : 'ended', sub }
+}
+
+/**
+ * Critical, Warning or Watch. Anything still graded `info` keeps its column
+ * but prints no word: Info is not a severity (CONTRACT §10a rule 7).
+ */
+function SevWord({ severity }: { severity: Severity }) {
+  if (severity === 'info') return <span className={a.sev} aria-hidden />
+  return (
+    <span className={a.sev} style={{ color: severityVar(severity) }}>
+      <span aria-hidden>{SEVERITY_GLYPH[severity]}</span> {SEVERITY_LABEL[severity]}
+    </span>
+  )
+}
+
+/**
+ * The source in neutral ink with a square in its actor colour. The fleet's
+ * yellow is the Watch yellow, so a coloured word read "Watch · Mobile fleet"
+ * as one yellow phrase; a swatch keeps the column scannable without that.
+ */
+function SourceWord({ source }: { source: PushSource }) {
+  const tone = SOURCE_TONE[source]
+  return (
+    <span className={a.source}>
+      <span className={a.swatch} style={tone ? { background: tone } : undefined} aria-hidden />
+      {SOURCE_LABEL[source]}
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────── the page
 
 export function AlertsQueue() {
   const now = useNowCampaign()
-  const alertsQ = useAlerts({})
-  const towers = useTowers().data ?? []
-  const towerIds = useMemo(() => new Set(towers.map((m) => m.id)), [towers])
+  const replaying = useSession((x) => x.time.cursor != null)
+  const live = useLiveAlerts('regulator')
+  // The same role and `at` as the hook, so one cache entry and one list.
+  const alertsQ = useAlerts({ role: 'regulator' })
+  const towers = useTowers().data
+  const monitorIds = useMemo(() => (towers ? new Set(towers.map((m) => m.id)) : null), [towers])
   const measures = useMeasureMap()
+  const levelsQ = useActionLevels()
+  const levels = useMemo(() => new Map((levelsQ.data ?? []).map((l) => [l.id, l])), [levelsQ.data])
 
-  const [kind, setKind] = useState<KindFilter>('all')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [showClosed, setShowClosed] = useState(false)
+  const [sheet, setSheet] = useState<{ group: string; episode: string | null } | null>(null)
 
-  // The header counts what is live at the demo's now; the queue also keeps what
-  // has ended but still waits on the agency (lib `queueAlerts`). Both drop
-  // anything that begins after the moment on screen.
-  const live = useMemo(() => liveAlerts(alertsQ.data, now), [alertsQ.data, now])
-  const queue = useMemo(() => queueAlerts(alertsQ.data, now), [alertsQ.data, now])
-  const rows = useMemo(
+  const groups = useMemo(
+    () => buildGroups(alertsQ.data, now, replaying, monitorIds),
+    [alertsQ.data, now, replaying, monitorIds],
+  )
+  const { open, closed } = useMemo(() => {
+    const shown = groups.filter((g) => filter === 'all' || filterOf(g.source) === filter)
+    return { open: shown.filter((g) => g.open), closed: shown.filter((g) => !g.open) }
+  }, [groups, filter])
+  const awaiting = groups.reduce((n, g) => n + (g.open ? unacked(g) : 0), 0)
+  // Live operational news, uncounted: one quiet line, no severity word. It is
+  // fleet status, so it shows under All and Other only.
+  const noticeLine = live.notices.length && (filter === 'all' || filter === 'other')
+    ? `Also: ${live.notices
+      .map((n) => `${n.title} · since ${fmtDay(n.started_at)} ${fmtTime24(n.started_at)}`)
+      .join('; ')}`
+    : null
+
+  const timeline = useMemo<TimelineAlert[]>(
     () =>
-      queue
-        .filter((a) => kind === 'all' || kindOf(a) === kind)
-        .sort(
-          (a, b) =>
-            severityRank(b.severity) - severityRank(a.severity) ||
-            (overBy(b) ?? 0) - (overBy(a) ?? 0) ||
-            b.started_at.localeCompare(a.started_at),
-        ),
-    [queue, kind],
+      open.flatMap((g) =>
+        g.episodes.map((e) => ({
+          id: e.id,
+          label: `${whatOf(g.winner, g.source, measures.get(g.winner.measure as MeasureCode))} · ${fmtDay(e.start)}`,
+          code: gutterCode(g.winner, g.source, measures.get(g.winner.measure as MeasureCode)),
+          severity: e.winner.severity,
+          startedAt: e.start,
+          // A mobile detection draws as a tick at the moment it was raised,
+          // not as an open bar to now (see `stateText`).
+          endedAt: g.source === 'fleet' ? e.start : e.end,
+          acknowledged: e.awaiting.length === 0,
+        })),
+      ),
+    [open, measures],
   )
 
-  const active = rows.find((a) => a.id === selected) ?? rows[0]
-
-  const counts = useMemo(() => {
-    const c: Record<Severity, number> = { critical: 0, warning: 0, watch: 0, info: 0 }
-    for (const a of live) c[a.severity] += 1
-    return c
-  }, [live])
-  const fleetOnly = live.filter((a) => sourceTag(a, towerIds) === 'fleet').length
-  const towerSeen = live.filter((a) => sourceTag(a, towerIds) === 'tower').length
-
-  const timeline = useMemo(
-    () =>
-      rows.slice(0, 22).map((a) =>
-        timelineRow(a, now, `${a.measure ? a.measure.toUpperCase() : 'CLSTR'} · ${shortWhere(a)}`)),
-    [rows, now],
-  )
+  const active = sheet ? groups.find((g) => g.id === sheet.group) ?? null : null
+  const openGroupOf = (episodeId: string | null) => {
+    if (!episodeId) return
+    const g = groups.find((x) => x.episodes.some((e) => e.id === episodeId))
+    if (g) setSheet({ group: g.id, episode: episodeId })
+  }
 
   return (
-    <div className={`${s.page} ${s.alertsPage}`}>
-      <div className={`${s.verdict} ${counts.warning + counts.critical ? s.verdictOver : s.verdictClear}`}>
-        <div className={s.verdictMark}>
-          <span className={`${s.verdictGlyph} ${counts.warning + counts.critical ? s.overInk : s.clearInk}`}>
-            {counts.warning + counts.critical ? '▲' : '◇'}
-          </span>
-          <span className={`${s.verdictWord} ${counts.warning + counts.critical ? s.overInk : s.clearInk}`}>
-            {fmtNum(live.length, 0)} LIVE
-          </span>
-        </div>
-        <div className={s.verdictLines}>
-          <span className={s.verdictHead}>
-            {counts.critical} critical · {counts.warning} warning · {counts.watch} watch · {counts.info} info
-          </span>
-          <span className={s.sub}>
-            {towerSeen} of these were seen by a DRAQA reference instrument. {fleetOnly} were seen
-            only by the mobile fleet — on channels or streets the reference network does not carry.
-          </span>
-        </div>
-        <div className={s.verdictStats}>
-          <Readout label="Tower-seen" value={fmtNum(towerSeen, 0)} tone="tower" />
-          <Readout label="Fleet-only" value={fmtNum(fleetOnly, 0)} tone="fleet" big />
-          <Readout label="Unacknowledged" value={fmtNum(queue.filter((a) => a.status === 'active').length, 0)} tone="over" />
-        </div>
-      </div>
+    <div className={active ? `${a.page} ${a.pageBeside}` : a.page}>
+      <header className={t.head}>
+        <h1 className={t.title}>Alerts</h1>
+        <span className={t.summary}>
+          {live.count} ongoing · {awaiting} not acknowledged
+        </span>
+        <span className={t.aside}>
+          <Segmented value={filter} options={FILTERS} onValueChange={setFilter} />
+        </span>
+      </header>
 
-      <Panel
-        title="Duration"
-        aside={
-          <Segmented
-            value={kind}
-            options={KIND_TABS}
-            onValueChange={(v) => setKind(v)}
-          />
-        }
-      >
-        {timeline.length ? (
+      {timeline.length ? (
+        <Panel title="Duration" aside={<span className={a.hint}>one bar per episode, open ones</span>}>
           <AlertTimeline
             alerts={timeline}
             rowHeight={13}
-            maxRows={8}
+            maxRows={12}
             labels
-            selectedId={active?.id ?? null}
-            onSelect={setSelected}
-            style={{ padding: '4px 10px 8px' }}
+            selectedId={active?.episodes.some((e) => e.id === sheet?.episode) ? sheet?.episode ?? null : null}
+            onSelect={openGroupOf}
+            style={{ padding: '4px 10px 6px' }}
           />
-        ) : (
-          <div className={s.empty}>Nothing in this filter.</div>
-        )}
-      </Panel>
-
-      <div className={s.alertsBody}>
-        <Panel title={`Queue · ${rows.length}`} aside={<Caps>severity, then overshoot</Caps>}>
-          <div className={s.rows}>
-            <div className={`${s.rowHead} ${s.alertCols}`}>
-              <span>severity</span><span>saw it</span><span>meas</span><span>where · rule</span>
-              <span style={{ textAlign: 'right' }}>reading</span>
-              <span style={{ textAlign: 'right' }}>limit</span>
-              <span style={{ textAlign: 'right' }}>×</span>
-              <span style={{ textAlign: 'right' }}>up / ended</span>
-            </div>
-            {rows.map((a) => {
-              const src = sourceTag(a, towerIds)
-              const def = a.measure ? measures.get(a.measure) : undefined
-              const r = a.kind === 'wind_shift' ? null : overBy(a)
-              const span = alertSpan(a, now)
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`${s.row} ${s.alertCols}${active?.id === a.id ? ` ${s.rowActive}` : ''}`}
-                  onClick={() => setSelected(a.id)}
-                  title={a.title}
-                >
-                  <Sev severity={a.severity} />
-                  <Tag tone={src === 'fleet' ? 'fleet' : src === 'tower' ? 'tower' : src === 'community' ? 'community' : 'invader'}>
-                    {SOURCE_TAG_LABEL[src]}
-                  </Tag>
-                  <span className={s.rowNum} style={{ textAlign: 'left', color: 'var(--accent)' }}>
-                    {a.measure ? a.measure.toUpperCase() : '—'}
-                  </span>
-                  <span className={s.rowTrunc}>
-                    {shortWhere(a)}
-                    <span className={s.dim}>{'  '}· {ALERT_KIND_LABEL[a.kind] ?? a.kind}</span>
-                  </span>
-                  <span className={s.rowNum} style={{ color: severityVar(a.severity) }}>
-                    {fmtNum(a.value, def?.decimals ?? 1)}
-                  </span>
-                  <span className={`${s.rowNum} ${s.dim}`}>{fmtNum(a.threshold, def?.decimals ?? 1)}</span>
-                  <span className={s.rowNum} style={{ color: (r ?? 0) >= 1 ? severityVar(a.severity) : undefined }}>
-                    {fmtRatio(r)}
-                  </span>
-                  <span className={`${s.rowNum} ${s.dim}`} title={span.long}>{span.short}</span>
-                </button>
-              )
-            })}
-            {rows.length === 0 ? <div className={s.empty}>Nothing in this filter.</div> : null}
-          </div>
         </Panel>
+      ) : <div />}
 
-        <div className={s.stack}>
-          {active ? <AlertDetail alert={active} towerIds={towerIds} now={now} /> : (
-            <Panel title="Detail"><div className={s.empty}>Select an event.</div></Panel>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────── detail
-
-function AlertDetail({ alert, towerIds, now }: { alert: Alert; towerIds: Set<string>; now: CampaignTime }) {
-  const detail = useAlert(alert.id).data ?? alert
-  const ack = useAcknowledgeAlert()
-  const userId = useSession((x) => x.user?.id)
-  const measures = useMeasureMap()
-  const def = detail.measure ? measures.get(detail.measure) : undefined
-  const src = sourceTag(detail, towerIds)
-  const win = useMemo(() => traceWindow(detail, now), [detail, now])
-
-  // The alert carries its own samples; a monitor-sourced one also has the
-  // instrument's full hourly trace, which is what puts the spike in context.
-  const isMonitor = detail.source_type === 'monitor' && !!detail.source_id
-  const readings = useMonitorReadings(
-    isMonitor ? detail.source_id : null,
-    { measure: detail.measure ?? undefined, from: win.from, to: win.to, interval: 'hour' },
-    { enabled: isMonitor },
-  ).data
-
-  const samples = detail.samples ?? []
-  const series = readings?.points?.length
-    ? [{ id: 'inst', label: readings.monitor_id, points: readings.points }]
-    : samples.length
-      ? [{ id: 'alert', label: detail.measure?.toUpperCase() ?? 'value', points: samples }]
-      : []
-
-  const thresholds = [
-    ...(detail.threshold != null
-      ? [{ id: 'al', label: 'Action level', value: detail.threshold, severity: detail.severity, shade: true }]
-      : []),
-    ...(readings?.action_levels ?? [])
-      .filter((l) => detail.threshold == null || Math.abs(l.threshold - detail.threshold) > 1e-9)
-      .map((l) => ({ id: l.id, label: l.label, value: l.threshold, severity: l.severity, shade: false })),
-  ]
-
-  return (
-    <>
-      <Panel
-        title={detail.measure ? `${detail.measure.toUpperCase()} · ${shortWhere(detail)}` : shortWhere(detail)}
-        aside={
-          <span className={s.toolbar}>
-            <Sev severity={detail.severity} />
-            <Tag tone={src === 'fleet' ? 'fleet' : src === 'tower' ? 'tower' : src === 'community' ? 'community' : 'invader'}>
-              {SOURCE_TAG_LABEL[src]}
-            </Tag>
-          </span>
-        }
-      >
-        <div className={s.pad}>
-          <div className={s.toolbar} style={{ gap: 'var(--s-5)', marginBottom: 'var(--s-3)' }}>
-            <Readout
-              label="Reading"
-              value={fmtNum(detail.value, def?.decimals ?? 1)}
-              unit={<Unit>{detail.unit === 'ug/m3' ? 'µg/m³' : detail.unit ?? ''}</Unit>}
-              tone="over"
-              big
+      <Panel title={`Open · ${open.length}`} aside={<span className={a.hint}>highest level first</span>}>
+        {noticeLine ? <p className={a.notice}>{noticeLine}</p> : null}
+        <div className={a.list} role="list">
+          {open.map((g) => (
+            <GroupRow
+              key={g.id}
+              group={g}
+              now={now}
+              def={measures.get(g.winner.measure as MeasureCode)}
+              levels={levels}
+              active={active?.id === g.id}
+              onOpen={() => setSheet({ group: g.id, episode: null })}
             />
-            <Readout label="Action level" value={fmtNum(detail.threshold, def?.decimals ?? 1)} />
-            <Readout
-              label="Overshoot"
-              value={fmtRatio(detail.kind === 'wind_shift' ? null : overBy(detail))}
-              tone="over"
-            />
-          </div>
-          {detail.body ? <p className={s.sub} style={{ margin: 0 }}>{detail.body}</p> : null}
-          {detail.recommendation ? (
-            <p className={s.sub} style={{ marginTop: 'var(--s-2)', marginBottom: 0, color: 'var(--ink)' }}>
-              <span className={`${s.caps} ${s.capsAccent}`}>recommended  </span>
-              {detail.recommendation}
+          ))}
+          {open.length === 0 ? (
+            <p className={a.empty}>
+              {alertsQ.isPending ? 'Loading alerts…' : 'Nothing open at the moment shown.'}
+            </p>
+          ) : null}
+
+          {closed.length ? (
+            <>
+              <button
+                type="button"
+                className={a.fold}
+                aria-expanded={showClosed}
+                onClick={() => setShowClosed((v) => !v)}
+              >
+                <span aria-hidden>{showClosed ? '▾' : '▸'}</span> Closed earlier · {closed.length}
+              </button>
+              {showClosed
+                ? closed.map((g) => (
+                  <GroupRow
+                    key={g.id}
+                    group={g}
+                    now={now}
+                    def={measures.get(g.winner.measure as MeasureCode)}
+                    levels={levels}
+                    active={active?.id === g.id}
+                    onOpen={() => setSheet({ group: g.id, episode: null })}
+                  />
+                ))
+                : null}
+            </>
+          ) : null}
+          {replaying ? (
+            <p className={a.foot}>
+              Acknowledged and closed are shown as they stand at the end of the data; replay cannot
+              rebuild when each changed.
             </p>
           ) : null}
         </div>
       </Panel>
 
-      <Panel
-        title="Trace"
-        aside={<Caps>{readings?.points?.length ? 'instrument, hourly' : 'alert samples'}</Caps>}
+      {/* Non-modal: the list stays readable, scrollable and clickable beside
+          the detail, and picking another row just changes what it shows. */}
+      <Sheet
+        open={!!active}
+        modal={false}
+        onClose={() => setSheet(null)}
+        title={active ? whatOf(active.winner, active.source, measures.get(active.winner.measure as MeasureCode)) : ''}
+        className={a.sheet}
       >
-        <div className={s.chartPad}>
-          {series.length ? (
-            <TimeSeries
-              series={series}
-              thresholds={thresholds}
-              unit={readings?.unit === 'ug/m3' ? 'µg/m³' : readings?.unit ?? (detail.unit === 'ug/m3' ? 'µg/m³' : detail.unit ?? '')}
-              decimals={def?.decimals ?? 1}
-              height={168}
-              exceedanceSeriesId={series[0].id}
-            />
-          ) : (
-            <div className={s.empty}>No trace available for this source.</div>
-          )}
-        </div>
-      </Panel>
-
-      <Panel title="Act on it">
-        <div className={s.padSm}>
-          <Button
-            size="sm"
-            variant={detail.status === 'acknowledged' ? 'ghost' : 'secondary'}
-            disabled={detail.status === 'acknowledged'}
-            loading={ack.isPending}
-            onClick={() => ack.mutate({ id: detail.id, userId })}
-          >
-            {detail.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
-          </Button>
-        </div>
-        <PushComposer subject={subjectFromAlert(detail)} compact />
-      </Panel>
-    </>
+        {active ? (
+          <GroupDetail
+            key={active.id}
+            group={active}
+            initialEpisode={sheet?.episode ?? null}
+            now={now}
+            levels={levels}
+            def={measures.get(active.winner.measure as MeasureCode)}
+          />
+        ) : null}
+      </Sheet>
+    </div>
   )
 }
 
+function GroupRow({
+  group: g, now, def, levels, active, onOpen,
+}: {
+  group: Group
+  now: CampaignTime
+  def: MeasureDef | undefined
+  levels: Map<string, ActionLevel>
+  active: boolean
+  onOpen(): void
+}) {
+  const st = stateText(g, now)
+  const line = summaryLine(g, def, levels)
+  return (
+    <button
+      type="button"
+      role="listitem"
+      className={`${a.row}${active ? ` ${a.rowActive}` : ''}${g.open ? '' : ` ${a.rowClosed}`}`}
+      onClick={onOpen}
+    >
+      <SevWord severity={g.winner.severity} />
+      <SourceWord source={g.source} />
+      <span className={a.what}>
+        <span className={a.whatHead}>{whatOf(g.winner, g.source, def)}</span>
+        <span className={a.whatSub} title={line}>{line}</span>
+      </span>
+      <span className={a.state}>
+        <span className={g.ongoing ? a.stateOn : a.stateHead}>{st.head}</span>
+        <span className={a.stateSub}>{st.sub}</span>
+      </span>
+    </button>
+  )
+}
+
+// ───────────────────────────────────────────────────────────── the sheet
+
 /**
- * The 48 h around the alert, never past the demo's now. A window trailing the
- * now missed every alert that ended more than two days before it, and the queue
- * holds those: at the end of the checked-in data, Riverport Road's Aug 25 NO2
- * warning ended three days earlier and is still unacknowledged. Hour-floored so
- * the key holds still while the cursor plays.
+ * The 48 h around an episode, never past the moment shown. A window trailing
+ * the moment missed every episode that ended more than two days before it,
+ * and the queue holds those: at the end of the checked-in data, Riverport
+ * Road's Aug 25 NO2 episode ended three days earlier and is still open.
+ * Hour-floored so the key holds still while the cursor plays.
  */
-function traceWindow(a: Alert, now: CampaignTime): { from: CampaignTime; to: CampaignTime } {
-  const after = a.ended_at ? addHours(a.ended_at, 12) : now
+function traceWindow(e: Episode, now: CampaignTime): { from: CampaignTime; to: CampaignTime } {
+  const after = e.end ? addHours(e.end, 12) : now
   const end = campaignMs(after) < campaignMs(now) ? after : now
   const to = floorTo(end, 60)
   return { from: addHours(to, -48), to }
+}
+
+function GroupDetail({
+  group: g, initialEpisode, now, levels, def,
+}: {
+  group: Group
+  initialEpisode: string | null
+  now: CampaignTime
+  levels: Map<string, ActionLevel>
+  def: MeasureDef | undefined
+}) {
+  // The episode that tripped the highest level, unless one was picked on the
+  // timeline: for Riverport Road that is Aug 25, not the weakest, newest one.
+  const byWinner = g.episodes.find((e) => e.alerts.some((al) => al.id === g.winner.id)) ?? g.episodes[0]
+  const [pick, setPick] = useState<string | null>(initialEpisode)
+  const ep = g.episodes.find((e) => e.id === pick) ?? byWinner
+
+  const ack = useAcknowledgeAlert()
+  const userId = useSession((x) => x.user?.id)
+  const [acking, setAcking] = useState(false)
+  const acknowledgeAll = async () => {
+    setAcking(true)
+    try {
+      for (const al of g.awaiting) await ack.mutateAsync({ id: al.id, userId })
+    } finally {
+      setAcking(false)
+    }
+  }
+
+  const level = levelName(g.winner, levels)
+  const thr = g.winner.threshold
+  const first = g.episodes[g.episodes.length - 1]
+
+  return (
+    <div className={a.detail}>
+      <div className={a.meta}>
+        <SevWord severity={g.winner.severity} />
+        <span className={a.dot} aria-hidden>·</span>
+        <SourceWord source={g.source} />
+        {level ? (
+          <>
+            <span className={a.dot} aria-hidden>·</span>
+            <span className={a.metaText}>{level}</span>
+          </>
+        ) : null}
+      </div>
+
+      <p className={a.lead}>
+        {g.episodes.length === 1
+          ? `One ${count(1, g.winner).split(' ')[1]}, ${spanText(g)}.`
+          : `${count(g.episodes.length, g.winner)} between ${fmtDay(first.start)} and ${fmtDay(g.episodes[0].start)}.`}
+        {g.winner.measure && g.peak != null
+          ? ` ${g.source === 'fleet' ? 'The flagged value' : `The highest reading${g.ongoing ? ' so far' : ''}`} was ${valueText(g.peak, g.winner.unit, def)}${
+            thr && thr > 0 ? `, ${fmtNum(g.peak / thr, 2)}× ${level ?? 'the action level'} (${levelText(thr, g.winner.unit)})` : ''
+          }.`
+          : ''}
+        {g.ongoing
+          ? g.source === 'fleet'
+            ? ` Raised ${relativeTime(g.ongoing.start, now)}; still open.`
+            : ` Ongoing for ${fmtDuration(campaignMs(now) - campaignMs(g.ongoing.start))}.`
+          : g.episodes[0].end
+            // No break inside "1 d ago": the sheet wrapped it as "1 / d ago".
+            ? ` The last one ended ${relativeTime(g.episodes[0].end, now).replace(/ /g, '\u00a0')}.`
+            : ''}
+      </p>
+
+      {g.episodes.length > 1 ? (
+        <section className={a.block}>
+          <h3 className={a.blockHead}>Episodes</h3>
+          <div className={a.epList} role="list">
+            {g.episodes.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                role="listitem"
+                className={`${a.epRow}${e.id === ep.id ? ` ${a.epRowOn}` : ''}`}
+                onClick={() => setPick(e.id)}
+              >
+                <span className={a.epWhen}>
+                  {fmtDay(e.start)} {fmtTime24(e.start)}{e.end ? `–${fmtTime24(e.end)}` : ' – now'}
+                </span>
+                <SevWord severity={e.winner.severity} />
+                <span className={a.epVal}>{e.peak != null ? fmtNum(e.peak, def?.decimals ?? 1) : '—'}</span>
+                <span className={a.epState}>{ackWord(e)}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <Trace episode={ep} source={g.source} now={now} def={def} levelLabel={levelName(ep.winner, levels)} />
+
+      {/* A monitor's own text restates the figures above in the server's
+          words ("1 hour over the line"); the other kinds' text carries what
+          the fields cannot — the street's context, the wind at the time. */}
+      {g.source !== 'monitor' && g.source !== 'fence' && ep.winner.body ? (
+        <p className={a.body}>{ep.winner.body}</p>
+      ) : null}
+
+      <section className={a.block}>
+        <h3 className={a.blockHead}>Act on it</h3>
+        {g.open ? (
+          <div className={a.actRow}>
+            <Button
+              size="sm"
+              variant={g.awaiting.length ? 'secondary' : 'ghost'}
+              disabled={!g.awaiting.length}
+              loading={acking}
+              onClick={() => { void acknowledgeAll() }}
+            >
+              {!g.awaiting.length
+                ? 'Acknowledged'
+                : g.episodes.length === 1
+                  ? 'Acknowledge'
+                  : `Acknowledge all ${unacked(g)} episodes`}
+            </Button>
+          </div>
+        ) : null}
+        <PushComposer
+          key={ep.id}
+          subject={subjectFor(ep.winner, {
+            source: g.source,
+            value: ep.peak,
+            startedAt: ep.start,
+            endedAt: ep.end,
+            levelLabel: levelName(ep.winner, levels),
+            def,
+          })}
+        />
+      </section>
+    </div>
+  )
+}
+
+function Trace({
+  episode: e, source, now, def, levelLabel,
+}: {
+  episode: Episode
+  source: PushSource
+  now: CampaignTime
+  def: MeasureDef | undefined
+  levelLabel: string | null
+}) {
+  const w = e.winner
+  const win = useMemo(() => traceWindow(e, now), [e, now])
+  // A monitor's alert carries a few samples; the instrument's own hourly
+  // trace is what puts the episode in its day.
+  const isMonitor = (source === 'monitor' || source === 'fence') && !!w.source_id
+  const readings = useMonitorReadings(
+    isMonitor ? w.source_id : null,
+    { measure: w.measure ?? undefined, from: win.from, to: win.to, interval: 'hour' },
+    { enabled: isMonitor },
+  ).data
+  const detail = useAlert(isMonitor ? null : w.id).data
+  // Samples run past the alert's end; in replay the ones after the moment
+  // shown are the future.
+  const samples = useMemo(
+    () => (detail?.samples ?? []).filter((pt) => campaignMs(pt.t) <= campaignMs(now)),
+    [detail, now],
+  )
+
+  const series = readings?.points?.length
+    ? [{ id: 'inst', label: 'Hourly reading', points: readings.points }]
+    : samples.length
+      ? [{ id: 'alert', label: def?.short_label ?? 'value', points: samples }]
+      : []
+
+  const thresholds = [
+    ...(w.threshold != null
+      ? [{ id: 'al', label: levelLabel ?? 'Action level', value: w.threshold, severity: w.severity, shade: true }]
+      : []),
+    ...(readings?.action_levels ?? [])
+      .filter((l) => w.threshold == null || Math.abs(l.threshold - w.threshold) > 1e-9)
+      .map((l) => ({ id: l.id, label: l.label, value: l.threshold, severity: l.severity, shade: false })),
+  ]
+
+  if (!w.measure) return null
+  return (
+    <section className={a.block}>
+      <h3 className={a.blockHead}>
+        {readings?.points?.length ? 'The monitor’s hourly readings, 48 h' : 'Readings on this alert'}
+      </h3>
+      {series.length ? (
+        <TimeSeries
+          series={series}
+          thresholds={thresholds}
+          unit={unitText(readings?.unit ?? w.unit)}
+          decimals={def?.decimals ?? 1}
+          height={150}
+          exceedanceSeriesId={series[0].id}
+        />
+      ) : (
+        <p className={a.empty}>No readings to draw for this source.</p>
+      )}
+    </section>
+  )
 }

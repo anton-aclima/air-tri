@@ -224,10 +224,12 @@ code, kbd, pre, samp {
   --accent-2:      #7CA9FF;
 
   --map-style:     'dark';
-  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
-  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
-  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
-  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+  /* A dark skin, so the road grid's lifted ramp (tokens.css,
+     --ramp-intensity-dark-*). Stop 0 is 3.85:1 against this --bg. */
+  --ramp-map-0: var(--ramp-intensity-dark-0); --ramp-map-1: var(--ramp-intensity-dark-1);
+  --ramp-map-2: var(--ramp-intensity-dark-2); --ramp-map-3: var(--ramp-intensity-dark-3);
+  --ramp-map-4: var(--ramp-intensity-dark-4); --ramp-map-5: var(--ramp-intensity-dark-5);
+  --ramp-map-6: var(--ramp-intensity-dark-6); --ramp-map-7: var(--ramp-intensity-dark-7);
 
   --radius-card:   var(--r-lg);
   --shadow-card:   0 1px 0 rgba(255, 255, 255, .03) inset, 0 24px 60px -30px #000;

@@ -338,7 +338,8 @@ export function AppShell({ role, children }: AppShellProps) {
       data-role={meta.role}
       style={{ ['--role-accent' as string]: meta.accentVar }}
     >
-      <header className={s.head}>
+      {/* `data-shell-head`: a non-modal Sheet (app/ui) starts below it. */}
+      <header className={s.head} data-shell-head>
         <BrandMark meta={meta} />
 
         {meta.role === 'community' ? (

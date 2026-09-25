@@ -104,6 +104,17 @@ export interface DispersionLayerProps {
   outline?: boolean;
   /** Fill style: peak fill alpha. */
   maxOpacity?: number;
+  /**
+   * Outline style: sites whose plume draws MUTED — the outline only, at
+   * `MUTED_PLUME` of its strength, with no axis, reach tick or "truncated".
+   * The regulator Network (R2) gives an axis only to a plume that touches a
+   * monitor, a street driven that day or an open cluster: three full
+   * outline-plus-axis sets at once are the busy map the owner objected to
+   * (under stable air all three reach 8 km at the same hour). The register
+   * is kept — solid inside, dashed beyond — only its weight drops. Omit for
+   * every site at full strength, as before.
+   */
+  mutedSiteIds?: readonly string[] | null;
   visible?: boolean;
   /**
    * Outline style: the solid outline and axis pick (the dashed part never
@@ -464,16 +475,42 @@ function dashOf(reg: { dash: readonly [number, number] | null }): [number, numbe
   return reg.dash ? [reg.dash[0], reg.dash[1]] : [0, 0];
 }
 
+/**
+ * How far a `mutedSiteIds` plume steps back: its outline at 40% of the
+ * register's alpha (0.36 inside, 0.28 beyond, against the axis's 0.38), so a
+ * muted outline sits under every lit plume's axis and still reads as a shape.
+ */
+export const MUTED_PLUME = 0.4;
+
 function outlineLayers(props: DispersionLayerProps): LayersList {
-  const { id = 'dispersion', data, theme, visible = true, pickable = false, onHover, onClick } = props;
-  const g = plumeOutlineGeometry(data);
-  if (!g.runs.length && !g.axes.length) return [];
+  const {
+    id = 'dispersion', data, theme, visible = true, pickable = false, onHover, onClick, mutedSiteIds,
+  } = props;
+  const g0 = plumeOutlineGeometry(data);
+  if (!g0.runs.length && !g0.axes.length) return [];
 
   const { model, beyond, axis } = PLUME_STROKE;
   const color = (reg: { token: string; alpha: number }) => theme.color(reg.token, reg.alpha);
-  const trigger = theme.css(model.token);
   const dashed = [new PathStyleExtension({ dash: true, highPrecisionDash: true })];
   const layers: LayersList = [];
+
+  // Muting filters a COPY: the geometry is memoised on the payload and shared
+  // with every screen that reads it.
+  const muted = mutedSiteIds?.length ? new Set(mutedSiteIds) : null;
+  const isMuted = (p: { site_id: string }) => Boolean(muted?.has(p.site_id));
+  const mutedKey = muted ? [...muted].sort().join(',') : '';
+  const g: PlumeOutlineGeometry = muted
+    ? {
+      runs: g0.runs,
+      axes: g0.axes.filter((r) => !isMuted(r.properties)),
+      ticks: g0.ticks.filter((m) => !isMuted(m.properties)),
+      ends: g0.ends.filter((m) => !isMuted(m.properties)),
+    }
+    : g0;
+  const runColor = (reg: { token: string; alpha: number }) => (r: PlumeOutlineRun) => theme.color(
+    reg.token, reg.alpha * (isMuted(r.properties) ? MUTED_PLUME : 1),
+  );
+  const trigger = [theme.css(model.token), mutedKey].join('|');
 
   const insideRuns = g.runs.filter((r) => r.part === 'inside');
   const beyondRuns = g.runs.filter((r) => r.part === 'beyond');
@@ -491,7 +528,7 @@ function outlineLayers(props: DispersionLayerProps): LayersList {
       widthUnits: 'pixels',
       getPath: (r) => r.path,
       getWidth: model.width,
-      getColor: color(model),
+      getColor: muted ? runColor(model) : color(model),
       updateTriggers: { getColor: trigger },
     }));
   }
@@ -507,7 +544,7 @@ function outlineLayers(props: DispersionLayerProps): LayersList {
       widthUnits: 'pixels',
       getPath: (r) => r.path,
       getWidth: beyond.width,
-      getColor: color(beyond),
+      getColor: muted ? runColor(beyond) : color(beyond),
       // Screen-space (multiples of the pixel width), so the dash reads the
       // same at every zoom — a metre-based dash turns solid zoomed out, which
       // is exactly when the distinction matters most.

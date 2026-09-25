@@ -94,7 +94,7 @@ useCampaigns()  useCampaign(id)  useCampaignBoundary(id)
 
 useSegments({ measure?, metric?, window?, bbox?, min_passes?, limit? })
     // ← THE road grid. measure/metric/window default to the session store.
-useSegmentDetail(id)            // daily + diurnal + per-measure stats
+useSegmentDetail(id, opts?, { at }?) // daily + diurnal + per-measure stats; `at` bounds every figure to the moment shown
 useSelectedSegment()            // whatever is selected in the session
 
 useMonitors({ owner_type?, grade?, site_id? })   useMonitor(id)
@@ -111,7 +111,7 @@ useAlerts({ role?, status?, severity?, kind?, site_id?, at? })
     // server's `ongoing`), never status === 'active'.
 useAlert(id, siteId?)           useActionLevels()
 
-useLiveAlerts(role)             // core/alerts. { alerts, notices, count, bySeverity, worst, all, folded, loading }
+useLiveAlerts(role)             // core/alerts. { alerts, notices, count, bySeverity, worst, all, folded, loading, error }
     // The ONE count (docs/PLAN-refocus.md F3): the nav badge, a page's status
     // and the alert pages all print `count`, so they cannot disagree (they
     // read 9 / 4 / 3 / 5 on one industry screen). Live = isOngoing at the
@@ -121,6 +121,10 @@ useLiveAlerts(role)             // core/alerts. { alerts, notices, count, bySeve
     // Industry counts places, not models: the wind-shift study alert (and
     // anything with no bearing from the site) is in `notices`, never `count`,
     // and nothing past INDUSTRY_NEAR_M (7 km, the deck's reach) is counted.
+    // Severity `info` is operational news, not an alert now, in every room:
+    // it goes to `notices` (the fleet's "Redwing out of service"), never to
+    // count / bySeverity / worst. Mobile detections have no ended_at and stay
+    // ongoing: a standing finding, counted.
     // A list that must match the count lists `alerts`.
 
 useFeed({ role?, since?, limit?, at? })  // merged social feed
@@ -195,6 +199,17 @@ The shell opens one `EventSource` on `/api/v1/events/stream` and, per event,
 invalidates the right keys, bumps a pulse, and raises a toast. **An action in one
 interface shows up in another without a refresh.** You get this for free — just use
 the hooks above.
+
+One stream per **browser**, not per tab. Over HTTP/1.1 (the vite dev server) a
+browser allows six connections to a host across all its tabs, and an `EventSource`
+holds one for the tab's lifetime; five open tabs left every fetch in all of them
+queued behind one connection (phase 5: `/regulator/network` failing at the 25 s
+timeout, timeline ticks never loading). So the tabs elect a leader with a Web Lock
+(`air.live.stream`); it holds the only stream and relays each frame over the
+`air.live` BroadcastChannel, and every tab handles the frame as its own. When the
+leader closes, the next tab reconnects with `?since=<newest id seen>`, so the
+handover replays only the gap. Without Web Locks or BroadcastChannel, one stream
+per tab, as before. `GET /api/v1/events/status` → `subscribers` counts streams.
 
 ```ts
 useLiveStatus()   // 'idle' | 'connecting' | 'open' | 'retrying' | 'offline'

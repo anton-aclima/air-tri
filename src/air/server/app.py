@@ -113,8 +113,18 @@ def create_app() -> FastAPI:
         async def _index() -> FileResponse:
             return FileResponse(index)
 
-        @app.get("/{path:path}", include_in_schema=False)
-        async def _spa(path: str) -> FileResponse:
+        @app.get("/{path:path}", include_in_schema=False, response_model=None)
+        async def _spa(path: str) -> FileResponse | JSONResponse:
+            # A miss under the API prefix is a miss: a JSON 404, never the SPA
+            # shell. It used to fall through to index.html — a 200 with an HTML
+            # body that a client parsed as data and a browser cached as the
+            # answer (a mistyped route read as an empty payload).
+            if path == "api" or path.startswith("api/"):
+                return JSONResponse(
+                    status_code=404,
+                    content={"error": "not_found", "path": f"/{path}"},
+                    headers={"Cache-Control": "no-store"},
+                )
             # Serve real files; everything else falls through to the SPA shell
             # so TanStack Router's client-side routes deep-link.
             candidate = (dist / path).resolve()

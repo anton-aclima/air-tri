@@ -1,10 +1,52 @@
 /* ============================================================================
-   regulator — the watchtower skin.
-   Dark, dense, instrumented. Everything is a readout: exact concentrations,
-   units, acronyms, tabular numerals. The towers are assets with coverage; the
-   fleet is the reach beyond that coverage; the tripwires are editable.
-   Layout rule: <main> does not scroll for this role, so every pane owns its own
-   overflow and the top strip never moves. Every colour is a token.
+   regulator — the agency's skin.
+   Dark, precise, exact concentrations and tabular numerals. The reference
+   monitors are the network's fixed points; the fleet's measured streets fill
+   the ground between them; the modelled plumes are drawn as outlines over
+   both. The metaphor (reference points and the reach past them) is the LOOK —
+   rings, the tower glyph, the palette — and never a word on screen
+   (CONTRACT §10a.7). Every colour is a token.
+
+   Layout rule: at 960 px and wider <main> never scrolls, and every pane owns
+   its own overflow. 960 is DESIGN.md's one stacking width, written here as a
+   literal because a CSS variable cannot sit in a media query (F4).
+
+   ── THE DENSITY BUDGET (R9) — the Network screen, checked by measurement ──
+   The owner: "The interface is extremely busy. Even at 1080 width, text
+   starts running into each other, everything is clipped." Measured before
+   this screen existed, the landing page printed ~399 words, 74 all-caps
+   micro-labels and 23 chips at 1680x1050, and at 1080x900 its status word
+   printed 131 px over its own headline. So, at 1680x1050:
+     · at most ~120 visible words, counting the labels drawn on the map;
+     · at most 16 all-caps labels (map labels included);
+     · at most 8 chips;
+     · at most 2 map overlays: one top-left bar (pollutant + Layers) and one
+       legend of about 240x90 px — no scale, compass or layer list on the map;
+     · exactly one scrolling area: the side panel.
+   And at 1080x900: the map is at least 640 px wide beside the 320 px panel,
+   and no text overlaps another or is cut off — the headline wraps, a name
+   wraps, nothing ellipsizes a sentence. Other sensors and fleet trails are
+   off by default. A change that breaks a line of this budget changes this
+   comment in the same commit, with the new measurement.
+
+   Measured 2026-09-24, after the street window (F4: the 24 h · 7 d · To date
+   switch, the grey context key, one window for map and counts), pinned DB,
+   DOM text in the viewport and not clipped by its pane:
+     · 1680x1050, end of data, 7 d: header 43 words, map furniture 44 (bar 4,
+       legend 40), panel 80, plus ~17 drawn on the map (four monitor labels,
+       two site names) — ~184, OVER the ~120 line. It was over before this
+       change too: F4 is net +5 here (switch +6 against the "90 days" chip's
+       2, title +2, dim key +1; each "by 13:54" gone, −2 a plume row).
+       The owner accepted this density for now (D16, 2026-09-24).
+     · 8 all-caps labels (persona, the three simulated-data words, MED, the
+       three section titles) — under 16. The switch is sentence case.
+     · 3 chips (simulated data, the rail's alert badge, MED) and ONE switch
+       of three segments, which replaced the "90 days" chip — under 8.
+     · 2 overlays. The legend is 296x181, and 296x200 in replay when the grey
+       key shows — over the ~240x90 line (the switch is one 15 px row).
+     · 1080x900: map 660 px beside the 320 px panel; nothing clipped, the
+       header's numbers clear of its sentence.
+     · one scrolling area; at 1680x1050 the panel's content fits.
    ========================================================================= */
 
 .page {
@@ -18,82 +60,11 @@
   font-family: var(--font-ui);
 }
 
-/* Watchfloor: verdict / body / ribbon */
-.watchPage { grid-template-rows: auto minmax(0, 1fr) auto; }
-.watchBody {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
-  gap: var(--s-2);
-}
-.mapPage { grid-template-rows: auto minmax(0, 1fr); }
-.mapBody {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
-  gap: var(--s-2);
-}
-.alertsPage { grid-template-rows: auto auto minmax(0, 1fr); }
-.alertsBody {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
-  gap: var(--s-2);
-}
-.thrPage { grid-template-rows: auto minmax(0, 1fr); }
-.thrBody {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(460px, 1fr) minmax(430px, 0.92fr);
-  gap: var(--s-2);
-}
-.anaPage { grid-template-rows: auto minmax(0, 1fr); }
-.anaBody {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 0.82fr);
-  grid-template-rows: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: var(--s-2);
-}
-.anaRank { grid-column: 3; grid-row: 1 / span 2; }
-@media (max-width: 1400px) {
-  .anaBody { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto; }
-  .anaRank { grid-column: 1 / span 2; grid-row: 3; }
-}
-@media (max-width: 1180px) {
-  .watchBody, .mapBody, .alertsBody, .thrBody, .anaBody {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* The 1400px rule's `span 2` survived into the single column and created
-     an implicit second one: the diurnal clock was crammed into 164px. */
-  .anaRank { grid-column: auto; grid-row: auto; }
-  /* One column cannot share a fixed height five ways (each chart got an 85px
-     window). Stopgap until the Network screen: let this body scroll. */
-  .anaBody { grid-template-rows: none; grid-auto-rows: minmax(300px, auto); overflow-y: auto; }
-}
-
-.stack { display: grid; grid-auto-rows: min-content; gap: var(--s-2); min-height: 0; overflow: auto; }
-/* Watchfloor rail: towers pinned at the top, emitters pinned at the bottom, and
-   only the reach block in between scrolls — a console must not clip its edges. */
-.watchSide {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: var(--s-2);
-  min-height: 0;
-  overflow: hidden;
-}
-.stackGrow { grid-auto-rows: unset; }
-/* Consequence rail: the ledger takes whatever is left, so the column never ends
-   in a band of dead surface. */
-.thrSide {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  min-height: 0;
-  overflow: auto;
-}
-.thrSide > .grow { flex: 1; min-height: 140px; }
-.grow { min-height: 0; }
+/* Alerts and Levels have their own sheets (alerts.module.css,
+   levels.module.css, title.module.css). What is left here is the shared
+   `Panel` and the Network screen. The verdict strip, the readouts, the caps
+   chips, the old queue grid and the old level editor went with the screens
+   that printed them (R1, R7, R8). */
 
 /* ───────────────────────────────────────────────────────────────── panel */
 .panel {
@@ -118,8 +89,6 @@
 }
 .panelBody { min-height: 0; flex: 1; overflow: auto; }
 .panelFlat { box-shadow: none; background: var(--surface-2); }
-.pad { padding: var(--s-3); }
-.padSm { padding: var(--s-2) var(--s-3); }
 
 .caps {
   font-size: var(--text-3xs);
@@ -129,485 +98,346 @@
   white-space: nowrap;
 }
 .capsInk { color: var(--ink-2); }
-/* Units are symbols. Never uppercase them — µg/m³ → MG/M³ is a 1000× error. */
-.unit {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-.capsAccent { color: var(--accent); }
 .spacer { flex: 1; }
 .dim { color: var(--ink-3); }
-.sub { font-size: var(--text-xs); color: var(--ink-2); line-height: 1.45; }
-.subTight { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
 
-/* ─────────────────────────────────────────────────────── the verdict strip */
-.verdict {
-  display: flex;
-  align-items: stretch;
-  gap: var(--s-4);
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  overflow: hidden;
-  /* When the readouts do not fit beside a readable headline, they drop to
-     their own row instead of squeezing it to one word per line. */
-  flex-wrap: wrap;
-  row-gap: var(--s-2);
-}
-.verdictOver { border-color: color-mix(in srgb, var(--invader) 65%, transparent); }
-.verdictClear { border-color: color-mix(in srgb, var(--tower) 45%, transparent); }
-
-/* The word keeps its width and the headline yields — at 1080 the word used to
-   shrink its column and print up to 131px over the headline beside it.
-   Stopgap: the Network screen (docs/PLAN-refocus.md R1) removes the big word. */
-.verdictMark { display: flex; align-items: center; gap: var(--s-3); flex: none; }
-.verdictGlyph { font-size: var(--text-2xl); line-height: 1; width: 1.3em; text-align: center; }
-.verdictWord {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-caps);
-  line-height: 1.05;
-  white-space: nowrap;
-}
+/* Over a level, in the severity red (the token keeps its old name). */
 .overInk { color: var(--invader); }
-.clearInk { color: var(--tower); }
 .towerInk { color: var(--tower); }
 .fleetInk { color: var(--fleet); }
-.accentInk { color: var(--accent); }
 
-/* 380px, not less: below it the readouts stayed on the headline's row and
-   squeezed it to three lines, which the two-line clamp then cut off. */
-.verdictLines { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 380px; justify-content: center; }
-.verdictHead {
-  font-family: var(--font-mono);
-  font-size: var(--text-md);
-  color: var(--ink);
-  letter-spacing: var(--tracking-wide);
-  /* Wraps to two lines rather than ellipsizing the one sentence that says
-     what is going on. */
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden;
+/* ═══════════════════════════════════════════════════════════ /regulator
+   Network: a header line, then the map beside ONE 320 px panel (F4). At
+   1080x900 that leaves the map 660 px — the old grid gave it 988x242 and hid
+   its own layer list below the frame. */
+.netPage { grid-template-rows: auto minmax(0, 1fr); }
+
+/* The header: one generated sentence and three numbers. The sentence wraps —
+   it is the one thing on the page that says what is going on, so it is
+   never clamped or ellipsized — and the numbers drop under it when the two
+   do not fit side by side. */
+/* At least two lines tall, whatever the sentence: the headline changes with
+   every playback step, and a header that grew and shrank with it resized the
+   map under the reader's eye (and left MapLibre's canvas 43 px taller than
+   its frame until the next frame). */
+.netHead {
+  min-block-size: calc(2 * 1.4 * var(--text-md) + 2 * var(--s-2) + 2px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-5);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }
-.verdictStats { display: flex; align-items: stretch; gap: var(--s-5); margin-left: auto; }
-
-.readout { display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: right; }
-.readoutValue {
+.headline {
+  flex: 1 1 22rem;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.numbers { flex: none; display: flex; gap: var(--s-5); margin-inline-start: auto; }
+.number { display: grid; gap: 3px; justify-items: end; color: inherit; text-decoration: none; }
+.numberValue {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--text-xl);
   line-height: 1;
   color: var(--ink);
 }
-.readoutBig { font-size: var(--text-3xl); }
-.readoutUnit { font-size: var(--text-2xs); color: var(--ink-3); margin-left: 3px; letter-spacing: var(--tracking-caps); }
+/* Sentence case, not micro-caps: three caps labels here were three of the
+   budget's sixteen, spent on words the numbers already carry. */
+.numberLabel { font-size: var(--text-2xs); color: var(--ink-3); white-space: nowrap; }
+.numberLink:hover .numberLabel { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.numberLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-xs); }
 
-/* ───────────────────────────────────────────────────────────────── chips */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-xs);
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.tagTower { color: var(--tower); border-color: color-mix(in srgb, var(--tower) 45%, transparent); }
-.tagFleet { color: var(--fleet); border-color: color-mix(in srgb, var(--fleet) 45%, transparent); }
-.tagInvader { color: var(--invader); border-color: color-mix(in srgb, var(--invader) 55%, transparent); }
-.tagAccent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.tagCommunity { color: var(--actor-community); border-color: color-mix(in srgb, var(--actor-community) 45%, transparent); }
-
-.sev {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  white-space: nowrap;
-}
-
-/* ──────────────────────────────────────────────────── the line (tripwires) */
-.lineRow {
+.netBody {
+  min-height: 0;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 88px 66px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: var(--s-2);
-  width: 100%;
-  padding: 5px var(--s-3);
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
 }
-.lineRow:hover { background: var(--surface-2); }
-.lineRowOver { background: color-mix(in srgb, var(--invader) 7%, transparent); }
-.lineRowOver:hover { background: color-mix(in srgb, var(--invader) 12%, transparent); }
-.lineName { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.lineLabel {
-  font-size: var(--text-xs);
-  color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.lineNum {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-sm);
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* the tripwire bar: value against threshold, threshold pinned at 60% */
-.wire {
+.netMap {
   position: relative;
-  height: 7px;
-  border-radius: var(--r-xs);
-  background: var(--bg-sunk);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-.wireFill { position: absolute; inset: 0 auto 0 0; border-radius: var(--r-xs); }
-.wireMark {
-  position: absolute;
-  top: -2px; bottom: -2px;
-  width: 2px;
-  background: var(--ink-2);
-}
-.wireMarkHot { background: var(--invader); }
-
-/* ───────────────────────────────────────────────────────── tower cards */
-.towerGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: var(--s-2); padding: var(--s-3); }
-.tower {
-  display: flex; flex-direction: column; gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  /* No side stripe: the status glyph and chip already say online / degraded /
-     offline, and a coloured left edge on a card is decoration, not data. */
-  border: 1px solid var(--line);
-  border-radius: var(--r-xs);
-  background: var(--surface-2);
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.tower:hover { border-color: var(--line-strong); }
-.towerActive { background: var(--surface-raised); border-color: var(--accent); }
-.towerDegraded { border-color: color-mix(in srgb, var(--sev-watch) 45%, var(--line)); }
-.towerOffline { opacity: 0.72; }
-.towerHead { display: flex; align-items: baseline; gap: var(--s-2); }
-.towerName { font-size: var(--text-xs); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.towerReads { display: flex; flex-direction: column; gap: 2px; }
-.towerRead {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: var(--s-2);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-2xs);
-}
-.towerReadOver { color: var(--invader); }
-.blind {
-  font-family: var(--font-mono);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-3);
-  border-top: 1px dashed var(--line-strong);
-  padding-top: 4px;
-}
-
-/* ─────────────────────────────────────────────────────────── reach block */
-.reach { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); }
-.reachRow { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: var(--s-2); }
-.reachBar { position: relative; height: 12px; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: var(--r-xs); overflow: hidden; }
-.reachInside { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--tower) 45%, transparent); }
-.reachEdge { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--tower); }
-.reachOutside {
-  position: absolute; inset: 0 0 0 auto;
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--fleet) 42%, transparent) 0 3px,
-    transparent 3px 6px
-  );
-}
-.reachNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-sm); }
-
-/* ─────────────────────────────────────────────────────────── dense table */
-.rows { display: flex; flex-direction: column; }
-.rowHead {
-  position: sticky; top: 0; z-index: 1;
-  display: grid;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line-strong);
-  font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.row {
-  display: grid;
-  align-items: center;
-  gap: var(--s-2);
-  width: 100%;
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--text-xs);
-}
-.row:hover { background: var(--surface-2); }
-.rowActive { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
-.rowNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.rowTrunc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* alerts grid: sev | src | measure | title | value | thr | ratio | age
-   The age column holds "ended 12h" (nine mono characters at 12px ≈ 65px) since
-   an ended alert reads its end, not "up for 29d" from its start. */
-.alertCols { grid-template-columns: 78px 62px 52px minmax(0, 1fr) 82px 74px 62px 70px; }
-/* watchfloor over-the-line: sev | measure | where | value | ratio */
-.overCols { grid-template-columns: 74px 52px minmax(0, 1fr) 84px 60px; }
-/* ranking: # | street | district | value | persistence | pct */
-.rankCols { grid-template-columns: 28px minmax(0, 1fr) 84px 66px 54px 46px; }
-
-/* ────────────────────────────────────────────────────── action level editor */
-.levels { display: flex; flex-direction: column; }
-.level {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--s-2) var(--s-3);
-  padding: var(--s-3);
-  border-bottom: 1px solid var(--line);
-  cursor: pointer;
-}
-.level:hover { background: var(--surface-2); }
-.levelActive { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
-.levelDisabled { opacity: 0.5; }
-.levelHead { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-.levelLabel { font-size: var(--text-xs); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.levelRight { display: flex; align-items: center; gap: var(--s-2); }
-.levelCtl { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); }
-.levelVal {
-  display: flex; align-items: baseline; gap: 4px;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-.levelValNum { font-size: var(--text-lg); color: var(--accent); line-height: 1; }
-.levelValNumEdited { color: var(--fleet); }
-.numInput {
-  width: 84px;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.levelMeta { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
-.levelFoot { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
-
-/* the consequence pane */
-.impact { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); }
-.impactHero {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-3) var(--s-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-xs);
-  background: var(--bg-sunk);
-}
-.impactBig {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-4xl);
-  line-height: 0.9;
-  color: var(--ink);
-}
-.impactBigHot { color: var(--invader); }
-.delta {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-lg);
-  line-height: 1.1;
-}
-.deltaUp { color: var(--invader); }
-.deltaDown { color: var(--tower); }
-.deltaFlat { color: var(--ink-3); }
-
-@keyframes flashIn {
-  0% { background: color-mix(in srgb, var(--invader) 34%, transparent); }
-  100% { background: transparent; }
-}
-@keyframes flashOut {
-  0% { background: color-mix(in srgb, var(--tower) 30%, transparent); }
-  100% { background: transparent; }
-}
-.flashIn { animation: flashIn 1400ms var(--ease-out) 1; }
-.flashOut { animation: flashOut 1400ms var(--ease-out) 1; }
-@media (prefers-reduced-motion: reduce) {
-  .flashIn, .flashOut { animation: none; }
-}
-
-/* the unreachable badge — the leapfrog, stated as a property of the network */
-.blindBanner {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-2) var(--s-3);
-  border: 1px dashed color-mix(in srgb, var(--fleet) 55%, transparent);
-  border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--fleet) 7%, transparent);
-}
-
-.ledger { display: flex; flex-direction: column; }
-.ledgerRow {
-  display: grid;
-  grid-template-columns: 16px 46px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--s-2);
-  padding: 5px var(--s-3);
-  border-bottom: 1px solid var(--line);
-  font-size: var(--text-2xs);
-}
-.ledgerGlyph { font-family: var(--font-mono); text-align: center; }
-
-/* ────────────────────────────────────────────────────────────── map screen */
-.mapFrame {
-  position: relative;
+  min-width: 0;
   min-height: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  overflow: hidden;
+  overflow: clip;
   background: var(--bg-sunk);
 }
-.mapFrame > * { height: 100%; }
-.overlayCard {
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-xs);
-  padding: var(--s-2) var(--s-3);
-  backdrop-filter: blur(6px);
-  max-width: 300px;
-}
-.overlayBar { max-width: none; display: flex; align-items: center; gap: var(--s-2); flex-wrap: nowrap; }
+.netMap > * { height: 100%; }
 
-/* ───────────────────────────────────────────────────────── push composer */
-.push { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); }
-.pushRow { display: flex; align-items: center; gap: var(--s-2); }
-.pushSent {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid color-mix(in srgb, var(--tower) 45%, transparent);
-  border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--tower) 8%, transparent);
-  font-size: var(--text-xs);
+/* The panel is the page's one scrolling area (R9). Natural-height sections,
+   hairlines between them: no card inside a card. */
+.netPanel {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.netPanel > * { flex: none; }
+
+.section { padding-block: var(--s-2); }
+.section + .section { border-top: 1px solid var(--line); }
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3) var(--s-1);
+}
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-3xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
   color: var(--ink-2);
 }
-
-/* ─────────────────────────────────────────────────────────────── misc */
-.empty {
-  padding: var(--s-5) var(--s-4);
-  text-align: center;
+.sectionAside {
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
   color: var(--ink-3);
+  white-space: nowrap;
+}
+.sectionBody { display: flex; flex-direction: column; }
+
+/* One line per item: a glyph, a name that WRAPS rather than clips, a value
+   that never wraps. A sub-line, when there is one, sits under the name. */
+.item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--s-2);
+  row-gap: 2px;
+  inline-size: 100%;
+  padding: 6px var(--s-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.item:hover { background: var(--surface-2); }
+.item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.itemOn { background: var(--accent-soft); }
+.itemGlyph {
+  align-self: center;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--ink-3);
+}
+.itemName { min-width: 0; overflow-wrap: anywhere; }
+.itemStatus { color: var(--sev-watch); }
+.itemValue {
+  justify-self: end;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.itemNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.itemRatio { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-2xs); color: var(--ink-2); }
+.itemSub { grid-column: 2 / -1; font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.35; }
+.itemTwo { padding-block: 7px; }
+.itemCount { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--actor-community); }
+/* Over a level: a square in the over tone beside a number in the same tone —
+   colour never alone (DESIGN.md). */
+.overMark { inline-size: 7px; block-size: 7px; align-self: center; background: var(--invader); }
+.mute { font-size: var(--text-2xs); color: var(--ink-3); }
+.note { margin: 0; padding: var(--s-1) var(--s-3); font-size: var(--text-2xs); line-height: 1.45; color: var(--ink-3); }
+
+/* ── the detail the panel turns into ─────────────────────────────────── */
+.detail { display: flex; flex-direction: column; gap: 2px; padding: var(--s-2) var(--s-3) var(--s-3); }
+.detail .note { padding-inline: 0; }
+.detailHead { display: grid; gap: 4px; padding-block-end: var(--s-2); border-bottom: 1px solid var(--line); }
+.backBtn {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.backBtn:hover { text-decoration: underline; text-underline-offset: 2px; }
+.backBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.backIcon { transform: rotate(180deg); }
+.detailTitle { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semi); line-height: 1.3; color: var(--ink); }
+.detailSub { margin: 0; font-size: var(--text-2xs); line-height: 1.4; color: var(--ink-3); }
+
+.fact { display: grid; gap: 3px; padding-block: var(--s-2); border-bottom: 1px solid var(--line); }
+.fact:last-of-type { border-bottom: 0; }
+/* A modelled statement carries the model's own mark: a 1 px dashed rule, the
+   outline register, beside a measured one's plain block (CONTRACT §10b). */
+.factModel { padding-inline-start: var(--s-2); border-inline-start: 1px dashed var(--line-strong); }
+.factModel .factVal { color: var(--ink-2); }
+.factKey { font-size: var(--text-2xs); color: var(--ink-3); }
+.factVal { display: block; font-size: var(--text-xs); line-height: 1.45; color: var(--ink); }
+/* Block, not grid: as a grid every inline child became its own row, and
+   "120.7" sat alone on a line above "ppb at 06:00". */
+.factVal > .strip, .factVal > .shareRow, .factVal > .clocks { margin-block: 3px; }
+.factNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: var(--weight-medium); }
+.factNote { display: block; margin-block-start: 3px; font-size: var(--text-2xs); line-height: 1.4; color: var(--ink-3); }
+.shareRow { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--s-2); }
+.shareSite { min-width: 0; }
+
+/* Same window, same statistic: each street's median a tick, the monitor's a mark. */
+.strip { display: block; inline-size: 100%; block-size: 20px; overflow: visible; }
+.stripAxis { stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.stripTick { stroke: var(--ink-2); stroke-opacity: 0.7; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.stripMark { stroke: var(--tower); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+
+.clocks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); justify-items: center; }
+
+.inlineLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.reportList { display: flex; flex-direction: column; margin-inline: calc(-1 * var(--s-3)); }
+.quoteBlock { display: grid; gap: var(--s-2); padding-block-start: var(--s-2); border-top: 1px solid var(--line); }
+/* A resident's own words, quoted rather than paraphrased. */
+.quote {
+  margin: 0;
+  padding-inline-start: var(--s-2);
+  border-inline-start: 1px solid var(--actor-community);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+/* ── map furniture: exactly two overlays (R9) ────────────────────────── */
+.mapBar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.pollutant, .mapBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  color: var(--ink);
+  font: inherit;
   font-size: var(--text-xs);
 }
-.chartPad { padding: var(--s-2) var(--s-3) var(--s-3); }
-.split2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--s-3); padding: var(--s-3); }
-.kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2); align-items: baseline; padding: 3px 0; font-size: var(--text-2xs); }
-.kv + .kv { border-top: 1px solid var(--line); }
-.kvVal { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-size: var(--text-xs); }
-.toolbar { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.mapBtn { cursor: pointer; }
+.mapBtn > svg { transform: rotate(90deg); color: var(--ink-3); }
+.mapBtn:hover, .pollutant:hover { border-color: var(--accent); }
+.mapBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pollutant:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pollutantKey { font-size: var(--text-2xs); color: var(--ink-3); }
+.pollutantSelect {
+  max-inline-size: 12rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.pollutantSelect option { background: var(--surface); color: var(--ink); }
+.layersMenu { display: grid; gap: var(--s-2); padding: var(--s-3); font-size: var(--text-xs); }
 
-/* ── resident reports ─────────────────────────────────────────────────────
-   The regulator's second evidence source. Styled like the tower roster above
-   it so the two read as a pair — instruments and witnesses — rather than as a
-   panel of data and a panel of anecdote. */
-.reportRow {
-  display: flex; align-items: center; gap: var(--s-2);
-  inline-size: 100%; text-align: left;
-  padding: 5px var(--s-2);
-  background: transparent; border: 1px solid transparent; border-radius: var(--r-xs);
-  color: inherit; cursor: pointer;
+/* The legend: about 240x90, one line per mark, sentence case. */
+.legend {
+  display: grid;
+  gap: 3px;
+  /* Wide and short rather than narrow and tall: at 15.5rem four of its five
+     lines wrapped and it stood 125 px over the map's corner. A fixed size —
+     the overlay cell is sized by its content, so a percentage cap resolved
+     against the legend itself and squeezed it. */
+  inline-size: 18.5rem;
+  padding: var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  font-size: var(--text-2xs);
+  line-height: 1.35;
+  color: var(--ink-2);
 }
-.reportRow:hover { border-color: var(--line); background: var(--surface); }
-.reportRowOn {
-  border-color: color-mix(in srgb, var(--actor-community) 60%, transparent);
-  background: color-mix(in srgb, var(--actor-community) 10%, transparent);
+/* The shared street key (MapLegend) inside this legend, with its own card
+   chrome off so the legend stays one panel. Two classes, so it wins whichever
+   stylesheet loads first. */
+.legend .legendStreets {
+  gap: 3px;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  min-inline-size: 0;
+  max-inline-size: none;
+  font-size: inherit;
 }
-.reportCount {
-  flex: none; inline-size: 1.9rem; text-align: center;
-  font-family: var(--font-mono); font-size: var(--text-sm);
-  color: var(--actor-community);
+.legendRow { display: flex; align-items: center; gap: var(--s-2); }
+.legendSwatch { flex: none; display: inline-flex; align-items: center; inline-size: 22px; }
+.legendText { flex: 1; min-width: 0; }
+/* The street window, three ways (F4): ONE control of three segments under
+   the key's title, not three chips. It replaces the "90 days" toggle, whose
+   90-day grid under an hourly plume read as confirmation (R4); every window
+   here ends at the moment shown. Start-aligned: the key is a grid, and a
+   grid item stretches to the key's width by default. */
+.windowPick {
+  justify-self: start;
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  overflow: clip;
 }
-.reportBody { display: grid; gap: 1px; min-inline-size: 0; flex: 1; }
-.reportTitle {
-  font-size: var(--text-xs); color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.windowOpt {
+  padding: 1px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  cursor: pointer;
 }
-.reportSub {
-  font-family: var(--font-mono); font-size: var(--text-3xs);
-  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--ink-3);
-}
-.reportDetail {
-  margin-block-start: var(--s-2); padding-block-start: var(--s-2);
-  border-block-start: 1px solid var(--line);
-  display: grid; gap: var(--s-2);
-}
-.reportDetailHead { display: flex; align-items: center; gap: var(--s-2); justify-content: space-between; }
-/* A resident's own words, quoted rather than paraphrased. */
-.reportQuote {
-  margin: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--ink-2);
-  padding-inline-start: var(--s-2);
-  border-inline-start: 2px solid color-mix(in srgb, var(--actor-community) 55%, transparent);
-}
-.reportActions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
-.reportNote { font-size: var(--text-2xs); color: var(--ink-3); line-height: 1.4; }
+.windowOpt + .windowOpt { border-inline-start: 1px solid var(--line-strong); }
+.windowOpt:hover { color: var(--ink); background: var(--surface-2); }
+.windowOpt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The window shown: the accent, filled soft — pressed, never colour alone
+   (`aria-pressed`, and the title names the same window in words). */
+.windowOptOn, .windowOptOn:hover { background: var(--accent-soft); color: var(--accent); cursor: default; }
 
-/* ── /regulator/coverage ─────────────────────────────────────────────────── */
-.covBody { display: flex; flex-direction: column; gap: var(--s-4); }
-.covRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-2) 0;
-  border-bottom: 1px solid var(--line);
+/* Below 960 the panes stack and the page scrolls instead of the panel. */
+/* `min-block-size: auto` is the point: with the wide layout's 0 the body's
+   row was squeezed into the page's height and the panel measured 72 px at
+   900x800 with its 424 px of content spilling over nothing. */
+@media (max-width: 959px) {
+  .netPage { grid-template-rows: auto max-content; align-content: start; overflow-y: auto; }
+  .netBody { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; min-block-size: auto; }
+  .netMap { block-size: 62vh; min-block-size: 22rem; }
+  .netPanel { overflow: visible; min-block-size: auto; }
 }
-.covRow:last-child { border-bottom: 0; }
-.covName { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); }
-.covNum { font-size: var(--text-xs); color: var(--ink-2); text-align: right; white-space: nowrap; }
-.covAnchor { font-size: var(--text-xs); color: var(--ink-3); min-width: 0; }
-.covTrack {
-  position: relative; height: 8px; border-radius: var(--r-xs);
-  background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden;
+@media (prefers-reduced-motion: reduce) {
+  .item { transition: none; }
 }
-.covBar { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--r-xs); }
-.covBarThreat { position: absolute; inset: 0 auto 0 0; background: var(--sev-high, var(--accent)); border-radius: var(--r-xs); }
-.covDivider { margin: var(--s-3) 0 var(--s-1); padding-top: var(--s-2); border-top: 1px dashed var(--line); }
-.covCompare { display: flex; flex-direction: column; }
-.covPage { grid-template-rows: auto minmax(0, 1fr); }
-.covBody {
-  min-height: 0;
-  overflow: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
-  gap: var(--s-2);
-  align-content: start;
-}
-@media (max-width: 1200px) { .covBody { grid-template-columns: minmax(0, 1fr); } }

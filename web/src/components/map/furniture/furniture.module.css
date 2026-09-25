@@ -403,7 +403,7 @@
   font-size: var(--text-3xs);
   color: var(--ink-3);
 }
-.toggleKey { inline-size: 12px; block-size: 3px; border-radius: 2px; }
+.toggleKey { inline-size: 12px; block-size: 3px; border-radius: var(--r-xs); }
 
 /* ── segment inspector ───────────────────────────────────────────────── */
 .inspector {

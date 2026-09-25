@@ -10,6 +10,9 @@
      3. Measurement colour comes from a ramp, never from the role accent.
         --ramp-aqi-*       public health language (community, any "risk" score)
         --ramp-intensity-* analytical magnitude (regulator / industry / admin)
+        --ramp-map-*       the road grid's per-role alias: AQI on community,
+                           --ramp-intensity-dark-* (lifted to read on a dark
+                           ground) on every dark skin
      4. Numerals are always --font-mono with font-variant-numeric: tabular-nums.
    ========================================================================= */
 
@@ -88,6 +91,36 @@
   --ramp-intensity-5: #E6614F;
   --ramp-intensity-6: #F79B3D;
   --ramp-intensity-7: #FFD84D;
+
+  /* The same ramp lifted for a LINE on a dark map ground. This is what the
+     dark skins' road grid paints with (their `--ramp-map-*`); charts keep
+     `--ramp-intensity-*` above.
+
+     Why it exists: the "recedes into a dark basemap" low end above is exactly
+     what made a street measured at a low value invisible. The robust p2–p98
+     domain puts about a third of the streets in view in the bottom quarter of
+     the ramp, and against --bg stops 0–3 measured 1.1, 1.7, 2.3 and 2.8 to 1:
+     a low reading drew as no reading. A measured street that cannot be seen
+     reads as "not driven", which is a false statement about the fleet.
+
+     Rules it keeps: stop 0 is ≥ 3:1 non-text contrast against --bg on every
+     dark skin (regulator 3.72, industry 3.88, admin 3.66, landing 3.85); the
+     hue order is the same (blue → indigo → violet → orchid → rose → coral →
+     orange → yellow); luminance rises at every step for normal vision AND
+     under simulated deuteranopia and protanopia (smallest adjacent OKLab step
+     0.049, where the ramp above has a 0.034 step under protanopia); the top
+     two stops are the ramp above's own, so a hot street is the same colour
+     in every skin. The middle is deliberately a little muted (OKLCH chroma
+     ≈0.13): at full chroma the violets lose their red under protanopia and
+     three stops collapse to one lightness. */
+  --ramp-intensity-dark-0: #3769CA;
+  --ramp-intensity-dark-1: #636DE6;
+  --ramp-intensity-dark-2: #9470C6;
+  --ramp-intensity-dark-3: #C374B5;
+  --ramp-intensity-dark-4: #DB779C;
+  --ramp-intensity-dark-5: #FE826B;
+  --ramp-intensity-dark-6: var(--ramp-intensity-6);
+  --ramp-intensity-dark-7: var(--ramp-intensity-7);
 
   /* Same ramp inverted in luminance, for the light community basemap. */
   --ramp-intensity-light-0: #BFE6DE;
@@ -233,10 +266,12 @@
   /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
      sand so a low alpha reads as haze on the dark basemap. See community. */
   --plume-soft:    #CDB89A;
-  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
-  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
-  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
-  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+  /* The road grid: the intensity ramp lifted for a dark ground (see
+     --ramp-intensity-dark-*). Stop 0 is 3.72:1 against this --bg. */
+  --ramp-map-0: var(--ramp-intensity-dark-0); --ramp-map-1: var(--ramp-intensity-dark-1);
+  --ramp-map-2: var(--ramp-intensity-dark-2); --ramp-map-3: var(--ramp-intensity-dark-3);
+  --ramp-map-4: var(--ramp-intensity-dark-4); --ramp-map-5: var(--ramp-intensity-dark-5);
+  --ramp-map-6: var(--ramp-intensity-dark-6); --ramp-map-7: var(--ramp-intensity-dark-7);
 
   --radius-card:   var(--r-sm);
   --shadow-card:   0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px #000;
@@ -291,10 +326,12 @@
   /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
      sand so a low alpha reads as haze on the dark basemap. See community. */
   --plume-soft:    #C8B597;
-  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
-  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
-  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
-  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+  /* The road grid: the intensity ramp lifted for a dark ground (see
+     --ramp-intensity-dark-*). Stop 0 is 3.88:1 against this --bg. */
+  --ramp-map-0: var(--ramp-intensity-dark-0); --ramp-map-1: var(--ramp-intensity-dark-1);
+  --ramp-map-2: var(--ramp-intensity-dark-2); --ramp-map-3: var(--ramp-intensity-dark-3);
+  --ramp-map-4: var(--ramp-intensity-dark-4); --ramp-map-5: var(--ramp-intensity-dark-5);
+  --ramp-map-6: var(--ramp-intensity-dark-6); --ramp-map-7: var(--ramp-intensity-dark-7);
 
   --radius-card:   var(--r-xs);
   --shadow-card:   0 0 0 1px #1A262A, 0 0 24px -12px #39FF9E33;
@@ -342,10 +379,12 @@
   /* The soft plume cloud in a dark skin: the same warm neutral, lifted to a
      sand so a low alpha reads as haze on the dark basemap. See community. */
   --plume-soft:    #CDB99C;
-  --ramp-map-0: var(--ramp-intensity-0); --ramp-map-1: var(--ramp-intensity-1);
-  --ramp-map-2: var(--ramp-intensity-2); --ramp-map-3: var(--ramp-intensity-3);
-  --ramp-map-4: var(--ramp-intensity-4); --ramp-map-5: var(--ramp-intensity-5);
-  --ramp-map-6: var(--ramp-intensity-6); --ramp-map-7: var(--ramp-intensity-7);
+  /* The road grid: the intensity ramp lifted for a dark ground (see
+     --ramp-intensity-dark-*). Stop 0 is 3.66:1 against this --bg. */
+  --ramp-map-0: var(--ramp-intensity-dark-0); --ramp-map-1: var(--ramp-intensity-dark-1);
+  --ramp-map-2: var(--ramp-intensity-dark-2); --ramp-map-3: var(--ramp-intensity-dark-3);
+  --ramp-map-4: var(--ramp-intensity-dark-4); --ramp-map-5: var(--ramp-intensity-dark-5);
+  --ramp-map-6: var(--ramp-intensity-dark-6); --ramp-map-7: var(--ramp-intensity-dark-7);
 
   --radius-card:   var(--r-sm);
   --shadow-card:   0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -22px #000;

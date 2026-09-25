@@ -126,7 +126,7 @@ These depend on F1 and F2 (the clock and events that follow it).
 ### 3.3 Regulator
 
 **The experience.** One map-led screen, **Network**, replaces Watchfloor and Map, and answers your three questions in one frame.
-- **What the monitors report.** The four reference monitors are labelled by name with their reading at the moment shown, for example "Riverport Rd 10.6". The ratio to the action level appears only when it is 0.5× or more.
+- **What the monitors report.** The four reference monitors are labelled by name with their reading at the moment shown, for example "Riverport Rd 10.6". The ratio to the action level appears only when it is 0.5× or more. It is against the highest 1-hour level the reading exceeds, else the tightest (D15).
 - **What the mobile network adds, and where plumes go.**
   - The day's measured streets are the only filled ink; the legend reads "measured Aug 25".
   - Each site's modelled plume is a hairline outline: solid out to measurement range, dashed beyond it with "beyond measurement range — model only". Ridgeline's filed study is a dashed outline.
@@ -139,16 +139,39 @@ These depend on F1 and F2 (the clock and events that follow it).
 - Nav: Network · Alerts · Levels. Everything follows the timeline.
 
 **The story the data already supports.** It is generated from status fields, with no numbers written into the copy, and worded to degrade gracefully on other seeds:
-- **Riverport [contested — settle before writing copy]:** two of the product's own model surfaces disagree about this monitor. Point-in-polygon against `GET /wind/dispersion` at each alert's start puts it inside Riverport's plume in **7 of 9** alert hours (the regulator auditor); the coverage model's hourly cone masks (`coverage._hourly_masks`, what `/coverage/interception` uses) put it inside in **1 of 5** standard-level hours and 3 of 17 watch-level hours (the verifier). Phase 7 said the regulator surfaces use one geometry; this says they do not quite. **R0 (new, first task of phase 5):** reconcile the two — same hour key, same sources, same cone test — and write the headline only from the reconciled answer. If the low figure stands, the story becomes the one below; if the high one does, the original stands. So the honest story is the better one for this persona: *the monitor saw it, the monitor cannot say where it came from, and the model mostly does not put Riverport's plume over it at those hours* — which is exactly what the mobile network is for. Riverport's own downwind test is `elevated_downwind` but only just (3.75 vs a 3.28 floor), so the copy branches on state rather than assuming it.
+- **Riverport [contested — resolved by R0 below: the high figure stands]:** two of the product's own model surfaces disagree about this monitor. Point-in-polygon against `GET /wind/dispersion` at each alert's start puts it inside Riverport's plume in **7 of 9** alert hours (the regulator auditor); the coverage model's hourly cone masks (`coverage._hourly_masks`, what `/coverage/interception` uses) put it inside in **1 of 5** standard-level hours and 3 of 17 watch-level hours (the verifier). Phase 7 said the regulator surfaces use one geometry; this says they do not quite. **R0 (new, first task of phase 5):** reconcile the two — same hour key, same sources, same cone test — and write the headline only from the reconciled answer. If the low figure stands, the story becomes the one below; if the high one does, the original stands. So the honest story is the better one for this persona: *the monitor saw it, the monitor cannot say where it came from, and the model mostly does not put Riverport's plume over it at those hours* — which is exactly what the mobile network is for. Riverport's own downwind test is `elevated_downwind` but only just (3.75 vs a 3.28 floor), so the copy branches on state rather than assuming it.
   - **Trap:** `alert.site_id` gives a flattering majority (7 of 11) but it is the data generator's 30°/4 km bearing rule, not the modelled plume. Never print it as "inside the modelled plume". The "N of M exceedance hours inside the plume" figure needs a new server computation (readings over threshold joined to the coverage plume masks).
 - **Ridgeline [corrected]:** no **NO2** reference monitor within 4 km (West Shelby Drive is 3.7 km away but carries no NO2; compute per channel, not per monitor). The fleet's downwind excess is elevated, and residents in Boxtown are reporting.
+
+**R0 — resolved (2026-09-24): the drawn outline was right; the cone masks were a second shape.** Measured on the pinned build:
+- **Not the clock or the inputs.** Both computations read the same wind row for every one of Riverport Road's 17 watch-level NO2 hours (identical `ts`, no time-zone shift). Both use the same active release points, 2σ, and a reach that cuts nothing in those class-F hours (onset 0 m, reach 8,000 m). Class coercion never fires on this data.
+- **The shape.** `coverage._hourly_masks` tested one σy wedge from the site's emission-weighted centroid. The map (`geo.plume_outline`) draws the union of every release point's wedge, each at the point's own crosswind offset. Riverport's four points spread about 300 m across the wind. At 424 m the 2σ half-width is about 84 m. On Aug 25 06:00 (F, toward 337°) the monitor sits 134 m off the centroid's axis but directly downwind of the 4 m stack, 289 m away on bearing 337°. The single wedge said outside and the outline said inside. A centroid wedge is a far-field approximation, and the monitor behind the regulator's headline is in the near field. The outline is also what users see, so it wins.
+- **Two smaller gaps.** Coverage rounded the wind to 0.1 m/s and the mixing height to 10 m for its cache. It also counted 10 wind hours after the build instant, which `/wind/dispersion` can never draw because `at` clamps to now.
+- **The reconciled answer.** Riverport Road is inside the solid part of Riverport's modelled outline in **4 of 5** standard-level hours and **15 of 17** watch-level hours, and at **7 of 9** live alert starts. The hours it misses are Aug 24 05:00 and 06:00, when no modelled plume is over it. The high figure stands, so the original story stands, generated from state (`GET /regulator/network`):
+  - Aug 25 06:00: the monitor is over the standard, inside Riverport Intermodal's modelled plume, and Riverport's downwind test passed (F7 names it).
+  - Aug 24: the monitor is over with no modelled plume over it, so it cannot say where the air came from. That is the case the streets are for.
+- **One geometry now.** `src/air/server/plumegeom.py` builds the outline. `/wind/dispersion?outline=1` draws its rings; 927 responses were byte-identical before and after the change. `/coverage/interception`, `/coverage/residency`, the concession and the network's `in_plume` all count against it. `tests/test_regulator_network.py` checks two things: `in_plume` equals interception's masks every hour for 3 sites × 4 reference monitors, and both equal a point-in-polygon test on the served ring.
+- **What moved.**
+
+  | Figure | Before | After |
+  |---|---|---|
+  | Riverport Road, share of hours in a modelled plume | 19.0% | 39.4% (29.6% inside measurement range) |
+  | Riverport Road, hours from Riverport | 191 | 607, all inside the envelope |
+  | Riverport Road, hours from Ridgeline | — | 211, all beyond the envelope |
+  | Harbor Avenue, share of hours in a modelled plume | 10.8% | 12.5% |
+  | Concession, reference monitors | 8.4% | 15.0% |
+  | Concession, fleet | 4.8% | 6.1% |
+  | Concession margin | 1.75× | 2.5× |
+  | Residency, unobserved share | 51.1% | 45.3% |
+
+  Interception now also carries `by_site_inside` / `by_site_beyond`. Nothing is judged from the beyond part (10b).
 
 | # | Change | What | Files | Effort |
 |---|---|---|---|---|
 | R1 | The Network screen | Built from MapScreen's base map at full content height, plus one 320px side panel (F4). `/regulator` and `/regulator/map` show it. `/regulator/coverage` and `/regulator/analysis` redirect, and their content moves into the monitor detail (D6). Delete Watchfloor's status strip, the tripwire table, the tower board, the Reach panel, Suspected emitters, the duplicate timeline and the wind-stats panel. | apps/regulator/Network.tsx (new), Watchfloor.tsx, MapScreen.tsx, Coverage.tsx, Analysis.tsx, routes.tsx, core/roles.ts | L |
 | R2 | Plumes on the map | The F6 outline layer, for all sites, for the pollutant in view, at the moment shown. A site gets an axis and label only when its outline touches a monitor, a street driven that day or an open cluster; the others are muted. The filed study is dashed and on by default, because the original brief asks for both models. Dim the ground the fleet never drove. | apps/regulator/Network.tsx | M |
 | R3 | Monitors show their reading | MonitorLayer gets label-by-name and reading options; they are shared with industry, so the defaults stay as they are. Readings come from `/monitors/{id}/readings?to=<moment shown>`, because `/monitors` "latest" is always the end of the data. The alarm pulse fires only when a reading in the last hour exceeds a level with the same averaging period. That fixes "O3 ▲" appearing beside "Ozone 8-hour CLEAR". A missing channel reads "no NO2 channel" in muted ink. Monitor and site labels hide each other instead of overlapping. | components/map/layers/MonitorLayer.ts, apps/regulator/lib.tsx, src/air/server/loaders.py (optional) | M |
-| R4 | The day's streets under the hour's plume | Network's street grid shows the day being viewed (781 streets on Aug 25), not 90 days. Streets with only 1–2 passes still show, drawn thin or hatched. The 90-day grid becomes a legend toggle. Otherwise a 90-day hotspot under an hourly plume reads as confirmation. | apps/regulator/Network.tsx, lib.tsx | M |
+| R4 | The recent streets under the hour's plume | Network's street grid shows the streets measured in a window ending at the moment shown, not 90 days. Streets with only 1–2 passes still show, drawn thin or hatched. Otherwise a 90-day hotspot under an hourly plume reads as confirmation. **[as built — superseded 2026-09-24]** The owner found the calendar-day grid "mostly dark"; see "The street window" in the Phase 5 note below. | apps/regulator/Network.tsx, lib.tsx | M |
 | R5 | Side panel and monitor detail | **Monitors:** name, reading, ratio, status. **Plumes:** only sites that touch something, with bearing, reach, which monitors sit inside (labelled "modelled"), and how many streets were driven inside that day. Below the coverage floor it reads "not enough of this area was driven to say". **Residents:** clusters in the report window; a site is named only under F7. Touchdown figures appear only when the result is `elevated_downwind`; otherwise show a sentence per state — `no_detection` "measured, inside the noise"; `contested` "a rotated bearing matched it"; `insufficient_passes`/`not_measured` "not enough to say". The same gate applies on industry Evidence (Evidence.tsx:198, where Delta Forge's 1.8 ppb is printed today), including its district bars and the hard-coded "but it is over homes". **Monitor detail:** the streets in its ring are highlighted. Its daily median is shown against the street range on the same day; this replaces "latest hour vs 90-day street p90", which read as grading DRAQA's instrument. Add the calibration anchor from `/coverage/calibration`. Add how often the monitor sits in a modelled plume, as a model-ink line split by site and by inside/beyond measurement range, printed with the payload's `basis` sentence. Add the monitor-vs-street 24-hour shape from Analysis. | apps/regulator/Network.tsx, lib.tsx | M |
 | R6 | Alerts as episodes | Group alerts by source, pollutant and consecutive hours; the highest level tripped wins. A row reads like "5 episodes Aug 24–27 · peak 121.4 ppb", and ended alerts say "ended 3 d ago", not "up for 29d". Filtered to the moment shown (F2). The detail and the push composer open in a side sheet. The single duration timeline lives here only. | apps/regulator/Alerts.tsx, Push.tsx, lib.tsx | M |
 | R7 | Action levels fit at 1080 | Rows are at most 64px: label, slider, number, state. The averaging slider shows only on the selected row. The auto-advise/notify toggles and "was X · revert" go behind a row disclosure. The consequence pane stays pinned on the right. The "fleet only · 0 towers" chip on every row becomes one legend line. | apps/regulator/Thresholds.tsx, regulator.module.css | M |
@@ -166,6 +189,44 @@ These depend on F1 and F2 (the clock and events that follow it).
 - Always-visible notify toggles.
 - The "Now | 90 days" mode and its plume-hour contours: a second model surface, and a risk of drawing model output as if it were measured.
 - Coverage and Analysis as separate pages.
+
+
+**Phase 5 — as built (2026-09-24).**
+- **One screen.** `/regulator` is Network, and `/regulator/map` shows the same screen. `/regulator/coverage` and `/regulator/analysis` redirect. The nav is Network · Alerts · Levels.
+- **One payload.** The screen reads `GET /regulator/network?at=&measure=` (`src/air/server/network.py`), which is bounded by `at`. The headline:
+  - is one sentence of two clauses, at most 34 words (`HEADLINE_MAX_WORDS`, swept every 3rd hour of the last week);
+  - branches on state, and a figure in it always comes from the payload;
+  - names a site only when F7 holds for the pollutant in view. A resident cluster linked through NO2 does not name a site on the PM2.5 map.
+- **The street window (revised 2026-09-24, after the owner found the map "mostly dark").** There were three causes, all measured on the pinned build:
+  - **Contrast.** The dark skins' road ramp began at `#10182F` on a `#090E14` ground, which is 1.10:1. Each street also had a dark casing, so about a third of the streets could not be seen.
+  - **Sparsity.** The calendar-day aggregate kept only streets with two or more passes. datagen drives day shifts Monday to Saturday with an off-week, so 61 of the 90 days have driving, none between Aug 16 and 23. The median driven day covers 367 of 1,307 streets.
+  - **A future leak.** The day window included passes after the moment shown. At Aug 24 06:00 it drew 511 streets, although nothing had been driven since Aug 15 20:30.
+
+  Now:
+  - **One window, ending at the moment shown**, drives both the map and every street figure: `streets=24h|7d|todate`, default 7 d. The map reads `/segments?window=trailing:<N>h|todate&at=` (`server/passwindow.py`, computed from `segment_pass` with the builder's statistics; `todate` at the end of the data equals the stored `all` window on every row). `/regulator/network?streets=` counts the same set (`test_the_street_figures_are_the_map_window`).
+  - **A grey to-date context grid** sits under the coloured window, so the road network never goes dark.
+  - **An empty window says so**, with the last pass.
+  - **The dark skins' map ramp** is `--ramp-intensity-dark`: every stop is at least 3.66:1 against `--bg`. The chart ramp `--ramp-intensity` is unchanged.
+  - **Coverage.** The 7 d window's median is 1,202 streets per hour, and it is empty in 115 of 1,958 hours. The 24 h window's median is 257, and it is empty in 692 hours.
+  - **Retired:** the "whole day" and "by HH:MM" caveats. They existed only because the map and the counts used two windows.
+  - **Also bounded by the moment shown:** `/segments/{id}?at=`, the ring street's 24-hour shape in a monitor's detail. Before this it plotted every pass in the campaign.
+  - **Two causes of the coverage floor, told apart.** `plumes[].streets_inside` says whether an outline covers too few streets to judge ("its outline covers only N streets — too few to say") or whether the streets under it were not driven enough.
+  - **The map and its words describe one moment.** The legend title, the tooltip, the empty line and the grey grid all take their moment from the drawn grid's own `window` member. This matters during playback, when the two requests land at different times.
+- **Decided: D14.** The synthetic fleet is sparser than a real campaign (the owner: "generally aclima campaigns drive nearly 24/7"). Driving around the clock is a datagen change and a full rebuild, which would move every pinned number, including `tests/fixtures/touchdown_frozen.json`. The owner's answer (2026-09-24): no rebuild unless we start over.
+- **One alert count.** An `info` alert (the fleet's "Redwing out of service") is a notice, not an alert, in every room. This holds on the client (`core/alerts` rule 5) and on the server (`numbers.alerts_now`). The Alerts page prints it as one "Also:" line, with no severity word. No action level is `info`: the CO 8-hour standard is Watch.
+- **Alerts** are grouped into episodes, with the detail in a non-modal Sheet (`Sheet modal={false}`). The list stays usable beside it, and at 1280 px and wider it gives up the Sheet's width. Esc closes only the topmost surface.
+- **Levels** rows are 57–60 px. A typed threshold commits on blur or Enter, and only if it is above 0.
+- **Copy.**
+  - Level sources say "National standard", so no real body is named.
+  - A reference-monitor alert's advice now points at the evidence. The industry room still gets its site's lever, through `_GENERIC_NO2`.
+  - "Over the line" is retired.
+  - The checked-in database was changed to match by targeted UPDATEs, recorded next to each generator change.
+- **One live stream per browser.** One tab takes the `EventSource` through a Web Lock and relays events to the others over a BroadcastChannel. A stream per tab used up HTTP/1.1's six connections per host and starved every fetch, which is why the regulator's timeline ticks never loaded.
+- **A miss under `/api/` is a JSON 404** (`tests/test_api_miss.py`). Only a path with no `/api` at all reaches the SPA shell.
+- **Open, for the owner or phase 6:**
+  - ~~Which level the ratio uses. A monitor's ratio is against the tightest 1-hour level, so at Aug 25 it shows 2.0× the watch level while the headline says "over the standard".~~ **Decided: D15**, and built: the ratio is against the highest level the reading exceeds, so at Aug 25 06:00 it is 1.2× the standard, the level the headline names.
+  - Timeline Previous/Next steps a tick group at a time: from the end it jumps to Aug 24 over 13 events.
+  - Two runtime scenario recommendations still address an operator on alerts the regulator reads: `domain.py`'s concern-cluster line and `sim.py`'s wind-shift line.
 
 ### 3.4 Industry deck
 
@@ -274,6 +335,14 @@ Each phase ends with `cd web && npx tsc -b --force`, `npx oxlint src` and `uv ru
 | D11 | Show the real driven-day strip. Owner's note: real Aclima campaigns drive nearly 24/7. | S1 as written. **Backlog:** the generator's off-weeks (`OFF_WEEK_MODULO`/`OFF_WEEK_INDEX` in datagen/driveplan.py) and 1–4 cars/day leave gaps a real campaign would not have — a datagen change, and a rebuild, so not in this programme. |
 | D12 | The Landing hub label is "Shared measurement". | Phase 1. |
 | D13 | **Send Aclima's mobile detections to industry now.** | New **I12**: the deck's Downwind panel gains a "Found by Aclima's fleet" group — mobile-sourced alerts on or next to the site's own fenceline roads (e.g. the diesel finding on Paul R Lowry Road), worded as a measurement on a street, never as attribution (F7 still governs naming). Server: the industry alert list includes `source_type='mobile'` alerts within the site radius. |
+
+**2026-09-24**, after the Phase 5 review:
+
+| # | Decision | Effect |
+|---|---|---|
+| D14 | **Do not regenerate the data unless we start over.** Owner: "Ok let's not regenerate unless we need to start over." | The checked-in `data/air.db` (`--seed 20260827 --now 2026-08-28T13:54:00`) stays, so every pinned number and `tests/fixtures/touchdown_frozen.json` stand. Driving nearly 24/7 (D11's backlog note, and the Phase 5 "sparser fleet" item in §3.3) waits for a start-over. |
+| D15 | **A monitor's ratio is reported against the highest enabled 1-hour level its reading exceeds.** Owner: "Ratio seems like a better report." When the reading exceeds no level, the ratio stays against the tightest. | Built. `/regulator/network`: `monitors[].level` is that level, and `ratio` is the reading shown over its threshold. The headline names the same level, because both read one choice (`network._ratio_level`). `over` keeps its meaning: over the tightest 1-hour level, which drives the mark and the pulse. The new `monitors[].exceedance_level` names the tightest level, which `exceedance_hours_7d` counts against (null with no channel or no 1-hour level). The screen, for Riverport Road at Aug 25 06:00 (120.7 ppb): the map label "120.7 · 1.2× standard" (was "2.0× watch"); the panel row "1.2× the 1-hour standard"; the detail "1.21× the NO2 1-hour standard (100 ppb) · over it" and "Last 7 days: 4 h over the 1-hour watch level". These now agree with the headline ("over the NO2 1-hour standard") and the Alerts page ("1.21× NO2 1-hour standard"). Tests: `test_the_ratio_is_against_the_highest_level_passed` (the pinned moment), and `test_the_ratio_level_through_the_last_week` (every 3rd hour of Aug 21–28 plus every over-level hour, NO2 and PM2.5). |
+| D16 | **The Network's density is acceptable for now.** Owner: "I think the busyiness is ok for now." | The measured ~184 visible words at 1680×1050, against R9's ~120 (the regulator.module.css header), stand. No cut is scheduled for it; R9's other lines are unchanged. |
 
 ## 7. Where this plan departs from the critics
 

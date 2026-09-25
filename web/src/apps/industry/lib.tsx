@@ -227,7 +227,7 @@ export interface AlertContext {
  * The owner's instrument is named, because a reading on a DRAQA reference
  * monitor 6 km away and one on this site's own fenceline are different
  * afternoons. It says "DRAQA's … monitor", not "DRAQA's standard": the 100 ppb
- * level is EPA's NAAQS, and fusing the fictional agency with the real standard
+ * level is the national standard, and fusing the fictional agency with it
  * was flagged in review. Nothing here says where the air came from — the list
  * orders by the wind at the time, it does not attribute.
  */

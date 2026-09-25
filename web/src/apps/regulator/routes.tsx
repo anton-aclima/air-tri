@@ -1,21 +1,29 @@
 /**
- * regulator — the watchtower.
+ * regulator — the agency's three screens (docs/PLAN-refocus.md D6).
  *
- * Five screens, in the order the agency works: what is over the line, where the
- * network can and cannot see, the queue, the tripwires themselves, and the
- * analysis a data scientist runs before anyone signs a notice.
+ *   /regulator             Network: one map that answers, in order, what the
+ *                          reference monitors report, what the fleet measured
+ *                          on the streets between them with each site's
+ *                          modelled plume drawn as an outline, and where
+ *                          residents are reporting.
+ *   /regulator/alerts      the queue.
+ *   /regulator/thresholds  the action levels themselves.
+ *
+ * `/regulator/map` shows the Network screen as well — it was the same map on a
+ * second screen. `/regulator/coverage` and `/regulator/analysis` redirect to
+ * it: what they held that a regulator reads (how often a monitor sits in a
+ * modelled plume, the calibration anchor, the monitor-vs-street 24-hour shape)
+ * is a monitor's detail on the map now, next to the streets it is compared to.
+ * `replace` so the back button does not bounce off the old address.
  */
 
-import { createRoute, Outlet } from '@tanstack/react-router'
+import { createRoute, Outlet, redirect } from '@tanstack/react-router'
 
 import { rootRoute } from '@/app/route-root'
 
 import { AlertsQueue } from './Alerts'
-import { Analysis } from './Analysis'
-import { Coverage } from './Coverage'
-import { MapScreen } from './MapScreen'
+import { Network } from './Network'
 import { Thresholds } from './Thresholds'
-import { Watchfloor } from './Watchfloor'
 
 const layout = createRoute({
   getParentRoute: () => rootRoute,
@@ -23,14 +31,17 @@ const layout = createRoute({
   component: Outlet,
 })
 
-const watchfloor = createRoute({ getParentRoute: () => layout, path: '/', component: Watchfloor })
-const map = createRoute({ getParentRoute: () => layout, path: 'map', component: MapScreen })
+const network = createRoute({ getParentRoute: () => layout, path: '/', component: Network })
+const map = createRoute({ getParentRoute: () => layout, path: 'map', component: Network })
 const alerts = createRoute({ getParentRoute: () => layout, path: 'alerts', component: AlertsQueue })
 const thresholds = createRoute({ getParentRoute: () => layout, path: 'thresholds', component: Thresholds })
-const analysis = createRoute({ getParentRoute: () => layout, path: 'analysis', component: Analysis })
-// Do my instruments stand where the plume goes?
-const coverage = createRoute({ getParentRoute: () => layout, path: 'coverage', component: Coverage })
+
+const toNetwork = () => {
+  throw redirect({ to: '/regulator', replace: true })
+}
+const coverage = createRoute({ getParentRoute: () => layout, path: 'coverage', beforeLoad: toNetwork })
+const analysis = createRoute({ getParentRoute: () => layout, path: 'analysis', beforeLoad: toNetwork })
 
 export const regulatorRoutes = layout.addChildren([
-  watchfloor, map, alerts, thresholds, analysis, coverage,
+  network, map, alerts, thresholds, coverage, analysis,
 ])

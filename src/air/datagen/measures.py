@@ -323,18 +323,34 @@ DECIMALS = {m[0]: m[8] for m in _ALL}
 # ---------------------------------------------------------------- action levels
 
 # label, measure, kind, threshold, averaging_hours, severity, source
+#
+# `source` names no real body: every actor in the demo is fictional (DRAQA
+# is), so the national levels read "National standard", never an agency's or
+# a standard's own name. (Phase 5 of PLAN-refocus changed them from the real
+# names; the checked-in database was brought in line with
+#   UPDATE action_level SET source = replace(source, 'EPA NAAQS', 'National standard');
+#   UPDATE activity SET payload_json = replace(payload_json, 'EPA NAAQS', 'National standard');
+# rather than a rebuild. Copy only: no RNG draw depends on it.)
+#
+# Severity is Critical, Warning or Watch and nothing else (CONTRACT 10a.7): no
+# action level is ever `info`, which the client does not count as an alert
+# (web/src/core/alerts.ts rule 5). The CO 8-hour standard was `info`; the
+# checked-in database was brought in line with
+#   UPDATE action_level SET severity = 'watch' WHERE label = 'CO 8-hour standard';
+# (no alert row was ever raised from it, so there was nothing else to move).
+# No RNG draw depends on a level's severity.
 _ACTION_LEVELS = [
     ("NO2 1-hour watch", "no2", "spike", 60.0, 1, "watch", "DRAQA local screening"),
-    ("NO2 1-hour standard", "no2", "spike", 100.0, 1, "warning", "EPA NAAQS 1-hr"),
-    ("Ozone 8-hour standard", "o3", "integrated", 70.0, 8, "warning", "EPA NAAQS 8-hr"),
+    ("NO2 1-hour standard", "no2", "spike", 100.0, 1, "warning", "National standard 1-hr"),
+    ("Ozone 8-hour standard", "o3", "integrated", 70.0, 8, "warning", "National standard 8-hr"),
     ("Ozone 8-hour watch", "o3", "integrated", 62.0, 8, "watch", "DRAQA local screening"),
-    ("PM2.5 24-hour standard", "pm25", "integrated", 35.0, 24, "warning", "EPA NAAQS 24-hr"),
+    ("PM2.5 24-hour standard", "pm25", "integrated", 35.0, 24, "warning", "National standard 24-hr"),
     ("PM2.5 24-hour watch", "pm25", "integrated", 25.0, 24, "watch", "DRAQA local screening"),
     ("PM2.5 1-hour spike", "pm25", "spike", 55.0, 1, "watch", "DRAQA local screening"),
     ("Black carbon 1-hour spike", "bc", "spike", 5.0, 1, "watch", "DRAQA local screening"),
     ("Diesel exposure 8-hour", "diesel", "integrated", 3.0, 8, "watch", "DRAQA local screening"),
     ("Methane leak screening", "ch4", "spike", 5.0, 1, "watch", "DRAQA leak screening"),
-    ("CO 8-hour standard", "co", "integrated", 9.0, 8, "info", "EPA NAAQS 8-hr"),
+    ("CO 8-hour standard", "co", "integrated", 9.0, 8, "watch", "National standard 8-hr"),
 ]
 
 

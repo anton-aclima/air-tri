@@ -62,10 +62,15 @@ FLEET_AT_FENCE = (
     "sensors for the same hours."
 )
 
-#: The generator's combustion line for NO2: the one on the checked-in build
-#: names a datacentre's equipment whatever the site is (it was printed to a
-#: truck terminal), and the site-neutral one narrative.py writes now.
+#: The generator's line for a reference monitor's NO2 alert, which the
+#: industry room words for its own site. In order: the agency-facing one
+#: narrative.py writes now (phase 5 — the regulator reads this alert first, so
+#: it points at the evidence, not at an operator), the runtime scenario's
+#: (domain.evaluate_action_level), and two older builds' — one named a datacentre's
+#: equipment whatever the site was.
 _GENERIC_NO2 = (
+    "Read it against the wind and the fleet's street passes for these hours before tying it to a source.",
+    "Read it against the wind, the fleet's street passes and the fenceline ring before the next hourly average closes.",
     "Check generator and turbine load for this window.",
     "Check what was burning on site in this window.",
 )

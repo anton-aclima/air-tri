@@ -1,0 +1,163 @@
+/* /regulator/alerts (Alerts.tsx). Title · duration · the list, in one column;
+   the detail is a side sheet, so there is no second column to collapse at
+   1080. Only the list scrolls (the regulator's <main> does not). Sentence
+   case below the panel titles, and every colour a token. */
+
+.page {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--s-2);
+  padding: var(--s-3);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+/* The detail open beside the list (a non-modal Sheet, fixed to the right
+   edge). Where both fit — a row reads at ~600px — the list gives up the
+   sheet's width; narrower, the sheet covers the rows' right-hand columns and
+   the rest stays readable and clickable. 460px is `.sheet`'s --panel-w below:
+   the sheet is portalled to <body>, so it cannot inherit one from here. */
+@media (min-width: 1280px) {
+  .pageBeside { padding-inline-end: calc(460px + var(--s-3)); }
+}
+
+.hint { font-size: var(--text-2xs); color: var(--ink-3); white-space: nowrap; }
+
+/* ─────────────────────────────────────────────────────────────── rows */
+.list { display: flex; flex-direction: column; }
+
+/* sev | who | what (two lines) | state (two lines). The state column holds
+   "ongoing · 1 d 11 h" (18 characters at 12px, ~130px) and "3 not
+   acknowledged" under it. */
+.row {
+  display: grid;
+  grid-template-columns: 92px 128px minmax(0, 1fr) minmax(136px, auto);
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 48px;
+  padding: 6px var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.row:hover { background: var(--surface-2); }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rowActive { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
+.rowClosed { opacity: 0.78; }
+
+.sev {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.source {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--text-xs); color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.swatch { flex: none; width: 8px; height: 8px; border-radius: 1px; background: var(--ink-3); }
+
+.what { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.whatHead {
+  font-size: var(--text-sm); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.whatSub {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.stateHead, .stateOn {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.stateOn { color: var(--ink); }
+.stateSub { font-size: var(--text-2xs); color: var(--ink-3); white-space: nowrap; }
+
+.fold {
+  display: flex; align-items: center; gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunk);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.fold:hover { color: var(--ink); }
+.fold:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.empty { margin: 0; padding: var(--s-4); text-align: center; font-size: var(--text-xs); color: var(--ink-3); }
+.foot { margin: 0; padding: var(--s-2) var(--s-3); font-size: var(--text-2xs); line-height: 1.45; color: var(--ink-3); }
+/* Live operational news the count leaves out ("Also: Redwing out of
+   service · since …"): one line under the list header, no severity word. */
+.notice {
+  margin: 0; padding: var(--s-2) var(--s-3);
+  font-size: var(--text-2xs); line-height: 1.45; color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ────────────────────────────────────────────────────────────── sheet */
+/* The shared sheet is --panel-w (380px) wide; the trace needs a little more
+   than that to show two days of hours. Set as the variable the sheet already
+   reads, so it wins whichever stylesheet loads first. */
+.sheet { --panel-w: 460px; }
+
+.detail { display: flex; flex-direction: column; gap: var(--s-4); }
+.meta { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; font-size: var(--text-xs); }
+.metaText { color: var(--ink-2); }
+.dot { color: var(--ink-3); }
+.lead { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink); }
+.body { margin: 0; font-size: var(--text-xs); line-height: 1.5; color: var(--ink-2); }
+
+.block { display: flex; flex-direction: column; gap: var(--s-2); }
+.blockHead { margin: 0; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--ink-2); }
+
+.epList { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.epRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 56px 112px;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 30px;
+  padding: 4px var(--s-2);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.epRow:hover { background: var(--surface-2); }
+.epRow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.epRowOn { background: var(--surface-raised); box-shadow: inset 2px 0 0 var(--accent); }
+.epWhen, .epVal {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.epVal { text-align: right; }
+.epState { font-size: var(--text-2xs); color: var(--ink-3); text-align: right; white-space: nowrap; }
+
+.actRow { display: flex; align-items: center; gap: var(--s-2); }

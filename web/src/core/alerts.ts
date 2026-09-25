@@ -45,8 +45,24 @@
  *      industry a model alert, or one with no bearing from the site, is a
  *      NOTICE — returned in `notices`, never in `count` — and one past the
  *      deck's reach (`INDUSTRY_NEAR_M`) is not the room's. The regulator and
- *      admin rooms count everything the server sends them, as before: the
+ *      admin rooms count everything else the server sends them: the
  *      regulator's Alerts page lists the study alert as a row.
+ *   5. `info` is not an alert now, in any room (phase 5 follow-up). The
+ *      level exists for operational news — the one in the data
+ *      is the fleet_anomaly "Redwing out of service" (al-fleet-00, Aug 27
+ *      16:33, no end) — which is true and worth a line, but nothing on the
+ *      network is over anything because of it. Counted, it was one of the
+ *      regulator's "ongoing" at the end of the data (measured in phase 5:
+ *      the 4th of 6), beside real exceedances. So an ongoing info alert goes
+ *      to `notices`, never to `alerts`, `all`, `count`, `bySeverity` or
+ *      `worst`; `bySeverity.info` is therefore always 0.
+ *
+ * Mobile detections stay ongoing with no `ended_at`, and that is deliberate:
+ * a fleet detection is a standing finding — a car measured an excess on a
+ * street and nothing has measured that street clean since — not an episode
+ * with a clock on it. It stops being ongoing when the data gives it an end;
+ * this hook never invents one. They remain in the count (in phase 5, 3 of the
+ * regulator's ongoing at the end of the data).
  *
  * Severity has one vocabulary in every room — Critical / Warning / Watch
  * (`SEVERITY_LABEL`, CONTRACT §10a.7) — so `bySeverity` is keyed by the
@@ -67,14 +83,18 @@ export interface LiveAlerts {
   /** One per live problem at the moment shown, worst first, then newest. */
   alerts: Alert[]
   /**
-   * Live but not counted: industry's site-wide model alerts (the wind-shift
-   * study alert), for a surface that mentions them in one line. Empty in
-   * every other room. Rule 4 in the header.
+   * Live but not counted, for a surface that mentions them in one line:
+   * every room's `info` alerts (rule 5 — the fleet's "Redwing out of
+   * service"), and industry's site-wide model alerts (rule 4 — the wind-shift
+   * study alert). Worst first, then newest.
    */
   notices: Alert[]
   /** `alerts.length`. THE number: every count on screen is this one. */
   count: number
-  /** `alerts` by severity. Every level is present, zero included. */
+  /**
+   * `alerts` by severity. Every level is present, zero included — `info`
+   * too, and it is always 0 (rule 5).
+   */
   bySeverity: Record<Severity, number>
   /** The highest level among `alerts`, or null when nothing is live. */
   worst: Severity | null
@@ -84,6 +104,11 @@ export interface LiveAlerts {
   folded: number
   /** Nothing to count yet: no site locked (industry) or the list is loading. */
   loading: boolean
+  /**
+   * The list could not be read. `count` is then 0 by default, not by
+   * measurement: a surface that prints the number prints a dash instead.
+   */
+  error: boolean
 }
 
 const EMPTY: readonly Alert[] = []
@@ -103,6 +128,14 @@ export const INDUSTRY_NEAR_M = 7000
  */
 export function isSiteWideNotice(a: Alert): boolean {
   return a.source_type === 'model' || a.distance_m == null || a.bearing_deg == null
+}
+
+/**
+ * Operational news rather than a level exceeded — rule 5. Live, shown as a
+ * notice if at all, never counted, in every room.
+ */
+export function isInformational(a: Alert): boolean {
+  return a.severity === 'info'
 }
 
 function emptyBySeverity(): Record<Severity, number> {
@@ -155,10 +188,16 @@ export function useLiveAlerts(role: Role | null): LiveAlerts {
 
   return useMemo(() => {
     const ongoing = data.filter((a) => isOngoing(a, now))
-    const notices = industry ? ongoing.filter(isSiteWideNotice) : []
+    const notice = (a: Alert) => isInformational(a) || (industry && isSiteWideNotice(a))
+    const notices = ongoing.filter(notice).sort(
+      (x, y) =>
+        severityRank(y.severity) - severityRank(x.severity)
+        || campaignMs(y.started_at) - campaignMs(x.started_at),
+    )
+    const counted = ongoing.filter((a) => !notice(a))
     const all = industry
-      ? ongoing.filter((a) => !isSiteWideNotice(a) && (a.distance_m ?? 0) <= INDUSTRY_NEAR_M)
-      : ongoing
+      ? counted.filter((a) => (a.distance_m ?? 0) <= INDUSTRY_NEAR_M)
+      : counted
     const alerts = foldConcurrent(all)
     const bySeverity = emptyBySeverity()
     for (const a of alerts) bySeverity[a.severity] += 1
@@ -172,6 +211,7 @@ export function useLiveAlerts(role: Role | null): LiveAlerts {
       all,
       folded: all.length - alerts.length,
       loading: waiting || q.isPending,
+      error: q.isError,
     }
-  }, [data, now, industry, waiting, q.isPending])
+  }, [data, now, industry, waiting, q.isPending, q.isError])
 }

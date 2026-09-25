@@ -74,6 +74,7 @@ import type {
   Monitor,
   MonitorReadings,
   Org,
+  RegulatorNetwork,
   Role,
   SegmentCollection,
   SegmentDetail,
@@ -125,6 +126,9 @@ export const STALE = {
   envelope: 10 * 60_000,
   touchdown: 10 * 60_000,
   coverage: 30 * 60_000,
+  // Carries the alert count and each monitor's reading at the moment shown —
+  // the same freshness as the alert list it counts.
+  regulatorNetwork: 10_000,
   mobileWind: 2 * 60_000,
   windField: 2 * 60_000,
   dispersionModels: 10 * 60_000,
@@ -150,8 +154,10 @@ export const qk = {
 
   segments: {
     all: ['segments'] as const,
+    /** Keyed on every param sent — `at` too, which only a computed window sends. */
     list: (params: api.SegmentsParams) => ['segments', 'list', params] as const,
-    detail: (id: string) => ['segments', 'detail', id] as const,
+    /** `at` joins the key: the detail is bounded by the moment it is asked at. */
+    detail: (id: string, at?: string) => ['segments', 'detail', id, at ?? null] as const,
   },
 
   monitors: {
@@ -212,6 +218,12 @@ export const qk = {
   coverage: {
     all: ['coverage'] as const,
     mask: (campaignId: string, cellM: number) => ['coverage', campaignId, cellM] as const,
+  },
+
+  regulator: {
+    all: ['regulator'] as const,
+    /** (`at`, `measure`, `streets`): a window switch is a new payload. */
+    network: (params: api.RegulatorNetworkParams) => ['regulator', 'network', params] as const,
   },
 
   posts: {
@@ -443,6 +455,12 @@ export function useCampaignBoundary(
 /**
  * The hero visual. Defaults `measure`/`metric`/`window` to the session so
  * every map in the app paints the same thing unless told otherwise.
+ *
+ * A COMPUTED window (`trailing:<N>h`, `todate` — `api.isComputedWindow`) is
+ * bounded by the moment shown, so for those alone `at` defaults to the clock,
+ * joins the key, and the hook is keyed on the clock like every other (`timed`:
+ * it keeps the previous grid while the next step loads, and waits for the
+ * clock's bounds). A stored window sends no `at` and keeps its old key.
  */
 export function useSegments(
   params: api.SegmentsParams = {},
@@ -451,10 +469,16 @@ export function useSegments(
   const measure = useSession((s) => s.measure)
   const metric = useSession((s) => s.metric)
   const statWindow = useSession((s) => s.statWindow)
+  const time = useSession((s) => s.time)
+  const ready = useClockReady()
+  const win = params.window ?? statWindow
+  const computed = api.isComputedWindow(win)
+  const at = computed ? atFor(params, time) : undefined
   const merged: api.SegmentsParams = {
     measure: params.measure ?? measure,
     metric: params.metric ?? metric,
-    window: params.window ?? statWindow,
+    window: win,
+    ...(at ? { at } : {}),
     ...(params.bbox ? { bbox: params.bbox } : {}),
     ...(params.min_passes != null ? { min_passes: params.min_passes } : {}),
     ...(params.limit != null ? { limit: params.limit } : {}),
@@ -464,20 +488,47 @@ export function useSegments(
     qk.segments.list(merged),
     (signal) => api.getSegments(merged, signal),
     STALE.segments,
-    opts,
+    computed ? timed(ready, {}, opts) : opts,
   )
 }
 
-/** Detail + daily series + 24 h diurnal + per-measure stats for one segment. */
+/**
+ * `placeholderData` for `useSegments` that keeps the previous grid on screen
+ * only while `same(previous params)` holds. `keepPreviousData` keeps ANY
+ * previous grid: after a pollutant switch that was the previous pollutant's
+ * streets under the new pollutant's legend until the new ones landed. Pass
+ * e.g. `(p) => p.measure === code && p.window === w` so a step of the clock
+ * holds the grid and a change of pollutant or window reads as loading.
+ */
+export function keepSegmentsWhile(same: (previous: api.SegmentsParams) => boolean) {
+  return (
+    previous: SegmentCollection | undefined,
+    previousQuery?: { queryKey: readonly unknown[] },
+  ): SegmentCollection | undefined => {
+    // qk.segments.list: ['segments', 'list', params]
+    const params = previousQuery?.queryKey[2] as api.SegmentsParams | undefined
+    return params && same(params) ? previous : undefined
+  }
+}
+
+/**
+ * Detail + daily series + 24 h diurnal + per-measure stats for one segment.
+ * `at` bounds it by the moment shown (a replayed clock's passes stop there);
+ * omitted is the end of the data, and the key is then the one it always was.
+ */
 export function useSegmentDetail(
   id: string | null | undefined,
   opts?: QueryOpts<SegmentDetail>,
+  params: { at?: string } = {},
 ): UseQueryResult<SegmentDetail, Error> {
+  const at = params.at
   return useApiQuery(
-    qk.segments.detail(id ?? ''),
-    (signal) => api.getSegmentDetail(id as string, signal),
+    qk.segments.detail(id ?? '', at),
+    (signal) => api.getSegmentDetail(id as string, at, signal),
     STALE.segmentDetail,
-    { enabled: !!id, ...opts },
+    // No id is never a request, whatever `opts.enabled` says: `/segments/`
+    // with an empty id would ask for something else entirely.
+    { ...opts, enabled: !!id && (opts?.enabled ?? true) },
   )
 }
 
@@ -540,6 +591,7 @@ export function useMonitorReadings(
     from: params.from ?? range.from,
     to: params.to ?? range.to,
     interval: params.interval ?? 'hour',
+    ...(params.limit != null ? { limit: params.limit } : {}),
   }
   return useApiQuery(
     qk.monitors.readings(id ?? '', merged),
@@ -955,6 +1007,38 @@ export function useCalibration(opts?: QueryOpts<Calibration>) {
   )
 }
 
+// ═══════════════════════════════════════════════════ the regulator network
+
+/**
+ * **The regulator's Network screen**, keyed on (`at`, `measure`, `streets`).
+ * `at` defaults to the clock, `measure` to the session's pollutant and
+ * `streets` to `7d` (the server's default, sent so both spellings share a
+ * key); like every hook keyed on the clock it keeps the previous answer on
+ * screen while the next step loads (`TIMED`) and waits for the clock's
+ * bounds, so it never asks about the wall clock's "now". A kept answer can be
+ * for another pollutant or window: check `measure` and `streets_window`.
+ */
+export function useRegulatorNetwork(
+  params: api.RegulatorNetworkParams = {},
+  opts?: QueryOpts<RegulatorNetwork>,
+): UseQueryResult<RegulatorNetwork, Error> {
+  const time = useSession((s) => s.time)
+  const sessionMeasure = useSession((s) => s.measure)
+  const ready = useClockReady()
+  const merged: api.RegulatorNetworkParams = {
+    measure: params.measure ?? sessionMeasure,
+    streets: params.streets ?? '7d',
+    ...(params.campaign_id ? { campaign_id: params.campaign_id } : {}),
+    at: atFor(params, time),
+  }
+  return useApiQuery(
+    qk.regulator.network(merged),
+    (signal) => api.getRegulatorNetwork(merged, signal),
+    STALE.regulatorNetwork,
+    timed(ready, {}, opts),
+  )
+}
+
 // ═════════════════════════════════════════════════════════ mission brief
 
 /** The hour the brief is issued (`brief.ISSUE_HOUR` on the server). */
@@ -1146,21 +1230,39 @@ export function useActivity(
 // Each mutation invalidates the caches the *other* interfaces read from. That
 // is loop #1, #2 and #3 in CONTRACT §1 — do not trim these lists.
 
-/** Broad invalidation groups, reused by mutations and by `core/live.ts`. */
+/**
+ * Broad invalidation groups, reused by mutations and by `core/live.ts`.
+ *
+ * `qk.regulator.all` rides with every group that changes what the regulator's
+ * Network screen summarises: its payload carries the alert count, each
+ * monitor's `over` flag against the action levels, and the resident clusters
+ * inside each plume. Without it a Levels drag, an acknowledgement or a new
+ * report left the Network header on its old answer until the 10 s staleTime
+ * or a clock step — and at the end of the data the clock does not step.
+ */
 export const INVALIDATE = {
-  concern: [qk.concerns.all, qk.clusters.all, qk.feed.all, qk.alerts.all, qk.stats.all, qk.activity.all],
-  alert: [qk.alerts.all, qk.feed.all, qk.stats.all, qk.activity.all],
+  concern: [
+    qk.concerns.all, qk.clusters.all, qk.feed.all, qk.alerts.all, qk.stats.all, qk.activity.all,
+    qk.regulator.all,
+  ],
+  alert: [qk.alerts.all, qk.feed.all, qk.stats.all, qk.activity.all, qk.regulator.all],
   advisory: [qk.advisories.all, qk.feed.all, qk.stats.all, qk.activity.all],
   post: [qk.posts.all, qk.feed.all, qk.activity.all],
-  mitigation: [qk.posts.all, qk.feed.all, qk.concerns.all, qk.alerts.all, qk.sites.all, qk.activity.all],
-  actionLevel: [qk.actionLevels.all, qk.alerts.all, qk.advisories.all, qk.feed.all, qk.activity.all],
+  mitigation: [
+    qk.posts.all, qk.feed.all, qk.concerns.all, qk.alerts.all, qk.sites.all, qk.activity.all,
+    qk.regulator.all,
+  ],
+  actionLevel: [
+    qk.actionLevels.all, qk.alerts.all, qk.advisories.all, qk.feed.all, qk.activity.all,
+    qk.regulator.all,
+  ],
   fleet: [qk.fleet.all],
   everything: [
     qk.bootstrap, qk.segments.all, qk.monitors.all, qk.concerns.all, qk.clusters.all,
     qk.sites.all, qk.posts.all, qk.advisories.all, qk.alerts.all, qk.actionLevels.all,
     qk.feed.all, qk.fleet.all, qk.drivePlan.all, qk.wind.all, qk.stats.all, qk.activity.all,
     qk.touchdown.all, qk.coverage.all, qk.envelope.all, qk.climatology.all,
-    qk.coverageAnalysis.all,
+    qk.coverageAnalysis.all, qk.regulator.all,
   ],
 } as const
 
@@ -1270,10 +1372,20 @@ export function useUpdateActionLevel(): UseMutationResult<
   Error,
   { id: string; body: api.ActionLevelBody }
 > {
+  const qc = useQueryClient()
   const invalidate = useInvalidator()
   return useMutation({
     mutationFn: ({ id, body }) => api.updateActionLevel(id, body),
-    onSuccess: () => invalidate(INVALIDATE.actionLevel),
+    // The returned row goes into the list before the refetch. Invalidating
+    // alone left the old row in the cache for a round trip, so a screen that
+    // drops its optimistic draft on success (Thresholds) snapped the slider
+    // back to the old level until the refetch landed.
+    onSuccess: (level) => {
+      const { evaluation: _evaluation, ...row } = level as ActionLevel & { evaluation?: unknown }
+      qc.setQueryData<ActionLevel[]>(qk.actionLevels.all, (prev) =>
+        prev?.map((x) => (x.id === row.id ? { ...x, ...row } : x)))
+      invalidate(INVALIDATE.actionLevel)
+    },
   })
 }
 

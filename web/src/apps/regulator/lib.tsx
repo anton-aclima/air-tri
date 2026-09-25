@@ -1,28 +1,30 @@
 /**
- * regulator/lib — the pieces every watchtower screen shares.
+ * regulator/lib — the pieces the agency's screens share.
  *
- * The regulator's whole interface is two questions: "what is over the line?"
- * and "how far past my towers can I actually see?". The helpers here answer the
- * second one from the data rather than from prose — the reference network's
- * measure list and coverage radii are facts on the wire, so the gap between
- * what DRAQA can sense and what the fleet senses is arithmetic, not a claim.
+ * The regulator's interface answers three questions in order (owner,
+ * 2026-09-23): what the reference monitors report, what the fleet's streets
+ * add between them and where each site's plume is modelled to go, and where
+ * residents are reporting. The helpers here keep those answers on the data
+ * rather than in prose — the reference network's channel list and radii are
+ * facts on the wire, so the gap between what DRAQA's monitors carry and what
+ * the fleet measures is arithmetic, not a claim.
  */
 
 import { useMemo } from 'react'
-import type { ReactNode } from 'react'
 
-import { SEVERITY_GLYPH, haversine } from '@/components'
-import type { TimelineAlert } from '@/components'
+import { haversine } from '@/components'
+import type { SegmentFeature } from '@/components'
+import { STREETS_WINDOW_HOURS } from '@/core/api'
 import { addHours, campaignMs, floorTo } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
-import { hasStarted, isOngoing } from '@/core/events'
-import { fmtDuration, fmtNum, relativeShort, relativeTime } from '@/core/format'
-import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
-import { useBootstrap, useMonitors, useSegments } from '@/core/queries'
+import { happenedBy } from '@/core/events'
+import { fmtDay, fmtTime24 } from '@/core/format'
+import { severityRank } from '@/core/measures'
+import { useBootstrap, useMonitors } from '@/core/queries'
 import { useNowCampaign } from '@/core/session'
 import type {
-  ActionLevel, Alert, MeasureCode, MeasureDef, Monitor, Position,
-  SegmentCollection, Severity,
+  ActionLevel, Concern, ConcernCluster, MeasureCode, MeasureDef, Monitor, Position,
+  RegulatorNetworkPlume, RegulatorStreetsWindow, StreetsWindow, TouchdownState,
 } from '@/core/types'
 
 import s from './regulator.module.css'
@@ -48,19 +50,107 @@ export function useStableWindow(hours = 24, bucketMin = 5): { from: CampaignTime
   }, [now, bucketMin, hours])
 }
 
-// ───────────────────────────────────────────────────────── the towers
+// ─────────────────────────────────────────────────── the street window
 
-/** DRAQA's own reference-grade network. These are the towers. */
+/**
+ * The Network's street window, in the words the screen prints (F2, F4). ONE
+ * window, ending at the moment shown, for the coloured streets on the map
+ * and for every street figure in the panel and the header — so no line needs
+ * a "whole day" or a "by 06:00" to explain why the map and a count disagree.
+ */
+export const STREETS_WINDOWS: readonly { value: StreetsWindow; label: string; title: string }[] = [
+  { value: '24h', label: '24 h', title: 'Streets measured in the 24 hours to the moment shown' },
+  { value: '7d', label: '7 d', title: 'Streets measured in the 7 days to the moment shown' },
+  { value: 'todate', label: 'To date', title: 'Every street measured up to the moment shown' },
+]
+
+/** "24 h", "7 days"; null for `todate`, which has no length. */
+function spanOf(kind: StreetsWindow): string | null {
+  return kind === '24h' ? '24 h' : kind === '7d' ? '7 days' : null
+}
+
+/** "Aug 25 06:00": a window's end, in campaign time. */
+export function stampOf(t: CampaignTime): string {
+  return `${fmtDay(t)} ${fmtTime24(t)}`
+}
+
+/** "7 days to Aug 25 06:00", "to Aug 25 06:00". */
+export function windowPhrase(kind: StreetsWindow, at: CampaignTime): string {
+  const span = spanOf(kind)
+  return span ? `${span} to ${stampOf(at)}` : `to ${stampOf(at)}`
+}
+
+/**
+ * The window relative to a moment the sentence already names ("At 06:00 …"):
+ * "in the last 24 h", "in the last 7 days", "to date".
+ */
+export function windowRelative(kind: StreetsWindow): string {
+  const span = spanOf(kind)
+  return span ? `in the last ${span}` : 'to date'
+}
+
+/** The street key's title: "Measured, 7 days to Aug 25 06:00" / "Measured to Aug 25 06:00". */
+export function windowTitle(kind: StreetsWindow, at: CampaignTime): string {
+  return spanOf(kind) ? `Measured, ${windowPhrase(kind, at)}` : `Measured ${windowPhrase(kind, at)}`
+}
+
+/**
+ * The header number's label, short for the R9 budget: "street-km measured,
+ * 7 days to 13:54". `todate` says "to date": at a replayed moment that is up
+ * to the moment shown, which every header number already is.
+ */
+export function windowKmLabel(kind: StreetsWindow, at: CampaignTime): string {
+  const span = spanOf(kind)
+  return span ? `street-km measured, ${span} to ${fmtTime24(at)}` : 'street-km measured to date'
+}
+
+/**
+ * A window with no pass in it, said as such rather than as an empty ramp:
+ * "No NO2 passes in the 7 days to Aug 24 06:00 · last one Aug 15 20:30". Said
+ * for the pollutant, not for the driving: the server judges a window empty
+ * per pollutant, so a window whose every pass had this pollutant invalid is
+ * empty although the fleet drove it. `label` is the measure's short name. The
+ * fleet drives day shifts Monday to Saturday with an off-week (61 of ~90
+ * days have driving, none Aug 16–23), so a trailing 24 h is often empty.
+ */
+export function emptyWindowLine(
+  kind: StreetsWindow, at: CampaignTime, lastPass: CampaignTime | null, label: string,
+): string {
+  const span = spanOf(kind)
+  const head = span
+    ? `No ${label} passes in the ${span} to ${stampOf(at)}`
+    : `No ${label} passes up to ${stampOf(at)}`
+  return lastPass ? `${head} · last one ${stampOf(lastPass)}` : head
+}
+
+/**
+ * Is this payload's `streets_window` the window asked for? Judged on the
+ * length, so it holds whatever `kind` spells. A payload kept on screen
+ * (`TIMED`) from before a window switch fails it: its street figures belong
+ * to the other window and are not printed under this one's label.
+ */
+export function isStreetsWindow(w: RegulatorStreetsWindow | null | undefined, kind: StreetsWindow): boolean {
+  return !!w && (w.hours ?? null) === STREETS_WINDOW_HOURS[kind]
+}
+
+/**
+ * The window holds no pass: none at or before its end, or none after its
+ * start. Either window shape — the network payload's `streets_window` or a
+ * computed `/segments` body's `window` — carries the two fields it reads.
+ */
+export function windowIsEmpty(w: Pick<RegulatorStreetsWindow, 'from' | 'last_pass_at'>): boolean {
+  if (!w.last_pass_at) return true
+  return w.from != null && campaignMs(w.last_pass_at) <= campaignMs(w.from)
+}
+
+// ─────────────────────────────────────────────── the reference monitors
+
+/**
+ * DRAQA's own reference-grade network. (Named `useTowers` in code — the tower
+ * glyph stays on the map; the copy says "reference monitors", D10.)
+ */
 export function useTowers() {
   return useMonitors({ owner_type: 'regulator' })
-}
-
-export function monitorPos(m: Monitor): Position {
-  return [m.lon, m.lat]
-}
-
-export const MONITOR_STATUS_LABEL: Record<string, string> = {
-  online: 'ONLINE', degraded: 'DEGRADED', offline: 'OFFLINE', maintenance: 'MAINT',
 }
 
 /**
@@ -81,123 +171,168 @@ export function towersFor(towers: Monitor[] | undefined, measure: MeasureCode): 
   return (towers ?? []).filter((m) => m.measures.includes(measure))
 }
 
-// ──────────────────────────────────────────────────────── reach & coverage
-
-export interface Reach {
-  /** Road segments whose midpoint falls inside at least one tower's radius. */
-  inside: number
-  outside: number
-  total: number
-  kmInside: number
-  kmOutside: number
-  /** Per-tower: what the instrument reads, and the spread of the streets it stands for. */
-  perTower: TowerReach[]
-}
-
-export interface TowerReach {
-  monitor: Monitor
-  segments: number
-  km: number
-  lo: number | null
-  mid: number | null
-  hi: number | null
-  /** The tower's own latest number for this measure, if it carries the channel. */
-  towerValue: number | null
-  /** hi / towerValue — how much the single number flattens. */
-  spread: number | null
-}
+// ─────────────────────────────────────────────────── a monitor's ring
 
 function segMid(coords: Position[]): Position {
   return coords[Math.floor(coords.length / 2)] ?? coords[0]
 }
 
 /**
- * How far past the towers the fleet actually reaches, and how much detail is
- * lost inside a coverage ring. Both halves of the argument in one pass: the
- * streets beyond the edge that nothing stationary can see, and the 3× spread of
- * street values that one tower number stands in for.
+ * The streets whose midpoint falls inside a monitor's representativeness ring
+ * (`radius_m`). The one geometry the monitor detail compares against: the
+ * streets highlighted on the map are exactly the streets in the range printed
+ * beside the monitor's own number.
  */
-export function computeReach(
-  segments: SegmentCollection | undefined,
-  towers: Monitor[] | undefined,
-  measure: MeasureCode,
-): Reach {
-  const empty: Reach = { inside: 0, outside: 0, total: 0, kmInside: 0, kmOutside: 0, perTower: [] }
-  const feats = segments?.features ?? []
-  const mons = towers ?? []
-  if (!feats.length || !mons.length) return empty
-
-  const buckets = new Map<string, { vals: number[]; km: number }>()
-  for (const m of mons) buckets.set(m.id, { vals: [], km: 0 })
-
-  let inside = 0
-  let kmInside = 0
-  let kmTotal = 0
-  for (const f of feats) {
-    const km = (f.properties.length_m ?? 0) / 1000
-    kmTotal += km
-    const mid = segMid(f.geometry.coordinates)
-    let covered = false
-    for (const m of mons) {
-      const r = m.radius_m ?? 0
-      if (r <= 0) continue
-      if (haversine(mid, [m.lon, m.lat]) <= r) {
-        covered = true
-        const b = buckets.get(m.id)
-        if (b) {
-          b.km += km
-          if (f.properties.value != null) b.vals.push(f.properties.value)
-        }
-      }
-    }
-    if (covered) { inside += 1; kmInside += km }
-  }
-
-  const perTower: TowerReach[] = mons.map((m) => {
-    const b = buckets.get(m.id) ?? { vals: [], km: 0 }
-    const v = [...b.vals].sort((a, c) => a - c)
-    const towerValue = m.measures.includes(measure) ? (m.latest?.[measure]?.value ?? null) : null
-    const hi = v.length ? v[v.length - 1] : null
-    return {
-      monitor: m,
-      segments: v.length,
-      km: b.km,
-      lo: v.length ? v[0] : null,
-      mid: v.length ? v[Math.floor(v.length / 2)] : null,
-      hi,
-      towerValue,
-      spread: hi != null && towerValue != null && towerValue > 0 ? hi / towerValue : null,
-    }
-  })
-
-  return {
-    inside,
-    outside: feats.length - inside,
-    total: feats.length,
-    kmInside,
-    kmOutside: kmTotal - kmInside,
-    perTower,
-  }
+export function streetsInRing(
+  features: readonly SegmentFeature[] | undefined,
+  m: { lon: number; lat: number; radius_m: number | null },
+): SegmentFeature[] {
+  const r = m.radius_m ?? 0
+  if (r <= 0 || !features?.length) return []
+  const at: Position = [m.lon, m.lat]
+  return features.filter((f) => haversine(segMid(f.geometry.coordinates), at) <= r)
 }
 
-export function useReach(measure: MeasureCode): { reach: Reach; segments: SegmentCollection | undefined } {
-  const towers = useTowers().data
-  const segs = useSegments({ measure, metric: 'p90', window: 'all' }).data
-  const reach = useMemo(() => computeReach(segs, towers, measure), [segs, towers, measure])
-  return { reach, segments: segs }
+/** The middle value, or null for an empty list. Even counts average the pair. */
+export function median(values: readonly number[]): number | null {
+  const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b)
+  if (!v.length) return null
+  const mid = Math.floor(v.length / 2)
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2
+}
+
+/**
+ * A place name short enough for a map label: "Riverport Rd", "West Shelby Dr".
+ * The panel prints the full name; the map has 40 px between the Riverport
+ * Road monitor and the Riverport site, and every character there is a
+ * collision (PLAN-refocus R3's own example reads "Riverport Rd 10.6").
+ */
+export function shortPlace(name: string): string {
+  return name
+    .replace(/\bRoad\b/g, 'Rd')
+    .replace(/\bAvenue\b/g, 'Ave')
+    .replace(/\bDrive\b/g, 'Dr')
+    .replace(/\bStreet\b/g, 'St')
+    .replace(/\bBoulevard\b/g, 'Blvd')
+}
+
+/** Words that describe a facility rather than name its operator. */
+const FACILITY_WORDS = new Set([
+  'north', 'south', 'east', 'west', 'campus', 'terminal', 'intermodal', 'channel', 'avenue',
+  'works', 'plant', 'facility', 'site', 'yard', 'center', 'centre',
+])
+
+/**
+ * A site's short name for a map label and a panel line: the words before the
+ * first facility word — "Ridgeline", "Riverport", "Delta Forge". "Delta Forge
+ * Channel Avenue Works" was 32 characters of mono across the Harbor Avenue
+ * monitor, and five of the page's ~120-word budget (R9). The full name stays
+ * in the detail. Falls back to the whole name when it starts with one.
+ */
+export function shortSite(name: string): string {
+  const words = name.split(/\s+/)
+  const cut = words.findIndex((w) => FACILITY_WORDS.has(w.toLowerCase()))
+  return cut > 0 ? words.slice(0, cut).join(' ') : name
+}
+
+// ───────────────────────────────────────────────────────── the plumes
+
+/**
+ * Does this site's modelled outline touch anything the regulator can check —
+ * a reference monitor (inside the solid part only), a street the fleet drove
+ * in the street window, or an open resident cluster? Only those sites get an
+ * axis, a label and a Plumes row (R2): three full cones with axes and dashed
+ * tails over one map is the busy map the owner objected to, and a plume over
+ * nothing anyone measured has nothing to say yet.
+ */
+export function plumeTouches(p: RegulatorNetworkPlume): boolean {
+  return p.touches.monitor_ids.length > 0
+    || p.touches.streets_driven > 0
+    || p.touches.open_cluster_ids.length > 0
+}
+
+/**
+ * The coverage floor (P6-E): fewer streets than this inside an outline's solid
+ * part and nothing is said about the streets there. The server's
+ * `network.COVERAGE_FLOOR_STREETS` — it sets `below_coverage_floor` from the
+ * same 8 — and the payload does not carry it, so it is written here once.
+ */
+export const COVERAGE_FLOOR_STREETS = 8
+
+/**
+ * Why a plume's streets say nothing, or null when they may. Two different
+ * reasons, said differently: an outline over too few streets can never be
+ * judged by driving it more ("its outline covers only 5 streets — too few to
+ * say"); an outline over enough streets that the fleet did not drive enough
+ * of can ("not enough of this area was driven to say").
+ */
+export function plumeCoverageLine(p: RegulatorNetworkPlume): string | null {
+  const inside = p.streets_inside
+  if (inside < COVERAGE_FLOOR_STREETS) {
+    const n = inside === 0 ? 'no streets' : `only ${inside} ${inside === 1 ? 'street' : 'streets'}`
+    return `its outline covers ${n} — too few to say`
+  }
+  return p.below_coverage_floor ? 'not enough of this area was driven to say' : null
+}
+
+/**
+ * The measured downwind test, as a sentence per state. Figures are printed
+ * ONLY for `elevated_downwind` (CONTRACT §10a.4): Delta Forge's 1.8 ppb with a
+ * CI and a sample size was printed for a stratum whose rotated bearings came
+ * within 0.73 of it — a number for a test it failed.
+ */
+export const TOUCHDOWN_SENTENCE: Record<TouchdownState, string> = {
+  elevated_downwind: 'measured downwind excess · passed the rotation check',
+  no_detection: 'measured, inside the noise',
+  contested: 'a rotated bearing matched it',
+  insufficient_passes: 'not enough to say',
+  not_measured: 'not enough to say',
+}
+
+export function touchdownSentence(state: string | null | undefined): string {
+  return (state && (TOUCHDOWN_SENTENCE as Record<string, string>)[state]) ?? 'not enough to say'
+}
+
+// ──────────────────────────────────────────────────────── resident reports
+
+/**
+ * The reports as they stood at the demo's now. Replay rewinds events too
+ * (docs/PLAN-refocus.md D2): a report is drawn once it was filed, and a
+ * cluster only once one of its reports was, with its count and "last" taken
+ * from the reports filed by then. The stored row carries the cluster's final
+ * count, which in replay is the future.
+ */
+export function reportsAsOf(
+  allConcerns: Concern[] | undefined,
+  allClusters: ConcernCluster[] | undefined,
+  now: CampaignTime,
+): { concerns: Concern[]; clusters: ConcernCluster[] } {
+  const concerns = happenedBy(allConcerns, now)
+  const at = campaignMs(now)
+  const begun = (allClusters ?? []).filter((g) => campaignMs(g.first_at) <= at)
+  // Until the reports load there are no members to count from.
+  if (!allConcerns) return { concerns, clusters: begun }
+  const members = new Map<string, { count: number; last: string }>()
+  for (const c of concerns) {
+    if (!c.cluster_id) continue
+    const m = members.get(c.cluster_id)
+    if (!m) members.set(c.cluster_id, { count: 1, last: c.occurred_at })
+    else {
+      m.count += 1
+      if (campaignMs(c.occurred_at) > campaignMs(m.last)) m.last = c.occurred_at
+    }
+  }
+  const clusters = begun.flatMap((g) => {
+    const m = members.get(g.id)
+    if (!m) return []
+    return m.count === g.count ? [g] : [{ ...g, count: m.count, last_at: m.last }]
+  })
+  return { concerns, clusters }
 }
 
 // ──────────────────────────────────────────────────────── action levels
 
-export const KIND_LABEL: Record<ActionLevel['kind'], string> = {
-  spike: 'Magnitude spike',
-  integrated: 'Integrated exposure',
-}
-export const KIND_CODE: Record<ActionLevel['kind'], string> = {
-  spike: 'SPIKE', integrated: 'INTEG',
-}
-
-/** Sort the tripwires the way an operator reads them: worst rule first. */
+/** Sort the action levels the way the agency reads them: worst rule first. */
 export function sortLevels(levels: ActionLevel[]): ActionLevel[] {
   return [...levels].sort(
     (a, b) =>
@@ -221,167 +356,6 @@ export function sliderRange(level: ActionLevel, seeded: number): [number, number
 
 export function levelUnit(level: ActionLevel): string {
   return level.unit === 'ug/m3' ? 'µg/m³' : level.unit
-}
-
-// ───────────────────────────────────────────────────────── alert helpers
-
-/**
- * Live = begun and not yet ended at the demo's now (`isOngoing`). Not
- * `status in {active, acknowledged}`: at the end of the checked-in data nine
- * of the fifteen alerts carrying those statuses had already ended, 31 h to
- * 4.3 d earlier — one-hour NO2 exceedances counted as live for days. An
- * acknowledged alert that is still running stays live: acknowledging is not
- * ending.
- */
-export function liveAlerts(alerts: Alert[] | undefined, now: CampaignTime): Alert[] {
-  return (alerts ?? []).filter((a) => isOngoing(a, now))
-}
-
-/** Statuses that leave an alert waiting on the agency after it has ended. */
-const OPEN_STATUSES = new Set(['active', 'acknowledged'])
-
-/**
- * The queue: everything live, plus anything that has ended but was never
- * resolved — an exceedance that ended unacknowledged three days ago is still
- * the operator's to acknowledge. Nothing that began after the demo's now. The
- * status is the row's final one (core/events), so in replay this is
- * approximate and the time half is exact.
- */
-export function queueAlerts(alerts: Alert[] | undefined, now: CampaignTime): Alert[] {
-  return (alerts ?? []).filter(
-    (a) => isOngoing(a, now) || (hasStarted(a, now) && OPEN_STATUSES.has(a.status)),
-  )
-}
-
-/** Ended by the demo's now. In replay an alert can end after the moment shown. */
-function endedBy(a: Alert, now: CampaignTime): boolean {
-  return !!a.ended_at && campaignMs(a.ended_at) <= campaignMs(now)
-}
-
-/**
- * How long an alert is — or was — up, as of the demo's now. `short` fits the
- * queue's age column, `long` is the sentence for a tooltip.
- *
- * Every row used to be measured from `started_at`, so Riverport Road's
- * one-hour Aug 25 NO2 exceedance read "up for 29d" (from the wall clock), and
- * would still read "3d" from the demo's now. An ended alert's duration is its
- * own start to its own end; its age is how long since it ended.
- */
-export function alertSpan(a: Alert, now: CampaignTime): { short: string; long: string; ongoing: boolean } {
-  if (endedBy(a, now)) {
-    const end = a.ended_at as string
-    const ago = relativeShort(end, now)
-    return {
-      short: ago === 'now' ? 'ended now' : `ended ${ago}`,
-      long: `Was up ${fmtDuration(campaignMs(end) - campaignMs(a.started_at))}, ended ${relativeTime(end, now)}`,
-      ongoing: false,
-    }
-  }
-  const up = relativeShort(a.started_at, now)
-  return {
-    short: up === 'now' ? 'just up' : `up ${up}`,
-    long: `Up for ${fmtDuration(campaignMs(now) - campaignMs(a.started_at))}`,
-    ongoing: true,
-  }
-}
-
-/**
- * An alert as a duration-timeline row, seen from the demo's now: an end that
- * falls after now has not happened yet, so the bar is drawn open, not closed
- * at a moment the screen has not reached.
- */
-export function timelineRow(a: Alert, now: CampaignTime, label: string): TimelineAlert {
-  return {
-    id: a.id,
-    label,
-    code: tinyCode(a),
-    severity: a.severity,
-    startedAt: a.started_at,
-    endedAt: endedBy(a, now) ? a.ended_at : null,
-    acknowledged: a.status === 'acknowledged',
-  }
-}
-
-/**
- * When an action level was last set, without reading the future: the edit
- * stamp is the build instant (or a live edit's, which is the same instant), so
- * in replay it lies after the moment on screen and an age would be invented.
- * A stamp after `now` is an edit that had not happened yet, so the level reads
- * as it was issued. Printing the stamp instead put "SET 28 AUG 13:54" on every
- * one of the 11 levels at Aug 12 — a date the page had not reached.
- */
-export function levelSetWhen(level: ActionLevel, now: CampaignTime): string {
-  if (!level.updated_at || campaignMs(level.updated_at) > campaignMs(now)) return 'as issued'
-  return `set ${relativeTime(level.updated_at, now)}`
-}
-
-export const SOURCE_LABEL: Record<string, string> = {
-  monitor: 'STATION', mobile: 'FLEET', community: 'RESIDENT', regulator: 'DRAQA', model: 'MODEL',
-}
-
-/** A monitor-sourced alert is only "one of ours" if the instrument is ours. */
-export function sourceTag(a: Alert, towerIds: Set<string>): 'tower' | 'fenceline' | 'fleet' | 'community' | 'model' {
-  if (a.source_type === 'mobile') return 'fleet'
-  if (a.source_type === 'community') return 'community'
-  if (a.source_type === 'model') return 'model'
-  if (a.source_type === 'monitor') return towerIds.has(a.source_id ?? '') ? 'tower' : 'fenceline'
-  return 'model'
-}
-
-export const SOURCE_TAG_LABEL: Record<string, string> = {
-  tower: 'TOWER', fenceline: 'FENCE', fleet: 'FLEET', community: 'RESIDENT', model: 'MODEL',
-}
-
-/** Value ÷ threshold. The one number that says how far over the line it is. */
-export function overBy(a: Alert): number | null {
-  if (a.value == null || a.threshold == null || a.threshold === 0) return null
-  return a.value / a.threshold
-}
-
-/** <=10 chars, for the alert-timeline label gutter. */
-/** Kind → a stable short code, for alerts that name no instrument. */
-const KIND_SHORT: Record<string, string> = {
-  exceedance: 'EXCD',
-  integrated_exposure: 'EXPO',
-  concern_cluster: 'CLUSTER',
-  mobile_detection: 'MOBILE',
-  fleet_anomaly: 'FLEET',
-  wind_shift: 'MODEL',
-  regulatory_notice: 'NOTICE',
-}
-
-/**
- * A short code for the timeline gutter.
- *
- * The place half only comes from the title when the title actually names an
- * instrument — a monitor exceedance reads "… exceeded at Riverport Road", and
- * "Riverport" is a genuinely useful six characters. Everything else falls back
- * to the alert's *kind*, which is a field rather than prose.
- *
- * The previous version took the first word of whatever the title happened to
- * say, for every alert. That is fine until the copy changes, at which point the
- * gutter fills with "BC HIGHES", "CH4 METHAN", "MEASUR" and a code that is
- * literally "6" — each one looking like a spelling mistake rather than an
- * abbreviation. A code has to survive a copy edit.
- */
-export function tinyCode(a: Alert): string {
-  const where = shortWhere(a)
-  const fence = /fenceline\s+([NSEW]{1,2})$/i.exec(where)
-  const namesInstrument = / at /i.test(a.title)
-  const place = fence
-    ? `RL-${fence[1].toUpperCase()}`
-    : namesInstrument
-      ? where.split(/\s+/)[0].slice(0, 6).toUpperCase()
-      : (KIND_SHORT[a.kind] ?? a.kind.slice(0, 6).toUpperCase())
-  return a.measure ? `${a.measure.toUpperCase()} ${place}` : place
-}
-
-export function shortWhere(a: Alert): string {
-  return a.title
-    .replace(/^.* at /i, '')
-    .replace(/^Mobile monitoring peak on /i, '')
-    .replace(/^Community concern cluster · /i, '')
-    .replace(/^Observed wind diverges from /i, '')
 }
 
 // ──────────────────────────────────────────────────────── diurnal binning
@@ -443,122 +417,13 @@ export function useMeasureMap(): Map<MeasureCode, MeasureDef> {
 }
 
 // ────────────────────────────────────────────────────────── presentational
-
-export function Caps({ children, tone }: { children: ReactNode; tone?: 'ink' | 'accent' }) {
-  const cls = tone === 'ink' ? `${s.caps} ${s.capsInk}` : tone === 'accent' ? `${s.caps} ${s.capsAccent}` : s.caps
-  return <span className={cls}>{children}</span>
-}
-
-export function Tag({
-  tone, children, title,
-}: {
-  tone?: 'tower' | 'fleet' | 'invader' | 'accent' | 'community'
-  children: ReactNode
-  title?: string
-}) {
-  const map = {
-    tower: s.tagTower, fleet: s.tagFleet, invader: s.tagInvader,
-    accent: s.tagAccent, community: s.tagCommunity,
-  } as const
-  return <span className={tone ? `${s.tag} ${map[tone]}` : s.tag} title={title}>{children}</span>
-}
-
-export function Readout({
-  label, value, unit, tone, big, title,
-}: {
-  label: ReactNode
-  value: ReactNode
-  unit?: ReactNode
-  tone?: 'over' | 'tower' | 'fleet' | 'accent'
-  big?: boolean
-  title?: string
-}) {
-  const color =
-    tone === 'over' ? 'var(--invader)'
-      : tone === 'tower' ? 'var(--tower)'
-        : tone === 'fleet' ? 'var(--fleet)'
-          : tone === 'accent' ? 'var(--accent)'
-            : undefined
-  return (
-    <div className={s.readout} title={title}>
-      <span className={`${s.readoutValue}${big ? ` ${s.readoutBig}` : ''}`} style={{ color }}>
-        {value}
-        {unit ? <span className={s.readoutUnit}>{unit}</span> : null}
-      </span>
-      <Caps>{label}</Caps>
-    </div>
-  )
-}
-
-export function Panel({
-  title, aside, children, className, bodyClass, flat,
-}: {
-  title?: ReactNode
-  aside?: ReactNode
-  children: ReactNode
-  className?: string
-  bodyClass?: string
-  flat?: boolean
-}) {
-  return (
-    <section className={[s.panel, flat ? s.panelFlat : '', className ?? ''].filter(Boolean).join(' ')}>
-      {title ? (
-        <header className={s.panelHead}>
-          <Caps tone="ink">{title}</Caps>
-          <span className={s.spacer} />
-          {aside}
-        </header>
-      ) : null}
-      <div className={[s.panelBody, bodyClass ?? ''].filter(Boolean).join(' ')}>{children}</div>
-    </section>
-  )
-}
-
-/** Severity as glyph + word + colour. Never colour alone. */
-export function Sev({ severity }: { severity: Severity }) {
-  return (
-    <span className={s.sev} style={{ color: severityVar(severity) }}>
-      {SEVERITY_GLYPH[severity]} {SEVERITY_LABEL[severity].toUpperCase()}
-    </span>
-  )
-}
-
-/**
- * The tripwire bar. The threshold is pinned at a fixed fraction of the track so
- * every rule's line sits in the same place down the column — the eye compares
- * the *overshoot*, not the units.
- */
-const WIRE_AT = 0.58
-
-export function Wire({ value, threshold, severity }: { value: number | null; threshold: number; severity: Severity }) {
-  const ratio = value != null && threshold > 0 ? value / threshold : 0
-  const pct = Math.min(100, ratio * WIRE_AT * 100)
-  const over = ratio >= 1
-  return (
-    <div className={s.wire} role="presentation">
-      <div
-        className={s.wireFill}
-        style={{
-          width: `${pct}%`,
-          background: over ? severityVar(severity) : 'color-mix(in srgb, var(--accent) 55%, transparent)',
-        }}
-      />
-      <div className={`${s.wireMark}${over ? ` ${s.wireMarkHot}` : ''}`} style={{ left: `${WIRE_AT * 100}%` }} />
-    </div>
-  )
-}
-
-/**
- * A unit is a symbol, not a label. `text-transform: uppercase` on a caps class
- * turns µg/m³ into MG/M³ — three orders of magnitude, silently. Units get their
- * own class and never the caps one.
- */
-export function Unit({ children }: { children: ReactNode }) {
-  return <span className={s.unit}>{children}</span>
-}
-
-export function fmtRatio(r: number | null): string {
-  return r == null ? '—' : `${fmtNum(r, 2)}×`
-}
+//
+// Retired with the old screens (R8, CONTRACT §10a.7): the all-caps source
+// tags (STATION, TOWER, RESIDENT), the kind codes (SPIKE, INTEG, EXCD), the
+// capitals severity annunciator and the threat-red `invader` chip, with the
+// alert helpers that printed them. The words the Alerts, Levels and Push
+// screens print live in `alerting.ts`, in sentence case; `Panel` lives in
+// `Panel.tsx`, so this file exports no component and every screen keeps fast
+// refresh.
 
 export const styles = s

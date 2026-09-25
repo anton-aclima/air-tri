@@ -672,10 +672,14 @@ class _World:
                     site_id = self._suspect(mon["lon"], mon["lat"], self.start + timedelta(hours=peak_i))
                     unit = al["unit"]
                     dur = h1 - h0 + 1
+                    # Copy only, no RNG draw: phase 5 of PLAN-refocus retired "N hours
+                    # over the line" (CONTRACT 10a.7) and the lower-cased label. The
+                    # checked-in database was rewritten to match, rows in `alert` and
+                    # `notification`, by a one-off script rather than a rebuild.
                     if kind == "exceedance":
                         title = f"{al['label']} exceeded at {mon['name']}"
-                        body = (f"{peak:.1f} {unit} against a {al['threshold']:.0f} {unit} "
-                                f"{al['label'].lower()}. {dur} hour{'s' if dur != 1 else ''} over the line.")
+                        body = (f"{peak:.1f} {unit} against the {al['threshold']:.0f} {unit} "
+                                f"{_level_name(al['label'])}; above it for {dur} hour{'s' if dur != 1 else ''}.")
                     else:
                         title = f"{al['label']} exceeded at {mon['name']}"
                         body = (f"{avg}-hour average reached {peak:.1f} {unit} against "
@@ -793,6 +797,15 @@ class _World:
             })
 
         # 4 -- the consultant's model is wrong, and the cars can prove it.
+        #      Both plumes are models (the filed study's, and one run on the
+        #      measured wind), so the body never calls either one "measured".
+        #      The checked-in database was brought in line with
+        #        UPDATE alert SET body = replace(body,
+        #          'The modelled plume and the measured plume do not point the same way.',
+        #          'The filed study''s plume and the one modelled from the measured wind do not point the same way.')
+        #        WHERE id = 'al-windshift-00';
+        #      rather than a rebuild (no notification or activity row carries
+        #      the body). Copy only: no RNG draw depends on it.
         models = self.ctx.get("dispersion_models") or []
         if models:
             m0 = models[0]
@@ -808,8 +821,8 @@ class _World:
                 "title": "Measured wind disagrees with the dispersion study",
                 "body": ("The permit model assumes the north half of the rose almost never happens. "
                          "Our vehicle wind observations put it far higher, and higher still inside "
-                         "shift episodes. The modelled plume and the measured plume do not point "
-                         "the same way."),
+                         "shift episodes. The filed study's plume and the one modelled from the "
+                         "measured wind do not point the same way."),
                 "recommendation": "Re-run the dispersion study against measured wind before the next permit filing.",
                 "audience_json": json.dumps(["regulator", "industry", "admin"]),
                 "created_at": _ts(min(t0 + timedelta(hours=1), self.now)),
@@ -1190,6 +1203,12 @@ def _area_of(alert: dict, monitors: list[dict]) -> str:
     return "southwest Memphis"
 
 
+def _level_name(label: str) -> str:
+    """'NO2 1-hour standard' reads as it is; 'NO2 1-hour watch' gains 'level'.
+    (server/network.py `_level_phrase`, the same rule.)"""
+    return label if label.lower().endswith(("standard", "level")) else f"{label} level"
+
+
 def _recommendation(code: str, severity: str, site_id: str | None, sites: dict) -> str:
     """The alert's stored recommendation, read by every room.
 
@@ -1205,11 +1224,15 @@ def _recommendation(code: str, severity: str, site_id: str | None, sites: dict) 
     """
     del site_id, severity, sites
     base = {
-        "no2": "Check what was burning on site in this window.",
+        # Agency-facing: this is a reference-monitor alert, read first by the
+        # regulator, so it points at the evidence rather than at an operator
+        # (CONTRACT 10a.3). The industry room words it for its own site:
+        # routers/alerts.py `_for_operator` swaps this line for the site's lever.
+        "no2": "Read it against the wind and the fleet's street passes for these hours before tying it to a source.",
         "pm25": "Confirm whether this is regional haze or a local source before acting.",
         "bc": "Look at diesel movements on the approach roads.",
         "o3": "Regional and largely not locally controllable; document and monitor.",
-        "co": "Check combustion efficiency on anything running at the time.",
+        "co": "Read it against the wind and the fleet's street passes for these hours.",
         "ch4": "Survey for leaks on foot; the fixed network cannot see this.",
         "diesel": "Look at diesel movements and idling on the approach roads.",
     }.get(code, "Review operations for this window.")

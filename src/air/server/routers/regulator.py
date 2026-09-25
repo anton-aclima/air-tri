@@ -1,4 +1,4 @@
-"""/action-levels, /advisories, /enforcement — the regulator side, and LOOP 2.
+"""/regulator/network, /action-levels, /advisories, /enforcement — the regulator side, and LOOP 2.
 
 `PUT /action-levels/{id}` re-evaluates recent readings against the new threshold
 *immediately* and creates or resolves `alert(kind='exceedance')` rows. Moving a
@@ -13,11 +13,34 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from air.server import domain, loaders, shapes, timeutil
+from air.server import domain, loaders, network, shapes, timeutil
 from air.server.db import get_db, one, resolve_campaign, rows, writer
 from air.server.models import ActionLevelIn, AdvisoryIn
 
 router = APIRouter(tags=["regulator"])
+
+
+@router.get("/regulator/network")
+def regulator_network(
+    at: str | None = None,
+    measure: str = "no2",
+    streets: str = network.STREETS_DEFAULT,
+    campaign_id: str | None = None,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """The Network screen in one payload: what the reference monitors report,
+    where the modelled plumes go and what the fleet measured under them in
+    the streets window, and the residents' clusters — plus one generated
+    headline. `network.py` says what is measured and what is modelled, field
+    by field.
+
+    `at` is a naive campaign time (`domain.as_of`: none is the end of the
+    data, past the end is the end, garbage is a 422). `streets` is `24h`,
+    `7d` (default) or `todate`, a window ENDING at `at`: every street figure
+    counts the set `/segments` draws for it (`streets_window` names it).
+    Cached per moment, pollutant and window, like `/admin/brief`."""
+    cid = resolve_campaign(conn, campaign_id)
+    return network.build(conn, cid, at=at, measure=measure, streets=streets)
 
 
 @router.get("/action-levels")

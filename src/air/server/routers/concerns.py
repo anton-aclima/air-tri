@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 
 from air.server import domain, loaders, shapes, timeutil
-from air.server.db import get_db, one, resolve_campaign, rows, scalar, writer
+from air.server.db import get_db, one, resolve_campaign, scalar, writer
 from air.server.models import ConcernIn, ConcernPatch, ConcernResponseIn, CorroborateIn
 
 router = APIRouter(tags=["concerns"])
@@ -89,37 +89,7 @@ def list_clusters(
     nine reports were posted and this endpoint returned nothing.
     """
     cid = resolve_campaign(conn, campaign_id)
-    now = domain.as_of(conn, cid, at)
-    sql = ["SELECT * FROM concern_cluster WHERE campaign_id = ? AND first_at <= ?"]
-    params: list[Any] = [cid, now]
-    if status:
-        sql.append("AND status = ?")
-        params.append(status)
-    sql.append("ORDER BY last_at DESC")
-    found = rows(conn, " ".join(sql), params)
-    if not found:
-        return []
-
-    members = loaders.cluster_members(conn, [r["id"] for r in found])
-    out = []
-    for r in found:
-        mine = members.get(r["id"], [])
-        stood = loaders.cluster_as_of(r["count"], mine, now)
-        if stood is None:
-            continue  # had not formed yet
-        count, posted = stood
-        c = shapes.concern_cluster(r, max((m["created_at"] for m in posted), default=None))
-        if len(posted) < len(mine):
-            noticed = sorted(m["occurred_at"] for m in posted)
-            c.update(count=count, last_at=noticed[-1])
-            # Only with every member on file can the first report and the kinds
-            # be rebuilt; otherwise the row's stand (as clusterAsOf does).
-            if len(posted) == count:
-                c.update(first_at=noticed[0], kinds=sorted({m["kind"] for m in posted}))
-        out.append(c)
-    # A rebuilt last_at can move a cluster; stay newest-last first.
-    out.sort(key=lambda c: c["last_at"] or "", reverse=True)
-    return out
+    return loaders.load_clusters(conn, cid, domain.as_of(conn, cid, at), status=status)
 
 
 # ── writes ────────────────────────────────────────────────────────────────────

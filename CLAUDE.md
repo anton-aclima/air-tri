@@ -53,10 +53,11 @@ and read it, or run unpiped and check `$?`.
 
 - **DB-backed tests carry `@pytest.mark.needs_db`** and skip when `data/air.db`
   is absent (it is gitignored). Pure-geometry tests run on a fresh clone.
-- **Every route lives under `/api/v1`** and the SPA catch-all serves HTML for
-  everything else — so a wrong path returns **200 with an HTML body**, not a
-  404. Use the `api` and `json_ok` fixtures; `json_ok` checks the content type
-  for exactly this reason.
+- **Every route lives under `/api/v1`.** A miss under `/api/` is a JSON 404,
+  but the SPA catch-all serves HTML for everything else — so a path that
+  forgot the prefix entirely returns **200 with an HTML body**, not a 404. Use
+  the `api` and `json_ok` fixtures; `json_ok` checks the content type for
+  exactly this reason.
 
 There are no expected failures. The last one (non-negotiable #5, the community
 fleet delay) was fixed by the one clock below and its marker removed.

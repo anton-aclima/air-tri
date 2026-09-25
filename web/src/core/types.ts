@@ -51,8 +51,20 @@ export type EmissionPointKind =
 export type VehicleStatus = 'driving' | 'idle' | 'charging' | 'maintenance' | 'offline';
 export type ActionLevelKind = 'spike' | 'integrated';
 
-/** `segment_stat.window` — 'all' | 'date:YYYY-MM-DD' | 'hour:HH' | 'week:YYYY-Www' */
+/**
+ * `GET /segments?window=`. STORED windows are `segment_stat` rows — 'all' |
+ * 'date:YYYY-MM-DD' | 'hour:HH' | 'week:YYYY-Www' — and ignore `at`. COMPUTED
+ * windows are built from `segment_pass` and are bounded by `at`:
+ * 'trailing:<N>h' (passes with at − N h < ts ≤ at) and 'todate' (ts ≤ at).
+ */
 export type StatWindow = string;
+
+/**
+ * The regulator Network's street window (F2): the last 24 hours, the last 7
+ * days, or the whole record — each ENDING at the moment shown. The map's
+ * coloured streets and every street figure on the screen use this one window.
+ */
+export type StreetsWindow = '24h' | '7d' | 'todate';
 
 /** Which number the road grid is painted by. */
 export type SegmentMetric = 'median' | 'p90' | 'max' | 'persistence' | 'risk';
@@ -163,10 +175,30 @@ export interface SegmentProps {
   n_passes: number;
   length_m: number;
 }
+/**
+ * `window` on a COMPUTED `/segments` body (`window=trailing:<N>h|todate&at=`):
+ * the set these streets were cut from, as the server applied it. The one
+ * moment a map built on this grid names — its legend, its tooltips, its empty
+ * line — so the words can never describe a different window than the colours.
+ */
+export interface SegmentWindow {
+  /** The window asked for, as sent: `trailing:168h`, `todate`. */
+  name: string;
+  /** Passes AFTER this count (to − hours); null for `todate`. Naive campaign time. */
+  from: string | null;
+  /** The moment the window ends at — `at`, or the end of the data. */
+  to: string;
+  /** The latest pass at or before `to` with this pollutant valid; null before the first. */
+  last_pass_at: string | null;
+}
+
 export type SegmentCollection = FeatureCollection<
   { type: 'LineString'; coordinates: Position[] },
   SegmentProps
->;
+> & {
+  /** Present on a computed window only; a stored window's body has none. */
+  window?: SegmentWindow;
+};
 
 export interface SeriesPoint { t: string; v: number | null }
 
@@ -890,6 +922,149 @@ export interface Calibration {
   n_measures: number;
   n_anchored: number;
   channels: CalibrationChannel[];
+}
+
+// ─────────────────────────────────────────────────── the regulator network
+
+/**
+ * `GET /regulator/network` — the Network screen's status, as of `at`, for one
+ * measure (docs/PLAN-refocus.md R1–R5).
+ *
+ * Every sentence and every "inside the plume" on that screen comes from here,
+ * not from the browser: the regulator review found the page's own counts, the
+ * header strip and the nav badge disagreeing (13 vs 15), and two model
+ * geometries disagreeing about one monitor (R0 — 7 of 9 hours inside by the
+ * dispersion polygons, 1 of 5 by the coverage cones). `in_plume`,
+ * `plume_share` and `touches` are all computed from the SAME outline geometry
+ * `GET /wind/dispersion?outline=1` returns for the map, so what is drawn and
+ * what is said cannot disagree.
+ */
+export interface RegulatorNetworkMonitor {
+  id: string;
+  name: string;
+  code: string | null;
+  lon: Lon; lat: Lat;
+  status: MonitorStatus;
+  radius_m: number | null;
+  /** False: the instrument carries no channel for this measure — "no NO2 channel", muted. */
+  has_measure: boolean;
+  /** The latest reading at or before `at`, within 2 h; else null. */
+  reading: { value: number; unit: string; ts: string } | null;
+  /**
+   * The level the reading's ratio is reported against: the HIGHEST enabled
+   * action level with the SAME averaging period as the reading (R3) that the
+   * reading exceeds, else the tightest (owner, D15). `ratio` is the raw
+   * reading ÷ threshold, 2 dp: Riverport Road's 120.7 ppb at Aug 25 06:00 is
+   * 1.21× the NO2 1-hour standard, not 2.0× the watch. The level, the ratio
+   * and `over` are judged on one number. The headline names this same level.
+   * Null with no reading, or when the measure has no 1-hour level (ozone, CO).
+   */
+  level: { name: string; threshold: number; averaging_hours: number; ratio: number | null } | null;
+  /**
+   * The reading shown (the latest within 2 h) is over the TIGHTEST level with
+   * the same averaging period, whichever level `level` is. Drives the mark
+   * and the pulse.
+   */
+  over: boolean;
+  /** Modelled at `at`, from the outline the map draws. `beyond` = past the detection envelope. */
+  in_plume: { site_id: string; part: 'inside' | 'beyond' }[];
+  /**
+   * Whole record: the share of hours this monitor sat inside each site's
+   * modelled outline, split at the envelope. PERCENT, 0–100 — modelled, never
+   * measured, and printed beside `basis`.
+   */
+  plume_share: { site_id: string; inside_pct: number; beyond_pct: number }[];
+  /** Hours in the 7 days to `at` over `exceedance_level`. */
+  exceedance_hours_7d: number;
+  /**
+   * The level `exceedance_hours_7d` counts against: the tightest 1-hour
+   * level. Label the count with this, never with `level`, which moves with
+   * the reading. Null with no channel for the measure or no 1-hour level.
+   */
+  exceedance_level: { name: string; threshold: number } | null;
+}
+
+export interface RegulatorNetworkPlume {
+  site_id: string;
+  name: string;
+  /** Where the plume is carried TOWARD, degrees clockwise from north. */
+  bearing_deg: number;
+  reach_m: number;
+  /** The detection envelope for this hour's stability class. */
+  envelope_m: number;
+  stability: string;
+  touches: {
+    /** Inside the SOLID part only — nothing is judged from the part past the envelope. */
+    monitor_ids: string[];
+    /** Streets inside the solid part with a pass in `streets_window`. */
+    streets_driven: number;
+    open_cluster_ids: string[];
+  };
+  /**
+   * Every street inside the solid part, driven or not. Below the coverage
+   * floor the outline itself is too small to judge, whatever was driven.
+   */
+  streets_inside: number;
+  /** Share (0–1) of the streets inside the solid part driven in `streets_window`. */
+  driven_share: number;
+  /**
+   * Fewer than the coverage floor (P6-E, 8) streets driven inside the solid
+   * part in `streets_window`: "not enough of this area was driven to say".
+   */
+  below_coverage_floor: boolean;
+  /** The site's measured downwind test for this measure (`/sites/{id}/touchdown`). */
+  touchdown_state: TouchdownState | string;
+  /** F7 holds for this site now: wind at the time AND the placebo-checked test. */
+  named: boolean;
+}
+
+export interface RegulatorNetworkResident {
+  cluster_id: string;
+  label: string | null;
+  count: number;
+  last_posted_at: string | null;
+  /** Set only when F7 links the cluster to a site. Never proximity. */
+  named_site_id: string | null;
+  kinds: string[];
+}
+
+/**
+ * `streets_window` on `GET /regulator/network` (F2). The map draws the same
+ * window from `GET /segments?window=trailing:<hours>h|todate&at=<to>`, so the
+ * streets on the map and the counts in the panel are one set.
+ */
+export interface RegulatorStreetsWindow {
+  /** The `streets` asked for. */
+  kind: StreetsWindow;
+  /** Trailing length in hours (24, 168); null for `todate`. */
+  hours: number | null;
+  /** Passes AFTER this count (at − hours); null for `todate`. */
+  from: string | null;
+  /** The moment shown — `at`. */
+  to: string;
+  /** The latest pass at or before `to`, on any street; null before the first. */
+  last_pass_at: string | null;
+}
+
+export interface RegulatorNetwork {
+  at: string;
+  measure: MeasureCode;
+  /** One sentence naming what is modelled and what is measured. */
+  basis: string;
+  /** One generated sentence from the status fields — never a written-down number. */
+  headline: string;
+  numbers: {
+    alerts_now: number;
+    monitors_reporting: number;
+    monitors_total: number;
+    /** Kilometres of street with a pass in `streets_window`. */
+    street_km: number;
+  };
+  /** The ONE window every street figure in this payload uses, ending at `at`. */
+  streets_window: RegulatorStreetsWindow;
+  monitors: RegulatorNetworkMonitor[];
+  plumes: RegulatorNetworkPlume[];
+  residents: RegulatorNetworkResident[];
 }
 
 // ──────────────────────────────────────────────────────────── climatology

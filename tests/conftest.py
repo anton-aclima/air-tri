@@ -10,8 +10,10 @@ with a message naming the build command rather than failing on a fresh clone.
 `air_config.API_PREFIX` (`/api/v1`) and then serves the built SPA from a
 `/{path:path}` catch-all. A request to `/sites/...` therefore returns **200
 with an HTML page**, not a 404 — which is a genuinely nasty way to lose an
-afternoon. Use the `api` fixture, never a bare path, and `json_ok` if you want
-the content type checked for you.
+afternoon. (A miss UNDER `/api/` — `/api/v1/site`, `/api/sites` — is a JSON
+404 since phase 5 of PLAN-refocus; only a path with no `/api` at all still
+reaches the shell.) Use the `api` fixture, never a bare path, and `json_ok` if
+you want the content type checked for you.
 """
 
 from __future__ import annotations
@@ -100,7 +102,7 @@ def json_ok():
         ctype = resp.headers.get("content-type", "")
         assert "json" in ctype, (
             f"expected JSON, got {ctype!r} — wrong path? Every route is under {air_config.API_PREFIX}, "
-            "and anything else falls through to the SPA and returns 200 HTML."
+            "a miss under /api is a 404, and anything else falls through to the SPA and returns 200 HTML."
         )
         return resp.json()
 

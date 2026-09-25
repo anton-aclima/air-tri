@@ -60,6 +60,7 @@ import type {
   ModelVerification,
   Monitor,
   MonitorReadings,
+  RegulatorNetwork,
   Role,
   SegmentCollection,
   SegmentDetail,
@@ -68,6 +69,7 @@ import type {
   SimScenario,
   SitePost,
   StatWindow,
+  StreetsWindow,
   Vehicle,
   WindField,
   WindClimatology,
@@ -94,12 +96,20 @@ export class ApiError extends Error {
   readonly url: string
   readonly detail: unknown
 
-  constructor(message: string, status: number, url: string, detail: unknown = null) {
+  /**
+   * Our own `TIMEOUT_MS` gave up on it — status 0, but not "backend not
+   * there": the request was waiting (a queue of connections in the browser, a
+   * slow build) rather than refused, so it is worth asking again.
+   */
+  readonly timedOut: boolean
+
+  constructor(message: string, status: number, url: string, detail: unknown = null, timedOut = false) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.url = url
     this.detail = detail
+    this.timedOut = timedOut
   }
 
   /** The backend simply isn't up / the route isn't built yet. */
@@ -116,9 +126,13 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError
 }
 
-/** True when the failure means "backend not there", not "bad request". */
+/**
+ * True when the failure means "backend not there", not "bad request". A
+ * request that timed out on our side is not: it is retried like any blip.
+ */
 export function isBackendDown(e: unknown): boolean {
-  return isApiError(e) && (e.isOffline || e.status === 502 || e.status === 503 || e.status === 504)
+  return isApiError(e) && !e.timedOut
+    && (e.isOffline || e.status === 502 || e.status === 503 || e.status === 504)
 }
 
 // ──────────────────────────────────────────────────────────── query strings
@@ -168,7 +182,11 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   const url = apiUrl(path, params)
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
   const onAbort = () => controller.abort()
   signal?.addEventListener('abort', onAbort)
 
@@ -184,8 +202,8 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     })
   } catch (err) {
     if (signal?.aborted) throw err
-    const msg = err instanceof Error ? err.message : 'network error'
-    throw new ApiError(`${method} ${url} failed: ${msg}`, 0, url, err)
+    const msg = timedOut ? `no answer in ${timeoutMs / 1000} s` : err instanceof Error ? err.message : 'network error'
+    throw new ApiError(`${method} ${url} failed: ${msg}`, 0, url, err, timedOut)
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', onAbort)
@@ -285,11 +303,41 @@ export interface SegmentsParams {
   measure?: MeasureCode
   metric?: SegmentMetric
   window?: StatWindow
+  /**
+   * Naive campaign time. Read ONLY by the computed windows (`trailing:<N>h`,
+   * `todate`), which end here; omitted is the end of the data. The stored
+   * windows ignore it, and `useSegments` never sends it for them, so their
+   * keys are unchanged.
+   */
+  at?: string
   bbox?: BBox | null
+  /** Default 0 for a stored window, 1 for a computed one (on the server). */
   min_passes?: number
   campaign_id?: string
   /** Cap the payload while panning. */
   limit?: number
+}
+
+/** A window built from `segment_pass` and bounded by `at`, not a `segment_stat` row. */
+export function isComputedWindow(w: StatWindow | undefined): boolean {
+  return w === 'todate' || (w ?? '').startsWith('trailing:')
+}
+
+/** The trailing length of each Network street window, in hours; `todate` has none. */
+export const STREETS_WINDOW_HOURS: Record<StreetsWindow, number | null> = {
+  '24h': 24,
+  '7d': 168,
+  todate: null,
+}
+
+/**
+ * The `/segments` window that draws a Network street window: `trailing:24h`,
+ * `trailing:168h` or `todate`. The same window `GET /regulator/network`
+ * counts with (`streets=`), so the map and the counts are one set.
+ */
+export function streetsSegmentWindow(kind: StreetsWindow): StatWindow {
+  const hours = STREETS_WINDOW_HOURS[kind]
+  return hours == null ? 'todate' : `trailing:${hours}h`
 }
 
 /** THE flagship endpoint: the coloured road grid. */
@@ -303,6 +351,7 @@ export async function getSegments(
       measure: params.measure,
       metric: params.metric,
       window: params.window,
+      at: params.at,
       bbox: bboxParam(params.bbox),
       min_passes: params.min_passes,
       campaign_id: params.campaign_id,
@@ -312,8 +361,13 @@ export async function getSegments(
   return asFeatureCollection<never>(raw) as unknown as SegmentCollection
 }
 
-export function getSegmentDetail(id: string, signal?: AbortSignal): Promise<SegmentDetail> {
-  return request<SegmentDetail>(`/segments/${encodeURIComponent(id)}`, { signal })
+/**
+ * One street's detail. `at` (naive campaign time) bounds its passes, series
+ * and 24-hour shape by the moment shown, so a replayed clock never plots a
+ * pass after it; omitted is the end of the data. Same body either way.
+ */
+export function getSegmentDetail(id: string, at?: string, signal?: AbortSignal): Promise<SegmentDetail> {
+  return request<SegmentDetail>(`/segments/${encodeURIComponent(id)}`, { signal, params: { at } })
 }
 
 // ────────────────────────────────────────────────────────────── monitors
@@ -343,6 +397,12 @@ export interface MonitorReadingsParams {
   from?: string
   to?: string
   interval?: 'hour' | 'day'
+  /**
+   * Rows at most; the server's default is 2,000, and it keeps the EARLIEST
+   * rows. Ninety days of hours is ~2,160, so a long window without this loses
+   * its last days, the ones nearest the moment shown. Capped at 20,000.
+   */
+  limit?: number
 }
 
 export function getMonitorReadings(
@@ -697,6 +757,37 @@ export function getSiting(limit = 10, signal?: AbortSignal): Promise<Siting> {
  */
 export function getCalibration(at?: string, signal?: AbortSignal): Promise<Calibration> {
   return request<Calibration>('/coverage/calibration', { signal, params: { at } })
+}
+
+// ─────────────────────────────────────────────────── the regulator network
+
+export interface RegulatorNetworkParams {
+  /** Naive campaign time; omitted means the end of the data (the server's now). */
+  at?: string
+  /** Default `no2` on the server. */
+  measure?: MeasureCode
+  /**
+   * The window every street figure uses, ending at `at` (F2): street-km,
+   * each plume's streets driven inside, its share and the coverage floor.
+   * Default `7d` on the server.
+   */
+  streets?: StreetsWindow
+  campaign_id?: string
+}
+
+/**
+ * The regulator's Network screen in one request: the headline, the three
+ * numbers, each reference monitor's reading and level as of `at`, each site's
+ * modelled plume and what its outline touches, and the resident clusters —
+ * every "inside" computed from the outline `/wind/dispersion?outline=1` draws.
+ * Every street figure is over `streets_window`, which ends at `at` and names
+ * the latest pass before it (`last_pass_at`) for the empty-window copy.
+ */
+export function getRegulatorNetwork(
+  params: RegulatorNetworkParams = {},
+  signal?: AbortSignal,
+): Promise<RegulatorNetwork> {
+  return request<RegulatorNetwork>('/regulator/network', { signal, params: { ...params } })
 }
 
 // ──────────────────────────────────────────────────────────── climatology
