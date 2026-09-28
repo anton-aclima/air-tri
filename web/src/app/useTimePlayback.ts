@@ -22,12 +22,12 @@ const TICKS_PER_SECOND = 4
  * The request budget of one playing tab, per real second, averaged over
  * steps. A step that set off N fetches holds the next write for at least
  * N / budget seconds (and until they all landed): ~10 on the regulator's
- * Network is one step every ~2.5 s, a page with 3 clock-keyed layers steps
- * more often. Measured against the deployed demo, where every request costs
+ * Network is one step every ~5 s, a page with 3 clock-keyed layers steps
+ * more often. Set to 2 by the owner (2026-09-28), down from 4, on purpose. Measured against the deployed demo, where every request costs
  * ~130–200 ms of front-end overhead whatever the server does: an open loop of
  * ~24/s drew 429 "Rate exceeded".
  */
-const REQUESTS_PER_SECOND = 4
+const REQUESTS_PER_SECOND = 2
 
 /** Never write faster than this, however cheap the page. */
 const MIN_STEP_MS = 500

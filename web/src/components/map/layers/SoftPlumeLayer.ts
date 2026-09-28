@@ -84,11 +84,14 @@
  *     sites merging into an "everywhere is affected" wash, which is a
  *     different and much worse claim than any of them makes alone. Where
  *     plumes overlap the alpha compounds to 1-(1-a)^n; at 0.18 per shell the
- *     left half of the map went solid. Per shell it is 0.004–0.040, so one
- *     site's core — all ten shells — peaks near 0.20, and two sites' far
- *     fields crossing, a few faint outer shells each, stay under 0.06. Too
+ *     left half of the map went solid. Per shell it is 0.01–0.10, so one
+ *     site's core — all ten shells — peaks near 0.43, and two sites' far
+ *     fields crossing, a few faint outer shells each, stay near 0.11. Too
  *     faint fails too: a cloud nobody can see fails the resident as surely as
- *     a wash does, which is why the core is allowed to reach 0.2.
+ *     a wash does. At 0.004–0.040 (core ~0.20) the owner found it "too
+ *     transparent, very hard to see" (2026-09-28), so the shells were raised
+ *     2.5× with the shape unchanged; the cloud still sits under the streets,
+ *     so it never tints a measurement.
  *
  *     There used to be a zoom cutoff too (nothing below z11.5). It was a
  *     guard for the old HeatmapLayer, whose radius was in PIXELS, and it was
@@ -146,16 +149,16 @@ export interface SoftPlumeLayerProps {
  * read as a line.
  */
 const SHELLS = [
-  { along: 0.97, across: 0.95, alpha: 0.004 },
-  { along: 0.9, across: 0.86, alpha: 0.008 },
-  { along: 0.82, across: 0.77, alpha: 0.012 },
-  { along: 0.73, across: 0.68, alpha: 0.016 },
-  { along: 0.64, across: 0.58, alpha: 0.02 },
-  { along: 0.55, across: 0.49, alpha: 0.024 },
-  { along: 0.46, across: 0.4, alpha: 0.028 },
-  { along: 0.37, across: 0.31, alpha: 0.032 },
-  { along: 0.28, across: 0.22, alpha: 0.036 },
-  { along: 0.19, across: 0.14, alpha: 0.04 },
+  { along: 0.97, across: 0.95, alpha: 0.01 },
+  { along: 0.9, across: 0.86, alpha: 0.02 },
+  { along: 0.82, across: 0.77, alpha: 0.03 },
+  { along: 0.73, across: 0.68, alpha: 0.04 },
+  { along: 0.64, across: 0.58, alpha: 0.05 },
+  { along: 0.55, across: 0.49, alpha: 0.06 },
+  { along: 0.46, across: 0.4, alpha: 0.07 },
+  { along: 0.37, across: 0.31, alpha: 0.08 },
+  { along: 0.28, across: 0.22, alpha: 0.09 },
+  { along: 0.19, across: 0.14, alpha: 0.1 },
 ] as const;
 
 /** Metres per degree of latitude. An equirectangular plane about the source

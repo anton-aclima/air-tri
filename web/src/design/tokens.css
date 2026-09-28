@@ -207,8 +207,9 @@
      (≈#B74082), a step from --ramp-aqi-5 "very unhealthy", so a guess from
      the wind was painted in the colour of a health finding. Not a slate grey
      either — along the river a cool grey haze reads as more water. Umber sits
-     outside the AQI hues and away from --map-water, and at the layer's 2–8%
-     alpha it reads as a haze over the cream basemap, not a colour. */
+     outside the AQI hues and away from --map-water, and at the layer's 1–43%
+     alpha (outer shell to core) it reads as a haze over the cream basemap,
+     not a colour. */
   --plume-soft:    #764F37;
   /* Residents read colour as public health, not as analytical magnitude, so the
      community road grid paints on the AQI ramp: green means clean, red means
