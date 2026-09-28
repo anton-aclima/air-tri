@@ -88,7 +88,7 @@ import type {
 } from '@/core/types'
 import { fleetDelayFor, timeParam, timeRange, useSession } from '@/core/session'
 import type { TimeState } from '@/core/session'
-import { addHours } from '@/core/clock'
+import { addHours, floorTo } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
 import { findMeasure, measuresOf } from '@/core/measures'
 import type { MeasureFamily } from '@/core/measures'
@@ -871,8 +871,13 @@ export function useDispersion(
   // `outline` joins the key only when on, so every existing caller keeps its
   // cache entry, and `outline: false` is the same entry as leaving it out.
   const { outline, ...rest } = params
+  // The plume is modelled from the HOURLY wind row at or before `at`, so every
+  // moment in an hour is the same answer: key and ask on the hour. While
+  // playing on the 10-minute grid that is one request an hour, not six
+  // (measured: 06:00 and 06:40 return identical bodies).
+  const at = rest.at ?? timeParam(time)
   const merged: api.DispersionParams = {
-    at: rest.at ?? timeParam(time), ...rest, ...(outline ? { outline: true } : {}),
+    ...rest, at: at ? floorTo(at, 60) : at, ...(outline ? { outline: true } : {}),
   }
   return useApiQuery<DispersionPlume | DispersionPlumeOutlined>(
     qk.wind.dispersion(merged),

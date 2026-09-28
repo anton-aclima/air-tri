@@ -12,3 +12,4 @@ data/air.db-shm
 data/cache/
 .DS_Store
 var/
+**/*.har
