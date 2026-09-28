@@ -4,7 +4,7 @@ Everything here is **presentational**: it takes data as props and renders. No fe
 routing, no role logic. Import from the barrel:
 
 ```tsx
-import { BaseMap, SegmentLayer, MapWindField, RadarScope } from '@/components';
+import { BaseMap, SegmentLayer, MapWindField } from '@/components';
 ```
 
 Three rules the whole library already obeys, so you don't have to:
@@ -311,12 +311,12 @@ fly-to never strokes the camera's own motion as streaks.
 
 ### `WindFieldCanvas` — the engine
 
-Only reach for this directly if you need a frame that is neither the map nor the scope.
-Adds `projector: Projector` (build with `mapProjector(view, size)` or
-`makeScopeProjector({ site, rangeM, size, headingUp })`), `theme`, `viewKey` (pass
+Only reach for this directly if you need a frame that is not the map.
+Adds `projector: Projector` (build with `mapProjector(view, size)`; the site-locked scope
+projector went with RadarScope in phase 6), `theme`, `viewKey` (pass
 `viewSignature(view)` — a camera move wipes the canvas rather than restarting the sim),
 `maxAge`, `colorMode`, and `colorToken` (paint every particle one token with **speed carried by
-brightness** — the radar-scope idiom).
+brightness**).
 
 Particle alpha is **skin-aware** and confidence **thins the draw rate, not the alpha**, so
 low-`n` / high-`dir_sd` cells genuinely show fewer streaks. `windSpeedLegend(theme, domain,
@@ -447,33 +447,6 @@ and shortens only the `what`, so "Wind · site-wide" and "Reports · NNW" surviv
 Single-bearing readout. `bearing` · `distanceM` · `size` · `severity` · `label` ·
 `cardinal` (show "ESE" as well as digits) · `vertical`.
 
-### `RadarScope`
-**Retired from the industry deck (PLAN-refocus D8/I3); kept for the gallery until the backlog
-removes it. Its vocabulary is not product copy.**
-Threats plotted by bearing from a site — **with the observed wind advecting inside the dial.**
-
-| prop | type | notes |
-|---|---|---|
-| `contacts` | `RadarContact[]` | `{ id, bearing_deg, distance_m, severity, label?, code?, source? }` |
-| `size` `rangeM` `rings` | `number` | `rangeM` auto-scales to the furthest contact |
-| `headingUp` | `number` | rotate so this bearing points up. 0 = north up |
-| `sweep` | `boolean` | the rotating trace. Honours reduced motion. Default true |
-| `selectedId` + `onSelect` | | |
-| `labels` | `'all' \| 'hover' \| 'none'` | default `'all'` |
-| `ownLabel` `status` `title` | | centre site name, status line override |
-| **`site`** | `Position` | required for the wind field and the model contours |
-| **`windField`** | `WindField` | particles advect inside the scope |
-| `windParticles` | `number` | default 1400 — lower than the map, it's a small frame |
-| `windSpeedDomain` `windLegend` | | speed key under the dial |
-| `modelContours` | `{ band, level, geometry }[]` | takes `DispersionModel.contours` verbatim; drawn as a **dashed reference outline** the particles visibly disagree with |
-| `modelLabel` | `string` | |
-
-Helper: `contactsFromAlerts(alerts)` — filters to alerts that carry `bearing_deg` + `distance_m`.
-
-```tsx
-<RadarScope contacts={contactsFromAlerts(alerts)} site={site} windField={wind} modelContours={model.contours} ownLabel="Ridgeline South" />
-```
-
 ### `ChartFrame` and friends (`charts/primitives`)
 `ChartFrame` (`title`, `subtitle`, `aside`, `legend`, `footer`, `children`) is the shared
 header/plot/footer shell. Also `Legend` (`LegendSeries[]` — `shape: 'line' | 'rect' | 'dash'`),
@@ -498,7 +471,7 @@ header/plot/footer shell. Also `Legend` (`LegendSeries[]` — `shape: 'line' | '
 - **`reports`** — `useWindowedReports(concerns, clusters, days)`: the last
   `REPORT_WINDOW_DAYS` ending at the demo's now, the same instant row ages use.
 - **`windField`** — `buildFieldIndex(field)` (bilinear sampler + confidence from `n` /
-  `dir_sd`), `cellConfidence`, `mercatorProjector`, `scopeProjector`.
+  `dir_sd`), `cellConfidence`, `mercatorProjector`.
 - **`vizmeta`** — `niceStep` / `niceCeil` / `niceTicks`, `SEVERITY_GLYPH`, `METRIC_HELP`,
   `CONCERN_LABEL`, `CONCERN_EMOJI`, `ALERT_KIND_LABEL`, `PLUME_STROKE`. (The four-letter
   cockpit codes, `ALERT_KIND_CODE`, are gone — PLAN-refocus I11.) Severity words are

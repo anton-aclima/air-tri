@@ -33,6 +33,7 @@ from air.server import (
     loaders,
     naming,
     shapes,
+    statusat,
     timeutil,
     windfield,
 )
@@ -182,6 +183,10 @@ def build_context(conn: sqlite3.Connection, payload: AdvisorIn) -> dict[str, Any
         row = one(conn, "SELECT * FROM alert WHERE id=?", (payload.alert_id,))
         if row is not None:
             alert = shapes.alert(row, moment)
+            alert["status"] = statusat.alert_status_at(
+                row, moment, statusat.first_acks(conn, [row["id"]]).get(row["id"]),
+                statusat.first_resolutions(conn, [row["id"]]).get(row["id"]),
+            )
             begun = shapes.alert_begun_at(row)
             alert["not_started"] = not begun or begun > moment
             alert["ended_by_moment"] = bool(alert.get("ended_at")) and alert["ended_at"] <= moment
@@ -438,7 +443,7 @@ def _prompt(ctx: dict[str, Any]) -> str:
                 if alert.get("ongoing")
                 else f"ENDED at {alert.get('ended_at') or 'an unrecorded time'} — over at the moment shown"
             )
-            + f" (stored record status: {alert['status']})\n"
+            + f" (workflow status at the moment shown: {alert['status']})\n"
             + (
                 f"- where, from our site centroid: {geo.compass(alert['bearing_deg'])} "
                 f"({alert['bearing_deg']}°), {alert.get('distance_m')} m away\n"

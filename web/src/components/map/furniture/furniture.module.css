@@ -392,7 +392,7 @@
   border: 1.5px solid var(--line-strong);
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: var(--text-3xs);
   line-height: 1;
   color: var(--accent-ink);
 }

@@ -158,6 +158,15 @@ export interface Theme {
   rampColor(t: number, alpha?: number, which?: 'map' | 'aqi' | 'intensity'): RGBA;
   /** Severity token for a `Severity` value. */
   sev(s: string): string;
+  /**
+   * A canvas (deck.gl) text size in px, raised to this room's floor. The
+   * regulator and industry rooms set `--label-min-px: 11` (tokens.css, the same
+   * rule that lifts `--text-3xs` to 11px there); elsewhere there is no floor and
+   * `px` comes back unchanged. Use it for every TextLayer `getSize` AND the
+   * collision box built for that text, or the box and the glyphs disagree.
+   * Not for glyphs drawn as marks (an arrow, a count badge sized to its disc).
+   */
+  labelPx(px: number): number;
 }
 
 function stripQuotes(s: string) { return s.replace(/^['"]|['"]$/g, ''); }
@@ -183,6 +192,7 @@ function readVars(el: Element | null): Record<string, string> {
   for (let i = 0; i < 7; i++) out[`ramp-aqi-${i}`] = get(`ramp-aqi-${i}`);
   for (let i = 0; i < 6; i++) out[`persist-${i}`] = get(`persist-${i}`);
   out['map-style'] = stripQuotes(get('map-style'));
+  out['label-min-px'] = get('label-min-px');
   out['dur-sweep'] = get('dur-sweep');
   return out;
 }
@@ -225,6 +235,7 @@ function makeTheme(v: Record<string, string>, role: Role | 'none'): Theme {
       return alpha === undefined ? c : withAlpha(c, alpha);
     },
     sev: (s) => v[`sev-${s}`] || v['sev-info'] || '',
+    labelPx: (px) => Math.max(px, Number.parseFloat(v['label-min-px'] ?? '') || 0),
   };
 }
 

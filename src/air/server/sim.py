@@ -18,6 +18,40 @@ from typing import Any
 from air.server import domain, geo, loaders, shapes, timeutil, windfield
 from air.server.db import one, rows, scalar
 
+#: The wind-shift scenario's stored recommendation. The regulator reads the
+#: alert too, so it points at the evidence rather than telling an operator to
+#: act (phase 6 of PLAN-refocus). It used to read "Reduce turbine load
+#: pre-emptively; a stable, slow plume does not dilute." -- one kind of site's
+#: equipment, addressed to its operator, on the regulator's queue. The
+#: industry room still gets its site's lever through routers/alerts.py
+#: `_for_operator`. The plume here is modelled (source_type 'model'), so the
+#: line says so.
+WIND_SHIFT_RECOMMENDATION = (
+    "The modelled plume is slow and stable, so it does not dilute. Read the receptors now downwind "
+    "against the fleet's street passes for the next hours before tying anything to a source."
+)
+
+#: The methane scenario's stored recommendation, on a mobile detection the
+#: regulator reads too: evidence first, no operator's equipment (phase 6). It
+#: used to read "Walk the gas supply train, filter skids and turbine seals
+#: along this frontage with a handheld before assuming combustion." The
+#: industry room gets its site's lever in that place (routers/alerts.py
+#: `_AGENCY_LINES`, keyed on the opening up to the semicolon).
+METHANE_RECOMMENDATION = (
+    "Compare the passes on this street with the nearest monitor and the wind before tying it to a "
+    "source; a single leak can account for the whole signal."
+)
+
+#: The opening of the study-versus-measured-wind scenario's stored line (the
+#: rest, after "; ", is the measured evidence). It used to open "Re-run the
+#: study with the measured rose before the next permit review. Meanwhile
+#: treat <compass> transport as live" -- an instruction to the operator, on a
+#: wind_shift alert the regulator reads. The industry room still reads the
+#: re-run line (routers/alerts.py `_AGENCY_LINES`).
+STUDY_DIVERGENCE_OPENING = (
+    "Compare the filed study's rose with the measured wind before relying on its plume"
+)
+
 SCENARIOS = {
     # Served by GET /admin/scenarios, so this is copy: CONTRACT 10a.7 keeps
     # the design metaphor ("RWR contact", "the industry radar") out of it.
@@ -381,7 +415,7 @@ def wind_shift(conn: sqlite3.Connection, cid: str, site_id: str | None = None) -
                if receptor else "")
             + "Receptors that were crosswind an hour ago are now downwind."
         ),
-        recommendation="Reduce turbine load pre-emptively; a stable, slow plume does not dilute.",
+        recommendation=WIND_SHIFT_RECOMMENDATION,
         audience=["regulator", "industry", "admin"],
         actor_role="admin",
     )
@@ -528,10 +562,7 @@ def methane_leak(conn: sqlite3.Connection, cid: str, site_id: str | None = None)
             + f", against a {base:.2f} {unit} regional background. {near_txt} "
             "This is a street-level signal the stationary network cannot resolve."
         ),
-        recommendation=(
-            "Walk the gas supply train, filter skids and turbine seals along this frontage with a "
-            "handheld before assuming combustion. A single seal can account for the whole signal."
-        ),
+        recommendation=METHANE_RECOMMENDATION,
         audience=["regulator", "industry", "admin"],
         samples=samples, actor_role="admin",
     )
@@ -801,8 +832,7 @@ def model_divergence(conn: sqlite3.Connection, cid: str, site_id: str | None = N
         title=f"Observed wind diverges from {model['name']} — {verification['verdict']}",
         body=verification["summary"],
         recommendation=(
-            f"Re-run the study with the measured rose before the next permit review. "
-            f"Meanwhile treat {geo.compass(transport)} transport as live: "
+            f"{STUDY_DIVERGENCE_OPENING}; "
             f"{receptors} sits downwind on {geo.compass(worst['dir_deg'])} wind, which the model "
             f"weighted at {worst['assumed_freq']:.1f}% of hours against {worst['observed_freq']:.1f}% measured."
         ),

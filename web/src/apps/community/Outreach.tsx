@@ -24,11 +24,13 @@ export function Outreach() {
   const places = usePlaces()
   const sites = useBootstrapSites()
   const orgs = useOrgs()
-  // As of the demo's now (D2). `status` is the report's final one, so in replay
-  // a claim made later can still mark an earlier report — only the latest
-  // status is stored (docs/PLAN-refocus.md F2).
+  // As of the demo's now (D2). The list's `status` is served as it stood at
+  // the clock (server statusat.py): a report reads 'mitigation_proposed' only
+  // from the first company reply or mitigation that claims it, so a claim made
+  // later no longer marks an earlier report in replay. 400, the map's key: the
+  // campaign holds 204 reports.
   const posts = happenedBy(usePosts({ limit: 30 }).data, now)
-  const concerns = happenedBy(useConcerns({ limit: 200 }).data, now)
+  const concerns = happenedBy(useConcerns({ limit: 400 }).data, now)
 
   const claimed = concerns.filter((c) => c.status === 'mitigation_proposed')
 

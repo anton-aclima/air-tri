@@ -21,10 +21,12 @@
 import { BaseMap, MapOverlay, SegmentLayer } from '@/components'
 import type { SegmentFeature, Theme } from '@/components'
 import { fmtDistance, fmtNum, fmtPct } from '@/core/format'
-import { useEnvelope, useSegments, useTouchdown } from '@/core/queries'
+import { useEnvelope, useTouchdown } from '@/core/queries'
+import { useNowCampaign, useSession } from '@/core/session'
 import type { EnvelopeRegime, TouchdownState } from '@/core/types'
 
 import { Caps, Panel, Readout, styles as s, useSiteLock } from './lib'
+import { streetsWindowWords, useStreetGrid } from './streets'
 
 /**
  * One sentence per touchdown state that is NOT a finding. Figures — the
@@ -93,7 +95,12 @@ export function Evidence() {
   const site = useSiteLock()
   const envQ = useEnvelope(site?.id)
   const tdQ = useTouchdown(site?.id)
-  const segsQ = useSegments()
+  // The roads' colours are the passes up to the moment shown (`todate&at`,
+  // P5); at the end of the data that is the whole campaign, as it was.
+  const segsQ = useStreetGrid()
+  const now = useNowCampaign()
+  const replaying = useSession((x) => x.time.cursor != null)
+  const gridWords = streetsWindowWords(segsQ.data, replaying, now, '')
 
   if (!site) {
     return <div className={`${s.page} ${s.sitePage}`}><div className={s.err}>No site.</div></div>
@@ -156,7 +163,7 @@ export function Evidence() {
           <Readout label="Compared against" value={fmtNum(stable?.n_comparison ?? 0, 0)} />
           <Readout label="Episodes" value={fmtNum(stable?.n_episodes ?? 0, 0)} />
           <Readout
-            label="Over the line"
+            label="Over the level"
             value={watch ? fmtPct(watch.share_over * 100, 0, false) : '—'}
             tone={watch && watch.share_over > 0.2 ? 'threat' : undefined}
             big
@@ -171,6 +178,7 @@ export function Evidence() {
               <span className={s.mapCaption}>
                 Thick: your fenceline, within {env ? fmtDistance(env.fenceline_m) : '—'} of a running
                 source. Faint: the comparison roads, over 2 km from every site.
+                {gridWords ? ` Colour ${gridWords}; a road not driven by then is not drawn.` : ''}
               </span>
             </MapOverlay>
           </BaseMap>

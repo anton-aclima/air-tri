@@ -23,6 +23,7 @@ import {
   PLUME_COPY,
   PRIMARY_KINDS,
   severityWord,
+  gridWords,
   statusPlain,
   useCommunitySegments,
   usePlaces,
@@ -101,6 +102,10 @@ export function MapScreen() {
   const pulse = usePulse(2400)
 
   const segments = useCommunitySegments().data
+  // The grid's own window names the legend (P5): "these three months" when
+  // paused at the end, "measured to <moment>" in replay.
+  const replaying = useSession((st) => st.time.cursor != null)
+  const grid = gridWords(segments, replaying)
   // 400, not 200: the campaign holds 204 reports, and "All 90 days" has to
   // mean all of them.
   const allConcerns = useConcerns({ limit: 400 }).data
@@ -370,7 +375,8 @@ export function MapScreen() {
                 dualEncode="width"
                 plainLanguage
                 compact
-                title="How your street scores · these three months"
+                title={grid.title}
+                empty={grid.empty}
               />
               {/* "Usually" draws this and nothing else: the whole campaign's
                   wind, under the street key and at no site, so it points from

@@ -99,10 +99,6 @@
   min-height: 0;
 }
 
-@media (max-width: 1080px) {
-  .hero { grid-template-columns: minmax(0, 1fr); }
-  .diagramWrap { display: none; }
-}
 
 .copy {
   display: flex;
@@ -203,6 +199,16 @@
   height: auto;
   max-height: 100%;
   overflow: visible;
+}
+
+/* One column at 1080 and below, without the diagram. This block sat ABOVE
+   `.diagramWrap { display: grid }`, which then won on source order: the
+   diagram stayed on at 1054–1080, drew 970px wide under the copy, and its
+   labels ran over the doors ("reports what it smells like" across
+   "Regulator"). It has to follow the rules it overrides. */
+@media (max-width: 1080px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .diagramWrap { display: none; }
 }
 
 .edge {

@@ -35,6 +35,7 @@ import { happenedBy, hasStarted } from '@/core/events'
 import { countOf, fmtDateTime, relativeTime } from '@/core/format'
 import { plainName, riskFromValue, SEVERITY_PLAIN } from '@/core/measures'
 import { useCorroborate, useMeasure, useOrgs } from '@/core/queries'
+import { useSession } from '@/core/session'
 import type {
   Advisory,
   CommunityStats,
@@ -72,6 +73,7 @@ export function ConcernCard({
 }) {
   const me = useMe()
   const corroborate = useCorroborate()
+  const replaying = useSession((st) => st.time.cursor != null)
   const status = statusPlain(concern.status)
   // Only what had been said by `now`: in replay a reply posted later is the
   // future, and it would otherwise headline a report filed minutes earlier.
@@ -139,16 +141,23 @@ export function ConcernCard({
       ) : null}
 
       <div className={s.postFoot}>
-        <Button
-          size="sm"
-          variant="secondary"
-          icon="check"
-          disabled={corroborate.isPending}
-          onClick={() => corroborate.mutate({ id: concern.id, userId: me?.id })}
-        >
-          This happened to me too
-          {concern.corroborations > 0 ? ` · ${concern.corroborations}` : ''}
-        </Button>
+        {replaying ? (
+          <>
+            <MeTooLater now={now} brief />
+            <span className={s.laterCount}>{corroborationWord(concern.corroborations)}</span>
+          </>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="check"
+            disabled={corroborate.isPending}
+            onClick={() => corroborate.mutate({ id: concern.id, userId: me?.id })}
+          >
+            This happened to me too
+            {concern.corroborations > 0 ? ` · ${concern.corroborations}` : ''}
+          </Button>
+        )}
         <Link to={`/community/c/${concern.id}`} style={{ fontSize: 'var(--text-sm)' }}>
           Open the thread
         </Link>
@@ -463,6 +472,34 @@ export function ResponseLine({ response, now }: { response: ConcernResponse; now
       </div>
       <div className={s.replyBody}>{response.body}</div>
     </div>
+  )
+}
+
+/**
+ * Where "This happened to me too" goes while the clock shows an earlier
+ * moment. A "me too" is stamped at the end of the data, the moment the
+ * demonstration is paused at, so one added in replay never showed on the
+ * report being read and the button looked as if it did nothing. As on the
+ * regulator's and the operator's sheets, the screen says so in plain words
+ * and offers the way back instead.
+ */
+export function MeTooLater({ now, brief }: { now: CampaignTime; brief?: boolean }) {
+  const setTimeCursor = useSession((st) => st.setTimeCursor)
+  // On a feed card, one short line: the feed repeats it on every report.
+  return (
+    <>
+      {brief ? (
+        <span className={s.laterCount}>A “me too” is added at the end of the demonstration.</span>
+      ) : (
+        <p className={s.laterNote}>
+          This is how things stood at {fmtDateTime(now)}. A “me too” is added at the end of the
+          demonstration, so it would not show here.
+        </p>
+      )}
+      <Button size="sm" variant="secondary" onClick={() => setTimeCursor(null)}>
+        Go to the end
+      </Button>
+    </>
   )
 }
 

@@ -12,10 +12,12 @@
  * What "live" means, in the order the tests apply:
  *
  *   1. It had begun and had not ended at the demo's now — `isOngoing`
- *      (core/events), the Phase 2 definition. NOT `status`: that is the row's
- *      final status, and several "active" alerts ended days before the end of
- *      the data, while an acknowledged one that is still running is still up
- *      (acknowledging is not ending). So this counts active AND acknowledged
+ *      (core/events), the Phase 2 definition. NOT `status`: that is the
+ *      workflow as it stood at the moment shown (server/statusat.py; what
+ *      cannot be rebuilt is listed there), not whether the event was still
+ *      running: an alert can end while 'active', and an acknowledged one
+ *      that is still running is still up (acknowledging is not ending).
+ *      So this counts active AND acknowledged
  *      alerts, and ended ones never, whatever their status says.
  *   2. The room's own alerts. Industry's are ONE site's: the site the
  *      industry pages lock (`siteId`, written by `useSiteLock`), sent as

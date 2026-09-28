@@ -78,13 +78,13 @@ export { DrivePlanLayer, vehicleColorIndex } from './map/layers/DrivePlanLayer';
 export type { DrivePlanLayerProps, DrivePlanMode } from './map/layers/DrivePlanLayer';
 
 // ── wind: particle advection ───────────────────────────────────────────────
-export { WindFieldCanvas, mapProjector, makeScopeProjector, viewSignature, windSpeedLegend } from './wind/WindFieldCanvas';
+export { WindFieldCanvas, mapProjector, viewSignature, windSpeedLegend } from './wind/WindFieldCanvas';
 export type { WindFieldCanvasProps } from './wind/WindFieldCanvas';
 export { MapWindField } from './wind/MapWindField';
 export type { MapWindFieldProps } from './wind/MapWindField';
 export { ModelVerificationPanel } from './wind/ModelVerificationPanel';
 export type { ModelVerificationPanelProps } from './wind/ModelVerificationPanel';
-export { buildFieldIndex, cellConfidence, mercatorProjector, scopeProjector } from './lib/windField';
+export { buildFieldIndex, cellConfidence, mercatorProjector } from './lib/windField';
 export type { FieldIndex, FieldSample, Projector } from './lib/windField';
 
 // ── map furniture ──────────────────────────────────────────────────────────
@@ -130,8 +130,6 @@ export { WindRose } from './charts/WindRose';
 export type { WindRoseProps, RoseBin } from './charts/WindRose';
 export { CompassBearing } from './charts/CompassBearing';
 export type { CompassBearingProps } from './charts/CompassBearing';
-export { RadarScope, contactsFromAlerts } from './charts/RadarScope';
-export type { RadarScopeProps, RadarContact, ContactSource } from './charts/RadarScope';
 
 // ── dev-only gallery ───────────────────────────────────────────────────────
 export { ComponentGallery } from './Gallery';

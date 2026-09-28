@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from air.server import cache, domain, timeutil
+from air.server import cache, domain, loaders, timeutil
 from air.server.db import get_db, one, resolve_campaign, rows, scalar
 
 router = APIRouter(tags=["stats"])
@@ -248,9 +248,37 @@ def community_stats(
 
 @router.get("/stats/campaign")
 def campaign_stats(
-    campaign_id: str | None = None, conn: sqlite3.Connection = Depends(get_db)
+    campaign_id: str | None = None,
+    at: str | None = None,
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
+    """The admin KPIs. Everything about the fleet and the network is the whole
+    campaign, whatever the clock says. The three workflow counts follow `at`
+    (phase 6, PLAN-refocus): `concerns_total` is the reports filed by then,
+    `concerns_open` those not 'resolved'/'closed' AS THEY STOOD then, and
+    `alerts_active` the alerts that had entered the record and read 'active'
+    then (statusat.py, through the same loaders every other at-bounded read
+    uses). Unbounded, a replayed status bar counted every report closed after
+    the moment as closed, and every report filed after it. No `at` is the end
+    of the data, where they are the stored counts."""
     cid = resolve_campaign(conn, campaign_id)
+    moment = domain.as_of(conn, cid, at)
+    return {**_campaign_block(conn, cid), **_workflow_counts(conn, cid, moment)}
+
+
+def _workflow_counts(conn: sqlite3.Connection, cid: str, moment: str) -> dict[str, int]:
+    """`/stats/campaign`'s counts that follow the clock (its docstring)."""
+    concerns = loaders.load_concerns(conn, cid, until=moment, limit=5000, with_responses=False)
+    alerts = loaders.load_alerts(conn, cid, until=moment, limit=3000)
+    return {
+        "concerns_total": len(concerns),
+        "concerns_open": sum(1 for c in concerns if c["status"] not in ("resolved", "closed")),
+        "alerts_active": sum(1 for a in alerts if a["status"] == "active"),
+    }
+
+
+def _campaign_block(conn: sqlite3.Connection, cid: str) -> dict[str, Any]:
+    """`/stats/campaign`'s whole-campaign figures, cached per campaign."""
     key = ("stats_campaign", cid)
     hit = cache.get(key)
     if hit is not None:
@@ -328,15 +356,6 @@ def campaign_stats(
         ),
         "vehicles_active": scalar(
             conn, "SELECT COUNT(*) FROM vehicle WHERE campaign_id=? AND status IN ('driving','idle')", (cid,), 0
-        ),
-        "concerns_total": scalar(conn, "SELECT COUNT(*) FROM concern WHERE campaign_id=?", (cid,), 0),
-        "concerns_open": scalar(
-            conn,
-            "SELECT COUNT(*) FROM concern WHERE campaign_id=? AND status NOT IN ('resolved','closed')",
-            (cid,), 0,
-        ),
-        "alerts_active": scalar(
-            conn, "SELECT COUNT(*) FROM alert WHERE campaign_id=? AND status='active'", (cid,), 0
         ),
         "sites": scalar(conn, "SELECT COUNT(*) FROM industry_site WHERE campaign_id=?", (cid,), 0),
         "monitors_online": scalar(

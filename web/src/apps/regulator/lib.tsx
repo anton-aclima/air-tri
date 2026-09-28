@@ -300,7 +300,9 @@ export function touchdownSentence(state: string | null | undefined): string {
  * (docs/PLAN-refocus.md D2): a report is drawn once it was filed, and a
  * cluster only once one of its reports was, with its count and "last" taken
  * from the reports filed by then. The stored row carries the cluster's final
- * count, which in replay is the future.
+ * count, which in replay is the future. Each report's `status` and
+ * `corroborations` already arrive as they stood at `at` (server/statusat.py);
+ * a step the data does not stamp under-claims, never runs ahead.
  */
 export function reportsAsOf(
   allConcerns: Concern[] | undefined,

@@ -1643,7 +1643,8 @@ export function reportsOverlay(opts: {
       pickable: false,
       getPosition: (d) => d.cl.centroid,
       getText: (d) => `${d.cl.count} reports`,
-      getSize: 10,
+      // The room's floor (11 px in industry), not a hard-coded 10.
+      getSize: theme.labelPx(10),
       getColor: theme.color('actor-community', 1),
       getPixelOffset: (d) => [0, d.dy],
       getAlignmentBaseline: 'bottom',

@@ -161,7 +161,7 @@ export function FleetLayer(props: FleetLayerProps): LayersList {
       pickable: false,
       getPosition: (v) => pos(v) as unknown as [number, number],
       getText: (v) => (v.call_sign ?? v.label ?? '').toUpperCase(),
-      getSize: 9.5,
+      getSize: theme.labelPx(9.5),
       sizeUnits: 'pixels',
       getColor: (v) => theme.color('fleet', dim(v)),
       getTextAnchor: 'start',

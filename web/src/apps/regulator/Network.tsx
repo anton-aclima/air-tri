@@ -67,7 +67,7 @@ import type { BoundaryCollection } from '@/core/api'
 import { useLiveAlerts } from '@/core/alerts'
 import { addHours, campaignMs } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
-import { compassPoint, fmtDay, fmtDistance, fmtNum, fmtTime24, relativeShort } from '@/core/format'
+import { compassPoint, fmtDay, fmtDistance, fmtNum, fmtTime24, relativeShort, relativeTime } from '@/core/format'
 import { INDEX_DOMAIN, PICKABLE, shortName, unitFor } from '@/core/measures'
 import {
   STALE, keepSegmentsWhile, qk, useActiveMeasure, useCalibration, useCampaignBoundary,
@@ -77,7 +77,7 @@ import {
 } from '@/core/queries'
 import { useNowCampaign, useSession } from '@/core/session'
 import type {
-  Concern, ConcernCluster, DispersionModel, FleetPosition, IndustrySite, MeasureCode, MeasureDef,
+  Concern, ConcernCluster, ConcernStatus, DispersionModel, FleetPosition, IndustrySite, MeasureCode, MeasureDef,
   Monitor, MonitorReadings, RegulatorNetwork, RegulatorNetworkMonitor, RegulatorNetworkPlume,
   RegulatorNetworkResident, SegmentCollection, StreetsWindow,
 } from '@/core/types'
@@ -981,11 +981,6 @@ function WindowPicker({ value, onChange }: { value: StreetsWindow; onChange: (w:
   )
 }
 
-/** `relativeShort` as words: "3h ago", and "just now" rather than "now ago". */
-function agoWords(rel: string): string {
-  return rel === 'now' ? 'just now' : `${rel} ago`
-}
-
 /**
  * What the map label prints after the name: "10.6", or "120.7 · 1.2× standard"
  * from 0.5× up. The payload's level is the highest 1-hour level the reading
@@ -1657,6 +1652,19 @@ function capitalise(text: string): string {
  * "under review"; closing one is the agency's or Aclima's alone, and an
  * operator's reply moves it no further than "mitigation proposed".
  */
+/** Statuses "Mark under review" still moves forward from. */
+const BEFORE_REVIEW: ReadonlySet<ConcernStatus> = new Set(['new', 'corroborated'])
+
+/**
+ * A replayed report's status at the end of the data, when the server sends it
+ * beside the replayed `status` (`status_at_end`, as on alerts). Read through a
+ * widened type so the page compiles on either side of that field landing in
+ * core/types; null when it is not sent.
+ */
+function reportStatusAtEnd(c: Concern): ConcernStatus | null {
+  return c.status_at_end ?? null
+}
+
 function ClusterDetail({
   id, report, row, insideNow, at, siteName, now, onBack, onReport,
 }: {
@@ -1674,6 +1682,12 @@ function ClusterDetail({
   const concernsQ = useConcerns({ limit: 400 })
   const clustersQ = useConcernClusters()
   const setStatus = useUpdateConcernStatus()
+  // A status change is stamped at the end of the data, and each report's
+  // status arrives as it stood at `at` (server/statusat.py), so a change made
+  // in replay would not show at the moment on screen and the button would
+  // stay pressable. In replay the reader is sent to the end to make it.
+  const replaying = useSession((x) => x.time.cursor != null)
+  const setTimeCursor = useSession((x) => x.setTimeCursor)
   const asOf = useMemo(() => reportsAsOf(concernsQ.data, clustersQ.data, now), [concernsQ.data, clustersQ.data, now])
   const cluster = asOf.clusters.find((c) => c.id === id) ?? null
   const members = useMemo(
@@ -1682,6 +1696,13 @@ function ClusterDetail({
     [asOf, id],
   )
   const picked = report ? members.find((c) => c.id === report) ?? null : null
+  // Sent to the end only if the report can still be marked there. Replay
+  // walks a report back, so one 'corroborated' at the moment shown may be
+  // under review or closed by the end, where the sheet offers no such step.
+  // Workflow only moves forward: without the end status, one already past
+  // 'corroborated' now is past it at the end too.
+  const endStatus = picked ? reportStatusAtEnd(picked) : null
+  const markableAtEnd = picked ? BEFORE_REVIEW.has(endStatus ?? picked.status) : false
   const title = row?.label ?? cluster?.label ?? 'Resident cluster'
   const count = row?.count ?? cluster?.count ?? members.length
   const kinds = row?.kinds ?? cluster?.kinds ?? []
@@ -1709,7 +1730,7 @@ function ClusterDetail({
 
       {cluster ? (
         <Fact k="When">
-          first {fmtDay(cluster.first_at)} {fmtTime24(cluster.first_at)} · last {agoWords(relativeShort(cluster.last_at, now))}
+          first {fmtDay(cluster.first_at)} {fmtTime24(cluster.first_at)} · last {relativeTime(cluster.last_at, now)}
         </Fact>
       ) : null}
 
@@ -1738,16 +1759,33 @@ function ClusterDetail({
             {picked.corroborations ? ` · ${picked.corroborations} corroborated` : ''}
           </span>
           {picked.body ? <p className={s.quote}>“{picked.body}”</p> : null}
-          <div className={s.actions}>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={picked.status === 'under_review' || setStatus.isPending}
-              onClick={() => setStatus.mutate({ id: picked.id, status: 'under_review', actorRole: 'regulator' })}
-            >
-              Mark under review
-            </Button>
-          </div>
+          {replaying && !markableAtEnd ? null : <div className={s.actions}>
+            {replaying ? (
+              <Button size="sm" variant="secondary" onClick={() => setTimeCursor(null)}>
+                Go to the end of the data
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={picked.status === 'under_review' || setStatus.isPending}
+                onClick={() => setStatus.mutate({ id: picked.id, status: 'under_review', actorRole: 'regulator' })}
+              >
+                Mark under review
+              </Button>
+            )}
+          </div>}
+          {replaying ? (
+            <span className={s.factNote}>
+              {`Its status as of ${fmtDay(now)} ${fmtTime24(now)}. ${
+                markableAtEnd
+                  ? 'A change is stamped at the end of the data, so it is made from there.'
+                  : endStatus
+                    ? `By the end of the data it is ${endStatus.replace(/_/g, ' ')}, so there is nothing left to mark.`
+                    : `It was already ${picked.status.replace(/_/g, ' ')} then, so there is nothing left to mark.`
+              }`}
+            </span>
+          ) : null}
           <span className={s.factNote}>
             Only DRAQA or Aclima can close a resident’s report. An operator’s reply moves it to
             “mitigation proposed” and no further.

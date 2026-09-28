@@ -677,6 +677,9 @@
 .epOn { color: var(--scope, var(--accent)); }
 .epOff { color: var(--ink-3); }
 .epName { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+/* Under the name, not after it: an offline sensor's "last reading Jul 25".
+   Allowed to wrap, so the date is never the part an ellipsis takes. */
+.epSub { display: block; white-space: normal; color: var(--ink-3); }
 .epNum { text-align: right; }
 
 .err { padding: var(--s-4); font-size: var(--text-xs); color: var(--ink-2); }

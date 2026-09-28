@@ -342,7 +342,7 @@ export function ConcernLayer(props: ConcernLayerProps): LayersList {
       pickable: false,
       getPosition: (c) => [c.lon, c.lat] as unknown as [number, number],
       getText: (c) => `+${c.corroborations}`,
-      getSize: 9,
+      getSize: theme.labelPx(9),
       sizeUnits: 'pixels',
       getColor: theme.color('ink', 1),
       getTextAnchor: 'start',

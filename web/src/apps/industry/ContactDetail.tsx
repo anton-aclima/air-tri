@@ -10,8 +10,9 @@
  *      "corroborated" by the fleet: that was one measurement counted twice.
  *      Every row says which hours it describes. The operator's fenceline
  *      sensors are read AT THE ALERT'S HOURS, from the sensors that reported
- *      then; the street's record is labelled as the whole campaign, because it
- *      is, and it is worded as where the street usually sits, not as proof.
+ *      then; the street's record is the passes up to the moment shown
+ *      (`todate&at`: the whole campaign at the end of the data, and labelled
+ *      so either way), worded as where the street usually sits, not as proof.
  *
  *   2. WHAT DO I DO? A concrete recommendation. The rules answer is on screen
  *      the moment the page opens and is replaced in place when the model's
@@ -48,18 +49,27 @@ import { hasStarted, happenedBy, isOngoing } from '@/core/events'
 import { SEVERITY_LABEL, formatValue, severityVar } from '@/core/measures'
 import {
   qk, useAcknowledgeAlert, useAlert, useCreateMitigation, useCreatePost,
-  useMeasure, useModelVerification, useMonitor, useMonitors, useSegmentDetail, useSegments, useWind,
+  useMeasure, useModelVerification, useMonitor, useMonitors, useSegmentDetail, useWind,
 } from '@/core/queries'
-import { useNowCampaign, useSession } from '@/core/session'
-import type { Alert, Concern, MeasureCode, Monitor, SegmentProps } from '@/core/types'
+import { timeParam, useNowCampaign, useSession } from '@/core/session'
+import type { Alert, AlertStatus, Concern, MeasureCode, Monitor, SegmentProps } from '@/core/types'
 
 import {
   Caps, Panel, Readout, Sev, Tag, endedBy, isSited, mitigationStatusAt, shortTitle, styles as s, upFor,
   useAdvisor, useCampaignWindow, useSiteLock, windThen,
 } from './lib'
+import { useStreetGrid } from './streets'
 
 /** The one answer to "who can close a resident's report", matching the server (403). */
 const WHO_CLOSES = "Only the air agency or Aclima can close a resident's report; you can answer it or propose a mitigation."
+
+/** What became of a replayed, unacknowledged alert by the end of the data. */
+const LATER_WORDS: Record<AlertStatus, string> = {
+  active: 'Still open at the end',
+  acknowledged: 'Acknowledged later',
+  resolved: 'Resolved later',
+  expired: 'Expired later',
+}
 
 /** "Aug 24 06:00" — a moment in campaign time, in words a glance can finish. */
 function when(t: string): string {
@@ -131,6 +141,12 @@ export function ContactDetail({ alertId }: { alertId: string }) {
   const windQ = useWind(startWin ?? {}, { enabled: !!startWin })
   const ack = useAcknowledgeAlert()
   const user = useSession((x) => x.user)
+  // `status` is served as it stood at the moment shown (server/statusat.py):
+  // 'acknowledged' only from the first acknowledgement's stamp. One made here
+  // is stamped at the end of the data, so in replay it could not change what
+  // this page shows; the control sends the reader to the end to make it.
+  const replaying = useSession((x) => x.time.cursor != null)
+  const setTimeCursor = useSession((x) => x.setTimeCursor)
   // The instrument that raised it, for its kind ("reference monitor") and owner.
   const sourceMonQ = useMonitor(alert?.source_type === 'monitor' ? alert.source_id : null)
 
@@ -166,6 +182,24 @@ export function ContactDetail({ alertId }: { alertId: string }) {
   // attached ("site a temporary monitor here"). It is not addressed to the
   // operator, so it is not printed to them.
   const recommendation = alert.audience?.includes('industry') ? alert.recommendation : null
+  // The acknowledge control. `status` is as of the moment shown; an
+  // acknowledgement is only ever made at the end of the data, where it meets
+  // the status the alert has THERE — `status_at_end`, served beside `status`
+  // with `at`. At the end an alert still 'active' is offered ACKNOWLEDGE even
+  // when it has ended: that is the status an operator is asked to answer, and
+  // a replayed "go to the end" would otherwise lead nowhere. In replay the
+  // prompt is offered only when the end still has it 'active'; one that was
+  // acknowledged, resolved or expired afterwards says so plainly. A server that
+  // does not serve `status_at_end` yet keeps the old rule (ongoing only).
+  const statusAtEnd = replaying ? alert.status_at_end : alert.status
+  const ackControl: 'go-to-end' | 'later' | 'button' | 'ended' =
+    replaying && alert.status === 'active'
+      ? statusAtEnd === 'active' || (statusAtEnd == null && ongoing)
+        ? 'go-to-end'
+        : statusAtEnd != null ? 'later' : 'ended'
+      : alert.status === 'active' || alert.status === 'acknowledged'
+        ? 'button'
+        : 'ended'
 
   return (
     <div className={`${s.page} ${s.detailPage}`}>
@@ -200,7 +234,21 @@ export function ContactDetail({ alertId }: { alertId: string }) {
             value={<span style={ongoing ? { color: severityVar(alert.severity) } : undefined}>{upFor(alert, now)}</span>}
             big
           />
-          {ongoing ? (
+          {ackControl === 'go-to-end' ? (
+            <div className={s.readout}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setTimeCursor(null)}
+                title={`Not acknowledged as of ${when(now)}. An acknowledgement is stamped at the end of the data, so it is made from there.`}
+              >
+                GO TO THE END
+              </Button>
+              <Caps>to acknowledge</Caps>
+            </div>
+          ) : ackControl === 'later' && statusAtEnd ? (
+            <Readout label="Not acknowledged by then" value={LATER_WORDS[statusAtEnd]} />
+          ) : ackControl === 'button' ? (
             <div className={s.readout}>
               <Button
                 size="sm"
@@ -210,7 +258,7 @@ export function ContactDetail({ alertId }: { alertId: string }) {
               >
                 {alert.status === 'acknowledged' ? 'ACKNOWLEDGED' : 'ACKNOWLEDGE'}
               </Button>
-              <Caps>ongoing</Caps>
+              <Caps>{ongoing ? 'ongoing' : 'ended'}</Caps>
             </div>
           ) : (
             <Readout label="At the moment shown" value="Ended" />
@@ -500,10 +548,14 @@ function Triangulation({
   // NOTE: the server applies `limit` BEFORE the bbox filter, so a small limit
   // returns the campaign's top-N by value and then filters them away. The limit
   // has to exceed the campaign's segment count for a local query to be correct.
-  const segsQ = useSegments(
+  //
+  // Up to the moment shown (`todate&at`, P5), and the street's detail with it:
+  // in replay the record is the passes by then, never one after.
+  const segsQ = useStreetGrid(
     { measure: code ?? undefined, metric: 'p90', bbox, min_passes: 4, limit: 5000 },
     { enabled: !!bbox && !!code },
   )
+  const at = useSession((x) => timeParam(x.time))
   const nearest = useMemo(() => {
     const feats = segsQ.data?.features ?? []
     if (!feats.length || lon == null || lat == null) return null
@@ -521,10 +573,25 @@ function Triangulation({
   const nearM = nearest?.m ?? null
   const farAway = nearM != null && nearM > 700
 
-  const detailQ = useSegmentDetail(nearProps?.id ?? null, { enabled: !!nearProps })
+  const detailQ = useSegmentDetail(nearProps?.id ?? null, { enabled: !!nearProps }, { at })
   const rank = code && detailQ.data ? detailQ.data.rank_pct?.[code] ?? null : null
   const stats = code && detailQ.data ? detailQ.data.stats?.[code] ?? null : null
-  const passes = stats?.n_passes ?? nearProps?.n_passes ?? 0
+  // The count and the words naming its moment come from ONE body, never from
+  // the clock. The street's detail is asked AT the moment shown, so its count
+  // is named from `at`. Until it lands only the grid has a count, and right
+  // after a clock move the grid on screen is the previous moment's (held while
+  // the next loads), so its words come from the grid body's own `window.to`.
+  // While the detail for this moment is loading no count is printed at all:
+  // the grid's would be a number from another moment beside this one's words.
+  const detailLoading = !!nearProps && detailQ.isPending
+  const passes: number | null = detailQ.data
+    ? stats?.n_passes ?? nearProps?.n_passes ?? 0
+    : detailLoading ? null : nearProps?.n_passes ?? 0
+  const countTo: CampaignTime | null = detailQ.data
+    ? at ?? null
+    : at || segsQ.isPlaceholderData ? segsQ.data?.window?.to ?? at ?? null : null
+  // "Whole campaign" is only true at the end of the data.
+  const span = countTo ? `To ${when(countTo)}` : 'Whole campaign'
   const streetName = detailQ.data?.name ?? nearProps?.name ?? 'the nearest street'
   // The one windowed thing the street record has: that day's median, when the
   // cars drove it that day — and only for a day wholly before the moment
@@ -542,6 +609,7 @@ function Triangulation({
 
   const verdict = buildVerdict({
     code, isCluster, isFleet, farAway, nearM, passes, rank, streetName, fence, fmtV, pollutant,
+    across: countTo ? `Up to ${when(countTo)}` : null,
   })
 
   return (
@@ -569,7 +637,7 @@ function Triangulation({
           badgeColor={severityVar(alert.severity)}
         />
 
-        {/* 2 · the street's record — whole campaign, and said so */}
+        {/* 2 · the street's record — up to the moment shown, and said so */}
         {!isFleet ? (
           <TriRow
             glyph="▲"
@@ -577,7 +645,7 @@ function Triangulation({
             title={`Aclima fleet · ${nearProps ? streetName : 'streets nearby'}`}
             note={nearProps
               ? [
-                  `Whole campaign, ${fmtNum(passes, 0)} passes`,
+                  passes == null ? 'Reading the street record at the moment shown…' : `${span}, ${fmtNum(passes, 0)} passes`,
                   detailQ.data?.district ?? nearProps.district ?? null,
                   nearM != null ? `${fmtDistance(nearM, 1)} away` : null,
                   dayMedian != null ? `driven ${fmtDay(hours.from)}, median ${fmtV(dayMedian)} that day` : null,
@@ -589,7 +657,7 @@ function Triangulation({
               : measure && nearProps?.p90 != null
                 ? formatValue(measure, nearProps.p90, { role: 'industry' })
                 : '—'}
-            badge={rank != null ? `${ordinal(rank)} pctile` : nearProps ? 'thin sample' : '—'}
+            badge={rank != null ? `${ordinal(rank)} pctile` : nearProps && passes != null ? 'thin sample' : '—'}
             badgeColor="var(--ink-2)"
           />
         ) : null}
@@ -664,14 +732,19 @@ function buildVerdict(o: {
   isFleet: boolean
   farAway: boolean
   nearM: number | null
-  passes: number
+  /** null while the street's detail for the moment shown is still loading. */
+  passes: number | null
   rank: number | null
   streetName: string
   fence: FenceAtHours
   fmtV: (v: number) => string
   pollutant: string
+  /** "Up to Aug 24 06:00" in replay; null paused at the end (the whole campaign). */
+  across: string | null
 }): { word: string; tone: string; body: string } {
   const { code, isCluster, isFleet, farAway, nearM, passes, rank, streetName, fence, fmtV, pollutant } = o
+  const whole = o.across ?? 'Across the whole campaign'
+  const over = o.across ?? 'Across the campaign'
 
   if (!code) {
     return {
@@ -713,22 +786,25 @@ function buildVerdict(o: {
   } else if (farAway) {
     word = 'Out of coverage'
     street = `The nearest street we cover is ${fmtDistance(nearM, 1)} away — too far to speak for this block.`
+  } else if (passes == null) {
+    word = 'Reading the street record'
+    street = `Reading the passes on ${streetName} up to the moment shown…`
   } else if (passes < 12 || rank == null) {
     word = 'Too few passes'
     street = `Only ${fmtNum(passes, 0)} passes on ${streetName} — too few to say what it usually carries. Treat this as unverified, not as wrong.`
   } else if (rank >= 75) {
     word = 'Usually high'
     street = isCluster
-      ? `Across the whole campaign our cars put the streets ${where} in the ${ord} percentile for ${pollutant} (${fmtNum(passes, 0)} passes). That is where they usually sit, not a reading from these hours.`
-      : `Across the whole campaign our cars put ${streetName} in the ${ord} percentile (${fmtNum(passes, 0)} passes). A high reading is usual for this place, which makes the instrument's number plausible; it does not confirm these hours.`
+      ? `${whole} our cars put the streets ${where} in the ${ord} percentile for ${pollutant} (${fmtNum(passes, 0)} passes). That is where they usually sit, not a reading from these hours.`
+      : `${whole} our cars put ${streetName} in the ${ord} percentile (${fmtNum(passes, 0)} passes). A high reading is usual for this place, which makes the instrument's number plausible; it does not confirm these hours.`
   } else if (rank <= 40) {
     word = 'Usually typical'
     street = isCluster
-      ? `Across the campaign the streets ${where} sit at the ${ord} percentile for ${pollutant} (${fmtNum(passes, 0)} passes), at or below the norm. That does not make the reports wrong: odour and irritation travel on species nobody in this campaign measures.`
-      : `Across the campaign ${streetName} sits at the ${ord} percentile (${fmtNum(passes, 0)} passes), at or below the norm, so a high reading is unusual for this place. That is a reason to look at the instrument's own record, not proof that it is wrong.`
+      ? `${over} the streets ${where} sit at the ${ord} percentile for ${pollutant} (${fmtNum(passes, 0)} passes), at or below the norm. That does not make the reports wrong: odour and irritation travel on species nobody in this campaign measures.`
+      : `${over} ${streetName} sits at the ${ord} percentile (${fmtNum(passes, 0)} passes), at or below the norm, so a high reading is unusual for this place. That is a reason to look at the instrument's own record, not proof that it is wrong.`
   } else {
     word = 'Somewhat raised'
-    street = `Across the campaign the streets ${where} sit at the ${ord} percentile (${fmtNum(passes, 0)} passes): raised, not unusual.`
+    street = `${over} the streets ${where} sit at the ${ord} percentile (${fmtNum(passes, 0)} passes): raised, not unusual.`
   }
   if (fenceOver) word = 'Also high'
   return {

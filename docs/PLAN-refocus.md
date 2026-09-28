@@ -225,8 +225,8 @@ These depend on F1 and F2 (the clock and events that follow it).
 - **A miss under `/api/` is a JSON 404** (`tests/test_api_miss.py`). Only a path with no `/api` at all reaches the SPA shell.
 - **Open, for the owner or phase 6:**
   - ~~Which level the ratio uses. A monitor's ratio is against the tightest 1-hour level, so at Aug 25 it shows 2.0× the watch level while the headline says "over the standard".~~ **Decided: D15**, and built: the ratio is against the highest level the reading exceeds, so at Aug 25 06:00 it is 1.2× the standard, the level the headline names.
-  - Timeline Previous/Next steps a tick group at a time: from the end it jumps to Aug 24 over 13 events.
-  - Two runtime scenario recommendations still address an operator on alerts the regulator reads: `domain.py`'s concern-cluster line and `sim.py`'s wind-shift line.
+  - ~~Timeline Previous/Next steps a tick group at a time: from the end it jumps to Aug 24 over 13 events.~~ **Done in phase 6 (P7):** Previous/Next step one event, not one drawn tick; events sharing a time are one step.
+  - ~~Two runtime scenario recommendations still address an operator on alerts the regulator reads: `domain.py`'s concern-cluster line and `sim.py`'s wind-shift line.~~ **Done in phase 6 (P8):** both are agency-neutral, and so are the two found in review, `sim.py`'s methane_leak and model_divergence lines. The industry room keeps its lever: `routers/alerts.py` `_for_operator` swaps each stored opening for the operator line in `_AGENCY_LINES`.
 
 ### 3.4 Industry deck
 
@@ -355,6 +355,17 @@ Each phase ends with `cd web && npx tsc -b --force`, `npx oxlint src` and `uv ru
 - **"Road colours: all 90 days" in the popup (simulation-control critic):** moved to each map's legend title, because the regulator map switches to the day's streets.
 - **Per-day street windows only as a later option (simulation-control critic):** overruled for the regulator map only, following the regulator critic. There, an hourly plume drawn over a 90-day street grid reads as confirmation.
 
+### Phase 6 as built (2026-09-25)
+
+- **P1, the 11px floor.** In the regulator and industry rooms `--text-3xs` is 11px, and `--label-min-px: 11` sets the same floor for canvas labels through `Theme.labelPx` (tokens.css ROOM TYPE FLOOR). It is scoped by `:root[data-role]`, which AppShell mirrors onto `<html>`, so it also reaches portals, and the landing keeps 10px. The basemap attribution, the one size below the scale, is `max(9px, floor)`. The timeline popup's facts line wraps between facts instead of cutting "· N vehicles".
+- **P2, the persona cards.** The switcher's door row is at least as tall as the doors (`minmax(min-content, 1fr)`), and the scrim scrolls when the rows do not fit. At 1054x760 the doors had overlapped the heading and the foot by about 15px.
+- **P3, RadarScope.** `RadarScope.tsx` and its CSS are deleted, along with its gallery section and the scope projector (`scopeProjector` / `makeScopeProjector`), which nothing else used. DESIGN.md keeps the retired section as a record and cites living components for the Never Colour Alone rule.
+- **P4, status as of the moment.** `src/air/server/statusat.py` rebuilds an alert's, a report's or a cluster's status at `at` by walking back the stored status past every step stamped after `at`. It is exact at the end of the data and never ahead of it. Alerts served with an `at` before the end also carry `status_at_end` / `ongoing_at_end`; both are absent when paused at the end. `/stats/campaign` takes `at`, and the admin header and status bar send it. **What cannot be rebuilt** (full list in the module docstring): when an alert resolved or expired, since no column or activity row records it. It is told by the generator's own age rule evaluated at `at` (monitor alerts 6 days after ending, cluster alerts 96 h after the episode started), and otherwise no earlier than `ended_at`. Also: whether a background report was drawn 'corroborated' (the 20 h rule), and a cluster's 'reviewed'/'closed' (the 72 h rule). Four alerts stored 'active' with an acknowledgement are left as stored.
+- **P5, street grids that follow the clock.** The community and industry street grids request `window=todate&at=<the moment>` (`passwindow.py`: passes up to `at`), which is identical to the stored 'all' at the end of the data (tests/test_passwindow.py). Community place names still read the stored grid, because they are geography. The timeline popup now says "measured up to the moment shown" in those rooms and "the whole campaign" on admin's maps.
+- **P6, one family of age formatters.** Every age on screen is `relativeTime`, `relativeShort` or `relativeWords` from `core/format.ts`, and every one takes the demo's now. The community's `agoWords` moved there as `relativeWords`. See Formatters in the Phase 2 contract.
+- **P7, per-event timeline stepping.** Previous/Next move one event; a merged pill is only a drawing.
+- **P8, agency-neutral advice.** The regulator reads alert recommendations with no operator lever in them, from the generator and from every runtime scenario (cluster, wind shift, methane_leak, model_divergence). Industry gets its lever back from `_for_operator` / `_AGENCY_LINES` in `routers/alerts.py`, which also recognises the operator lines stored by builds before phase 6.
+
 ## Phase 2 contract — the one clock (as built, 2026-09-23)
 
 The core is in place; everything else in phase 2 builds on these rules.
@@ -390,9 +401,13 @@ server filters `/feed`, `/concerns`, `/clusters`, `/stats/community`
 and `/alerts` by `at` **before** its LIMIT (a browser filter after the LIMIT
 empties the list).
 
-**Formatters.** `relativeTime(t, now)`, `relativeShort(t, now)` and
-`fmtElapsed(since, until)` require their `now`. A future time is never printed
-as "in 2 d" or as a past duration.
+**Formatters.** `relativeTime(t, now)` ("3 h ago"), `relativeShort(t, now)`
+(a bare "3h" for a column or chip whose header already names it),
+`relativeWords(t, now)` ("3 hours ago", plain words, the community's; phase 6)
+and `fmtElapsed(since, until)` require their `now`. A future time is never
+printed as "in 2 d" or as a past duration. **No caller adds its own "ago"**:
+the phrase needing one uses `relativeTime` or `relativeWords`. The rule exists
+because "Claimed ${relativeShort()} ago" printed "Claimed now ago".
 
 **Queries keyed on the clock** keep the previous data on screen while the next
 step loads (`TIMED` in core/queries.ts) — only those, not globally.

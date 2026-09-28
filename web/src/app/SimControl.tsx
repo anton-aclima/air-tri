@@ -124,14 +124,17 @@ export function SimControl({ open, onClose, anchor }: SimControlProps) {
 
 /**
  * One line of what this dataset is, and one of what the map colours cover.
- * The second is there because the clock moves the wind, the fleet and the
- * events, but the street colours are a whole-campaign summary — without it,
- * pressing Start and seeing August-coloured streets reads as a bug. So it is
- * set as legibly as the first (both in --ink-2), not as a footnote.
+ * Since phase 6 (P5) the community, regulator and industry maps colour the
+ * streets from passes up to the moment shown (`window=todate&at`, or the
+ * regulator's 24 h / 7 d windows ending there), so pressing Start shows few
+ * streets, not August's — the line says why. Admin's maps still read the
+ * stored whole-campaign window, and say so. Set as legibly as the first line
+ * (both in --ink-2), not as a footnote.
  */
 function DatasetFacts() {
   const campaign = useCampaignInfo()
   const bounds = useSession((x) => x.time.bounds)
+  const role = useSession((x) => x.role)
   return (
     <footer className={s.facts}>
       <p
@@ -139,12 +142,21 @@ function DatasetFacts() {
         title="Real streets and real neighbourhood names. Every person, company, agency, reading and alert is invented."
       >
         {campaign?.name ?? 'This campaign'}
+        {/* The line wraps (the industry room's 11px caps cut '· N vehicles'
+            off at 1080), and only between facts: each fact after the name is
+            unbreakable, and the dot stays with the fact before it. */}
         {bounds ? (
-          <> · <span className="num">{fmtDay(bounds.start)} – {fmtDay(bounds.end)}</span></>
+          <>{'\u00a0· '}<span className={clsx(s.unit, 'num')}>{fmtDay(bounds.start)} – {fmtDay(bounds.end)}</span></>
         ) : null}
-        {campaign ? <> · <span className="num">{campaign.fleet_size}</span> vehicles</> : null}
+        {campaign ? (
+          <>{'\u00a0· '}<span className={s.unit}><span className="num">{campaign.fleet_size}</span> vehicles</span></>
+        ) : null}
       </p>
-      <p className={s.fact}>Street colours on the maps cover the whole campaign.</p>
+      <p className={s.fact}>
+        {role === 'admin'
+          ? 'Street colours on the admin maps cover the whole campaign.'
+          : 'Street colours on the maps are measured up to the moment shown.'}
+      </p>
     </footer>
   )
 }

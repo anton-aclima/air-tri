@@ -90,7 +90,10 @@
   z-index: var(--z-overlay);
   color: var(--ink-3);
   font-family: var(--font-ui);
-  font-size: 9px;
+  /* 9px, or the room's type floor where it has one (11px in the regulator and
+     industry rooms: tokens.css ROOM TYPE FLOOR). --label-min-px is unset
+     elsewhere, so max() falls back to 9px. */
+  font-size: max(9px, calc(var(--label-min-px, 0) * 1px));
   opacity: 0.7;
   pointer-events: none;
 }

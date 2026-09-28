@@ -319,6 +319,13 @@ export interface Concern {
   occurred_at: string;
   created_at: string;
   status: ConcernStatus;
+  /**
+   * What the end of the data will show, on a report served with an `at`
+   * before the end (server/loaders.py load_concerns); absent at the end,
+   * where `status` already is it. Replay reads it to know whether "go to the
+   * end" to mark the report leads anywhere.
+   */
+  status_at_end?: ConcernStatus;
   cluster_id: string | null;
   corroborations: number;
   is_anonymous: boolean;
@@ -445,6 +452,11 @@ export interface Alert {
   action_level_id: string | null;
   started_at: string;
   ended_at: string | null;
+  /**
+   * The status as it stood at the request's `at` (server/statusat.py), walked
+   * back from the stored one; exactly the stored one at the end of the data.
+   * What cannot be rebuilt (when an alert resolved or expired) is listed there.
+   */
   status: AlertStatus;
   title: string;
   body: string | null;
@@ -455,9 +467,19 @@ export interface Alert {
    * Begun and not ended at the request's `at` (the end of the data when none
    * was sent), computed by the server. The same test as `isOngoing` in
    * core/events, which is the one to use when the moment on screen may have
-   * moved since the fetch. `status` cannot answer this: it is the final status.
+   * moved since the fetch. `status` cannot answer this: it says where the
+   * workflow stood, not whether the event was still running.
    */
   ongoing?: boolean;
+  /**
+   * The stored status at the end of the data, sent beside `status` only on an
+   * alert served with an `at` before the end. ABSENT when paused at the end
+   * (there `status` is the stored one). For "how it turned out", never for
+   * anything counted at the moment shown.
+   */
+  status_at_end?: AlertStatus;
+  /** `ongoing` at the end of the data; present and absent exactly as `status_at_end`. */
+  ongoing_at_end?: boolean;
   /** Populated only when the request supplied `site_id` — this is the RWR geometry. */
   bearing_deg?: number;
   distance_m?: number;

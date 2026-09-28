@@ -146,10 +146,13 @@ export function SiteConfig() {
                     {exceeds ? '▲' : fresh.length ? '◇' : '·'}
                   </span>
                   {/* "Fenceline NW": the panel already says whose. */}
+                  {/* The date of an offline sensor's last reading is on its own
+                      line: as a suffix it was the first thing the ellipsis cut
+                      in a ~110px name column, and it is the point of the row. */}
                   <span className={s.epName} title={!fresh.length && last ? `${m.name} · no reading since ${fmtDay(last)} ${fmtTime24(last)}` : m.name}>
                     {m.name.replace(/^.*?\bfenceline\s+/i, 'Fenceline ')}
                     {!fresh.length && last ? (
-                      <span style={{ color: 'var(--ink-3)' }}> · last reading {fmtDay(last)}</span>
+                      <span className={s.epSub}>last reading {fmtDay(last)}</span>
                     ) : null}
                   </span>
                   <span className={s.contactCode}>{m.measures.join(' ')}</span>

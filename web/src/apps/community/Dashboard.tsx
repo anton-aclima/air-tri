@@ -22,7 +22,8 @@ export function Dashboard() {
   const { data: stats, isLoading } = useCommunityStats()
   // Counted up to the demo's now: in replay, "reports from neighbours" is how
   // many had been posted by the moment on screen, not the campaign's total.
-  const concerns = happenedBy(useConcerns({ limit: 200 }).data, useNowCampaign())
+  // 400, the map's key: the campaign holds 204, and 200 read "200" at the end.
+  const concerns = happenedBy(useConcerns({ limit: 400 }).data, useNowCampaign())
   const flags = useFlags()
 
   return (

@@ -51,7 +51,7 @@ import { SEVERITY_LABEL, severityRank, severityVar, shortName, unitFor } from '@
 import {
   useActionLevels, useActiveMeasure, useAlerts, useConcernClusters, useConcerns, useDispersion,
   useDispersionModels, useEnvelope, useMeasures, useModelVerification, useMonitors, useOrgs,
-  useSegments, useWind, useWindField,
+  useWind, useWindField,
 } from '@/core/queries'
 import { useNowCampaign, useSession } from '@/core/session'
 import type { CampaignTime } from '@/core/clock'
@@ -68,6 +68,7 @@ import {
   nextHold, toNearAlerts, typicalUntil, useCampaignWindow, useDownwindTests, useSiteLock, useStableWindow,
   wasDownwindAtStart,
 } from './lib'
+import { streetsWindowWords, useStreetGeometry, useStreetGrid } from './streets'
 import type { AlertContext, NearAlert } from './lib'
 
 /**
@@ -202,14 +203,20 @@ export function Scope() {
   const [legendRef, legendSize] = useSize<HTMLDivElement>({ width: 260, height: 160 })
 
   // Only the streets around this site. The regulator wants the whole campaign;
-  // an operator wants the blocks their plume actually crosses. Fetched even
-  // with the grid hidden: the fenceline road is drawn from it.
+  // an operator wants the blocks their plume actually crosses. The coloured
+  // grid is measured up to the moment shown (`todate&at`, P5): in replay a
+  // street not driven yet is not on it. The fenceline road's outline and the
+  // map's fit read the clock-free geometry instead, so the road the envelope
+  // is measured on does not vanish before its first pass.
   const bbox = useMemo(() => (site ? bboxAround(site.centroid, 9000) : null), [site])
-  const segsQ = useSegments({ bbox, limit: 9000 }, { enabled: !!bbox })
+  const segsQ = useStreetGrid({ bbox, limit: 9000 }, { enabled: !!bbox })
+  const geomQ = useStreetGeometry({ bbox, limit: 9000 }, { enabled: !!bbox })
+  const replaying = useSession((x) => x.time.cursor != null)
+  const gridWords = streetsWindowWords(segsQ.data, replaying, now, 'whole campaign')
   const fenceIds = useMemo(() => new Set(env?.fenceline_segment_ids ?? []), [env])
   const fenceSegs = useMemo(
-    () => (segsQ.data?.features ?? []).filter((f) => fenceIds.has(f.properties.id)),
-    [segsQ.data, fenceIds],
+    () => (geomQ.data?.features ?? []).filter((f) => fenceIds.has(f.properties.id)),
+    [geomQ.data, fenceIds],
   )
 
   const fenceline = useMemo(
@@ -714,7 +721,7 @@ export function Scope() {
             <MapOverlay place="bottom-left">
               <div ref={legendRef} className={s.legend}>
                 <div className={s.legendKeys}>
-                  {shown.grid ? <LegendKey swatch={<StreetSwatch />} text="Measured street · whole campaign" /> : null}
+                  {shown.grid ? <LegendKey swatch={<StreetSwatch />} text={`Measured street · ${gridWords}`} /> : null}
                   {fenceSegs.length ? <LegendKey swatch={<FenceSwatch />} text={`Fenceline road${roads.length > 1 ? 's' : ''}${fenceRoad ? ` · ${fenceRoad}` : ''}`} /> : null}
                   <LegendKey swatch={<CampusSwatch />} text="Your campus and stacks" />
                   {fenceline.length ? <LegendKey swatch={<FenceSensorSwatch />} text="Your fence sensor · red = over a level" /> : null}
@@ -774,7 +781,9 @@ export function Scope() {
                     {isIndex
                       ? ' on a fixed 0–60 scale, where 60 is the top of the Moderate band'
                       : `${unitFor(measureDef) ? ` in ${unitFor(measureDef)}` : ''}, colour stretched to what is in view`}
-                    , measured by Aclima's cars over the whole campaign. Width is how often a street was driven.
+                    , measured by Aclima's cars {replaying
+                      ? `from the start of the campaign to ${fmtDay(segsQ.data?.window?.to ?? now)} ${fmtTime24(segsQ.data?.window?.to ?? now)}; a street not driven by then is not coloured`
+                      : 'over the whole campaign'}. Width is how often a street was driven.
                   </p>
                 ) : null}
                 {shown.plume && aboutPlume ? <p>{aboutPlume}</p> : null}
@@ -824,6 +833,7 @@ export function Scope() {
               monitors={monitorsQ.data ?? []}
               downwindIds={downwindIds}
               segments={segsQ.data?.features ?? []}
+              streetsWindow={gridWords}
               wind={windQ.data}
               envelope={env}
               envelopeBand={band}

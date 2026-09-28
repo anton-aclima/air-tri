@@ -10,12 +10,11 @@
 import { useMemo } from 'react'
 
 import { CONCERN_EMOJI, CONCERN_LABEL } from '@/components'
-import { campaignMs } from '@/core/clock'
 import type { CampaignTime } from '@/core/clock'
 import { hasStarted, isOngoing } from '@/core/events'
-import { distanceBetween, fmtDistanceImperial } from '@/core/format'
-import { useConcernClusters, useSegments, useUsers } from '@/core/queries'
-import { DEFAULT_VIEW, usePersona } from '@/core/session'
+import { distanceBetween, fmtDateTime, fmtDistanceImperial } from '@/core/format'
+import { keepSegmentsWhile, useConcernClusters, useSegments, useUsers } from '@/core/queries'
+import { DEFAULT_VIEW, useMeasureCode, usePersona, useSession } from '@/core/session'
 import type {
   Advisory, Concern, ConcernCluster, ConcernKind, ConcernStatus, FeedItem, Monitor, Position, Role,
   SegmentCollection, SiteKind, User,
@@ -62,9 +61,59 @@ export function districtCenters(segments: SegmentCollection | undefined): Map<st
   return out
 }
 
-/** The road grid, always painted by risk — community never sees a raw magnitude. */
+/**
+ * The road grid, always painted by risk — community never sees a raw
+ * magnitude — and measured up to the moment shown: `window=todate&at=<the
+ * clock>`, so a replayed map colours a street only from the passes driven by
+ * then (phase 6, P5). Paused at the end of the data no `at` is sent and
+ * `todate` is the stored 'all' window exactly (tests/test_passwindow.py). The
+ * body carries `window: {name, from, to, last_pass_at}`; name the grid's moment
+ * from that (`gridWords`), never from the clock, so the words and the colours
+ * cannot disagree while a step of the clock is loading.
+ *
+ * A step of the clock keeps the previous grid on screen until the next one
+ * lands (same pollutant, same window); a pollutant switch reads as loading.
+ */
 export function useCommunitySegments() {
-  return useSegments({ metric: 'risk', limit: 2000 })
+  const measure = useMeasureCode()
+  return useSegments(
+    { metric: 'risk', window: 'todate', limit: 2000 },
+    { placeholderData: keepSegmentsWhile((p) => p.measure === measure && p.window === 'todate') },
+  )
+}
+
+/**
+ * What the grid's legend says about its window. Paused at the end of the data
+ * the existing words are true ("these three months"); in replay the grid is
+ * cut at the moment shown and says so, and before the first pass it says no
+ * street had been driven yet rather than drawing an empty ramp.
+ */
+export function gridWords(
+  segments: SegmentCollection | undefined,
+  replaying: boolean,
+): { title: string; empty: string | null } {
+  const w = segments?.window
+  if (!replaying || !w) return { title: 'How your street scores · these three months', empty: null }
+  const title = `How your street scores · measured to ${fmtDateTime(w.to)}`
+  const none = !w.last_pass_at || !segments.features.length
+  return { title, empty: none ? 'Our cars had not driven these streets yet' : null }
+}
+
+/**
+ * Where the neighbourhoods are: geography, not a measurement, so it must not
+ * move with the clock — at the first moment of a replay the `todate` grid is
+ * empty (no pass before Jun 1 17:30) and every place would fall back to the
+ * campaign centre. Only `district` and each street's first vertex are read,
+ * never a value. Paused at the end it shares the road grid's own `todate`
+ * fetch (identical to 'all' there); in replay it reads the stored grid once.
+ */
+function usePlaceSegments() {
+  const replaying = useSession((st) => st.time.cursor != null)
+  // Any previous grid will do while the other one loads: only geography is read.
+  return useSegments(
+    { metric: 'risk', window: replaying ? 'all' : 'todate', limit: 2000 },
+    { placeholderData: (previous) => previous },
+  )
 }
 
 export interface Places {
@@ -77,7 +126,7 @@ export interface Places {
 }
 
 export function usePlaces(): Places {
-  const { data } = useCommunitySegments()
+  const { data } = usePlaceSegments()
   const homeName = useMyNeighborhood()
   return useMemo(() => {
     const centers = districtCenters(data)
@@ -509,24 +558,4 @@ export const PLUME_COPY = {
  */
 export const REPORT_MEASURE: Partial<Record<string, 'no2' | 'pm25'>> = {
   smell: 'no2', health: 'no2', other: 'no2', smoke: 'pm25', dust: 'pm25',
-}
-
-/**
- * "a day ago", "3 hours ago" — the community's words for an age. The shared
- * formatter writes "1 d ago", an abbreviated unit, which the community's
- * plain-language rule keeps off a resident's screen.
- */
-export function agoWords(then: string | Date | null | undefined, now: string | Date): string {
-  if (!then) return 'recently'
-  const t = typeof then === 'string' ? campaignMs(then) : then.getTime()
-  const n = typeof now === 'string' ? campaignMs(now) : now.getTime()
-  const mins = Math.max(0, Math.round((n - t) / 60_000))
-  const say = (k: number, one: string, many: string) => (k === 1 ? `a${one === 'hour' ? 'n' : ''} ${one} ago` : `${k} ${many} ago`)
-  if (mins < 2) return 'just now'
-  if (mins < 60) return `${mins} minutes ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return say(hours, 'hour', 'hours')
-  const days = Math.round(hours / 24)
-  if (days < 14) return say(days, 'day', 'days')
-  return say(Math.round(days / 7), 'week', 'weeks')
 }

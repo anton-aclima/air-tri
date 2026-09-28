@@ -549,7 +549,12 @@ function Consequence({
    * The same streets, the honest statistic for each kind of level.
    */
   const metric: 'max' | 'median' = level.kind === 'spike' ? 'max' : 'median'
-  const segsQ = useSegments({ measure: level.measure as MeasureCode, metric, window: 'all' })
+  // Bounded by the moment shown (phase 6, P5): at the end of the data
+  // `todate` is the stored 'all' window exactly; in replay it holds only the
+  // passes driven by then, and the caption names that moment.
+  const segsQ = useSegments({ measure: level.measure as MeasureCode, metric, window: 'todate' })
+  const gridTo = segsQ.data?.window?.to ?? null
+  const windowWords = replaying && gridTo ? `to ${fmtDay(gridTo)} ${fmtTime24(gridTo)}` : 'whole campaign'
   const values = useMemo(() => segmentValues(segsQ.data), [segsQ.data])
   const overCount = useMemo(
     () => values.reduce((n, v) => (v >= level.threshold ? n + 1 : n), 0),
@@ -637,8 +642,8 @@ function Consequence({
               ramp="intensity"
               subtitle={
                 level.kind === 'spike'
-                  ? 'Highest reading on each ~200 m of street the fleet drove, whole campaign.'
-                  : 'Typical reading on each ~200 m of street the fleet drove, whole campaign.'
+                  ? `Highest reading on each ~200 m of street the fleet drove, ${windowWords}.`
+                  : `Typical reading on each ~200 m of street the fleet drove, ${windowWords}.`
               }
             />
           ) : (

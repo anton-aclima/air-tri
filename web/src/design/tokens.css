@@ -22,7 +22,8 @@
   --font-display: 'Instrument Sans Variable', 'Instrument Sans', var(--font-ui);
   --font-mono:    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  --text-3xs: 0.625rem;   /* 10px — RWR micro labels, axis ticks */
+  --text-3xs: 0.625rem;   /* 10px — micro labels, axis ticks. 11px in the regulator
+                             and industry rooms: see ROOM TYPE FLOOR below */
   --text-2xs: 0.6875rem;  /* 11px */
   --text-xs:  0.75rem;    /* 12px */
   --text-sm:  0.8125rem;  /* 13px — dense console body */
@@ -397,6 +398,24 @@
 
 /* Landing / persona picker uses the admin skin as a neutral base. */
 [data-role='none'] { color-scheme: dark; }
+
+/* ===========================================================================
+   ROOM TYPE FLOOR — the regulator and industry rooms' smallest text is 11px
+   (PLAN-refocus backlog, phase 6; the label cuts of phases 3 and 5 came first).
+   Scoped to the ROOM, not the skin: AppShell mirrors the room onto <html>, so
+   `:root[data-role]` reaches the shell, its portals (sheets, popovers, toasts,
+   the persona switcher opened from the room) and nothing on the landing,
+   where a door drawn in the regulator skin keeps the shared 10px scale.
+   `--label-min-px` is the same floor for canvas text (deck.gl TextLayers read
+   it through `Theme.labelPx`) and for the one literal size below the scale,
+   the basemap attribution (BaseMap.module.css: max(9px, floor)). Community,
+   admin and the landing are unchanged.
+   ======================================================================== */
+:root[data-role='regulator'],
+:root[data-role='industry'] {
+  --text-3xs: 0.6875rem;   /* 11px — the floor */
+  --label-min-px: 11;
+}
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur-med: 0ms; --dur-slow: 0ms; --dur-sweep: 0ms; }

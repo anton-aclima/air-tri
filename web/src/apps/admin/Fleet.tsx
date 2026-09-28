@@ -96,7 +96,7 @@ export function Fleet() {
         cells={[
           { label: 'out now', value: fmtNum(counts.driving ?? 0, 0), tone: 'accent' },
           { label: 'reporting', value: d ? fmtNum(d.vehicles_active, 0) : '—' },
-          // `/stats/campaign` takes no `at`: this is every km of the campaign,
+          // `/stats/campaign` is called without `at` here: every km of the campaign,
           // beside "out now", which follows the clock. Named, not rebuilt.
           { label: 'km · campaign', value: d ? fmtCompact(d.km_driven, 0) : '—' },
           { label: 'delay', value: '0 min', tone: 'accent' },

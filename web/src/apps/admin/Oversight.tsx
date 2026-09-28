@@ -211,9 +211,9 @@ export function Oversight() {
         body: a.recommendation,
         tags: [a.kind.replace(/_/g, ' '), a.severity, a.status],
         severityVar: severityVar(a.severity),
-        // Greyed once it had ENDED by the moment on screen. The status is the
-        // final one, so replaying showed an alert as resolved on the day it
-        // began; the tag above still carries that final status.
+        // Greyed once it had ENDED by the moment on screen. The status tag is
+        // served as it stood at that moment (server/statusat.py), so an alert
+        // no longer reads 'resolved' on the day it began.
         ghost: !isOngoing(a, now),
       })
     }
@@ -241,9 +241,12 @@ export function Oversight() {
 
   const proposed = concernsNow.filter((c) => c.status === 'mitigation_proposed')
 
-  // Only the final status is stored, so a replayed past wears the statuses of
-  // the end of the data. Said once, in the subtitle, rather than on every chip.
-  const asOf = replaying ? ` · As of ${fmtDateTime(replaying)}; statuses are as at the end of the data.` : ''
+  // The moment on screen, said once in the subtitle. Every status on the
+  // sheet is as it stood then: alerts and reports are served that way for
+  // `at` (server/statusat.py) and mitigations are rebuilt by
+  // `mitigationStatusAt`. (This line used to say "statuses are as at the end
+  // of the data", which stopped being true in phase 6.)
+  const asOf = replaying ? ` · As of ${fmtDateTime(replaying)}` : ''
 
   const ticker = useMemo(() => {
     const rows = activityNow

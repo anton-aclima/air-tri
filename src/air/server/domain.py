@@ -286,13 +286,34 @@ def create_alert(
     return wire
 
 
+#: A concern cluster's stored recommendation. The regulator reads this alert
+#: first, so it points at the evidence, not at an operator (CONTRACT 10a.3;
+#: phase 6 of PLAN-refocus). It used to read "Check generator and
+#: cooling-tower logs for the reported window, then post an acknowledgement to
+#: the community feed." -- a datacentre's equipment, addressed to an operator,
+#: on the regulator's queue. The industry room still gets its site's lever:
+#: routers/alerts.py `_for_operator` words it for the site it is served to.
+#: narrative.py writes the same line for the generated clusters.
+CLUSTER_RECOMMENDATION = (
+    "Read these reports against the wind and the fleet's street passes for the reported window "
+    "before tying them to a source. An operator reply does not close a resident's report."
+)
+
+
 def resolve_alert(conn: sqlite3.Connection, campaign_id: str, alert_id: str, reason: str,
                   actor_role: str | None = None) -> dict[str, Any] | None:
     row = one(conn, "SELECT * FROM alert WHERE id=?", (alert_id,))
     if row is None or row["status"] in ("resolved", "expired"):
         return None
     now = timeutil.now_iso()
-    conn.execute("UPDATE alert SET status='resolved', ended_at=? WHERE id=?", (now, alert_id))
+    # An `ended_at` the alert already has is kept: resolving is a workflow
+    # step, not the end of the measurement. The step's own stamp is the
+    # `alert.resolved` activity row below, at the frozen build instant, and
+    # replay reads the resolution from it (statusat.first_resolutions), so a
+    # runtime resolution never shows before the end of the data.
+    conn.execute(
+        "UPDATE alert SET status='resolved', ended_at=COALESCE(ended_at, ?) WHERE id=?", (now, alert_id)
+    )
     row = one(conn, "SELECT * FROM alert WHERE id=?", (alert_id,))
     wire = shapes.alert(row)
     log(
@@ -437,10 +458,7 @@ def detect_cluster(conn: sqlite3.Connection, campaign_id: str, concern_id: str) 
             title=f"Community concern cluster · {count} reports",
             body=body,
             value=float(count), threshold=float(config.CLUSTER_MIN_COUNT), unit="reports",
-            recommendation=(
-                "Check generator and cooling-tower logs for the reported window, then post an "
-                "acknowledgement to the community feed."
-            ),
+            recommendation=CLUSTER_RECOMMENDATION,
             audience=["industry", "regulator", "admin"],
             started_at=first_at,
             samples=[(m["occurred_at"], float(i + 1)) for i, m in enumerate(sorted(members, key=lambda m: m["occurred_at"]))],

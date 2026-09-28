@@ -58,7 +58,7 @@ air-server = "air.server.__main__:main"
 | GET | `/monitors` | `owner_type` `grade` `site_id`; each carries `latest` per measure with `exceeds` |
 | GET | `/monitors/{id}` | |
 | GET | `/monitors/{id}/readings` | `measure` `from` `to` `interval=hour\|day` + the action levels for that measure |
-| GET | `/concerns` | `status` `kind` (both comma-separated), `since`, `near=lon,lat,radius_m`, `cluster_id` |
+| GET | `/concerns` | `status` `kind` (both comma-separated), `since`, `near=lon,lat,radius_m`, `cluster_id`, `at`. With `at`, each report's `status` and `corroborations` are as they stood then (`statusat.py`; the `status` filter is on that); at the end of the data they are the stored ones |
 | GET | `/concerns/{id}` | |
 | GET | `/clusters` | |
 | GET | `/sites` · `/sites/{id}` | `emission_points[]` inlined |
@@ -66,7 +66,7 @@ air-server = "air.server.__main__:main"
 | GET | `/mitigations` † | `site_id` `concern_id` `alert_id` |
 | GET | `/advisories` | `audience` `active_only` |
 | GET | `/enforcement` † | `enforcement_action` rows |
-| GET | `/alerts` | `role` `status` `severity` `kind` `site_id` `radius_m` `since`. **With `site_id`, every alert gains `bearing_deg` (0–360 true, from the site centroid) and `distance_m`, sorted nearest-first — this is the RWR scope.** |
+| GET | `/alerts` | `role` `status` `severity` `kind` `site_id` `radius_m` `since` `at`. **With `site_id`, every alert gains `bearing_deg` (0–360 true, from the site centroid) and `distance_m`, sorted nearest-first** (the deck's "6.3 km NE"). With `at`, `status` is as it stood then (`statusat.py`): 'acknowledged' from the first acknowledgement; 'resolved'/'expired' by the generator's age rule, the one step not stamped; the `status` filter is on the served status. A runtime resolution (`domain.resolve_alert`) is read from its `alert.resolved` activity row, stamped at the build instant, so it never shows in replay. At the end of the data it is the stored one. **Before the end, every alert also carries `status_at_end` (the stored status: what the end of the data will show) and `ongoing_at_end` (begun and not ended at the end of the data)**, so a replay screen knows whether "go to the end to acknowledge" leads anywhere (`statusat.at_end_fields`); at the end the two are absent. `/alerts/{id}?at` serves the same `status` and the same two fields |
 | GET | `/alerts/{id}` | + `samples[]`, related `concerns[]`, `mitigations[]`, `acknowledged_by[]`. `?site_id=` adds RWR geometry |
 | GET | `/regulator/network` | `at` `measure` `streets=24h\|7d\|todate` (default `7d`) → the regulator's Network screen: `monitors` (reading as of `at`; `level` {name, threshold, averaging_hours, ratio} is the highest enabled 1-hour level the reading exceeds, else the tightest (D15), and is the level the headline names; `over` is over the tightest; `exceedance_hours_7d` counts against `exceedance_level` {name, threshold}, the tightest, null with no channel or no 1-hour level; `in_plume`, `plume_share`), `plumes` (`touches` from the solid part only, `named` by F7), `residents`, `numbers`, `headline`, and `streets_window {kind, hours, from, to, last_pass_at}` — every street figure (`numbers.street_km`, `touches.streets_driven`, `driven_share`, `below_coverage_floor`) counts the set `/segments` draws for that window ending at `at`; `plumes[].streets_inside` is the streets inside the solid part whether driven or not, so a floor the plume's geometry cannot clear (`streets_inside < 8`) reads apart from one the driving did not. See `network.py` |
 | GET | `/action-levels` | `measure` |
@@ -86,7 +86,7 @@ air-server = "air.server.__main__:main"
 | GET | `/sites/{id}/dispersion-models` | `DispersionModel[]` with contours; `assumed_wind` re-binned onto the canonical 16-point rose |
 | GET | `/sites/{id}/model-verification` | `model_id` `from` `to` `quality` → `ModelVerification`. Assumed vs. observed rose, per-bearing bias, understated bearings, under-weighted districts, verdict |
 | GET | `/stats/community` | `window`. Unitless 0–100 risk, plain-language labels, `plain_name` — **no units, no acronyms** |
-| GET | `/stats/campaign` | admin KPIs |
+| GET | `/stats/campaign` | admin KPIs. `at`: `concerns_total`, `concerns_open` and `alerts_active` are counted as they stood then (reports filed by `at`, each status per `statusat.py`); the fleet and network figures are the whole campaign whatever the clock says. No `at` is the end of the data |
 | GET | `/activity` | `since` `after_id` `verb` (`*` wildcard) `limit` |
 | GET | `/health` † | db path, counts, cache stats, SSE subscriber count |
 
@@ -99,7 +99,7 @@ air-server = "air.server.__main__:main"
 | POST | `/concerns/{id}/responses` | `kind='mitigation'` moves the concern to `mitigation_proposed`; a regulator `acknowledge`/`finding` moves `new`/`corroborated` → `under_review` |
 | PATCH | `/concerns/{id}` | `{status, role?}`; role may also come from `X-Air-Role`. **403 unless regulator/admin for `resolved`/`closed`** |
 | POST | `/posts` | with `concern_id`, also creates `concern_response(kind='mitigation')` |
-| POST | `/mitigations` | also creates a `site_post(kind='mitigation')`, a `concern_response(kind='mitigation')`, and appends to the linked alert's recommendation |
+| POST | `/mitigations` | also creates a `site_post(kind='mitigation')` and a `concern_response(kind='mitigation')`. With `alert_id` it logs `alert.mitigation_attached`; the alert shows it under `/alerts/{id}` `mitigations[]` (bounded by `at`). It no longer appends to the alert's `recommendation`, which is served at every `at` |
 | POST | `/advisories` | |
 | POST | `/alerts/{id}/acknowledge` | sets `status='acknowledged'` |
 | PUT | `/action-levels/{id}` | full row, then **immediate re-evaluation** |
@@ -129,8 +129,8 @@ to `corroborated`, sets `cluster.site_id` to the nearest industry site, and emit
 `alert(kind='concern_cluster')` at the cluster centroid addressed to
 `["industry","regulator","admin"]`. Severity ladders 3→`watch`, 5→`warning`,
 7→`critical`. A cluster that grows **updates its existing alert** (verb
-`alert.escalated`) rather than spawning a new one, so the radar shows one contact
-getting worse instead of a stack of duplicates.
+`alert.escalated`) rather than spawning a new one, so the map and the alert list
+show one alert getting worse instead of a stack of duplicates.
 
 **2. Regulator action level → exceedance alert → community advisory.**
 `PUT /action-levels/{id}` writes the row and immediately calls
@@ -391,7 +391,8 @@ is `insufficient_data`. The rules engine does the same thing deterministically.
     `/stats/community`, `/alerts` — take `at` as an upper bound applied before
     their LIMIT; `/alerts/{id}`, `/monitors` (the `latest` block), `/fleet`,
     `/wind/current`, `/wind/dispersion` and `/coverage/calibration` take it as
-    the moment they are served as of. Every one goes through `domain.as_of`: no
+    the moment they are served as of; `/stats/campaign` bounds its three
+    workflow counts by it and nothing else. Every one goes through `domain.as_of`: no
     `at` is the end, past the end is the end, and anything unparseable is a 422.
     Replayed reads also rebuild what rides on a row: a report's `cluster_id` is
     null until its cluster had formed, its `responses` are the ones filed by

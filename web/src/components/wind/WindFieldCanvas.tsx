@@ -12,10 +12,10 @@
  * road grid, so it has to fade toward TRANSPARENT, not toward a colour. Painting
  * bg over it would grey out the map underneath.
  *
- * Two frames, one engine. The caller supplies a `Projector`, so the same particle
- * simulation runs over a Web Mercator map (regulator) and inside a site-locked
- * radar scope (industry). Particles live in lon/lat and are projected only for
- * drawing — which is exactly what makes that possible, and what lets the map pan
+ * Any frame, one engine. The caller supplies a `Projector` (every room's map
+ * builds one with `mapProjector`; the industry deck's site-locked dial, the
+ * other frame, was deleted with RadarScope in phase 6). Particles live in
+ * lon/lat and are projected only for drawing — which is what lets the map pan
  * and zoom without restarting the simulation.
  *
  * Hot-loop discipline: no allocation per particle per frame. Segments accumulate
@@ -47,12 +47,12 @@ import type { WindField } from '@/core/types';
 import type { Theme } from '../lib/theme';
 import { rgbaCss, withAlpha } from '../lib/theme';
 import { useReducedMotion } from '../lib/anim';
-import { buildFieldIndex, emptySample, mercatorProjector, scopeProjector } from '../lib/windField';
+import { buildFieldIndex, emptySample, mercatorProjector } from '../lib/windField';
 import type { FieldIndex, Projector } from '../lib/windField';
 
 export interface WindFieldCanvasProps {
   field: WindField | null | undefined;
-  /** Geography → canvas pixels. See `mercatorProjector` / `scopeProjector`. */
+  /** Geography → canvas pixels. See `mercatorProjector` / `mapProjector`. */
   projector: Projector | null;
   theme: Theme;
   /**
@@ -86,8 +86,8 @@ export interface WindFieldCanvasProps {
   colorMode?: 'ramp' | 'neutral';
   /**
    * Paint every particle in this token instead of the ramp, with SPEED carried by
-   * brightness. This is the radar-scope idiom — a magenta magnitude ramp over a
-   * phosphor dial fights the narrative and reads as a second data series.
+   * brightness — a magnitude ramp over a map that already carries a measured
+   * ramp fights the narrative and reads as a second data series.
    */
   colorToken?: string;
   /** Peak stroke alpha. Keep it low — wind is context, not data. */
@@ -512,26 +512,6 @@ export function mapProjector(
 ): Projector | null {
   if (!view || size.width < 2 || size.height < 2) return null;
   return mercatorProjector(view, size.width, size.height);
-}
-
-/** Projector for a site-locked radar scope of `size` pixels square. */
-export function makeScopeProjector(opts: {
-  site: [number, number];
-  rangeM: number;
-  size: number;
-  headingUp?: number;
-}): Projector {
-  const { site, rangeM, size, headingUp = 0 } = opts;
-  return scopeProjector({
-    site,
-    rangeM,
-    rMax: size / 2,
-    cx: size / 2,
-    cy: size / 2,
-    headingUp,
-    width: size,
-    height: size,
-  });
 }
 
 /** A rounded camera signature — pass as `viewKey` so pans wipe, not restart. */

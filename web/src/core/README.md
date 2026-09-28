@@ -108,7 +108,10 @@ useSites()  useSite(id)  usePosts({ site_id?, kind? })  useAdvisories({ audience
 useAlerts({ role?, status?, severity?, kind?, site_id?, at? })
     // role defaults to the active persona. Pass site_id to get bearing_deg +
     // distance_m. "Live" is isOngoing(alert, now) from core/events (or the
-    // server's `ongoing`), never status === 'active'.
+    // server's `ongoing`), never status === 'active'. `status` is as it stood
+    // at `at` (server/statusat.py; what cannot be rebuilt is listed there);
+    // `status_at_end` / `ongoing_at_end` ride beside it only when `at` is
+    // before the end of the data, and are absent when paused at the end.
 useAlert(id, siteId?)           useActionLevels()
 
 useLiveAlerts(role)             // core/alerts. { alerts, notices, count, bySeverity, worst, all, folded, loading, error }
@@ -146,7 +149,10 @@ useTouchdown(siteId, { measure?, from?, to?, regime? })  // MEASURED plume. Verd
                                                         // per-feature state is EVIDENCE, never a finding
 useCoverage(campaignId?, cellM?)                         // where a car has actually been. cell_m is a SIDE
 
-useCommunityStats({ window?, at? })  useCampaignStats()  useActivity({ since?, limit? })
+useCommunityStats({ window?, at? })  useCampaignStats({ campaign_id?, at? })  useActivity({ since?, limit? })
+    // useCampaignStats sends `at` only when given (NOT the clock by default):
+    // the timeline's by_day and the admin pages' "whole campaign" need every
+    // day. The admin header and status bar pass timeParam(time).
 ```
 
 The five event lists — concerns, clusters, alerts, feed, community stats — send
@@ -355,13 +361,21 @@ fmtNum  fmtAuto  fmtCompact  fmtPct  fmtSigned  fmtTrend  fmtRange  padNum
 pluralize  countOf  titleCase  humanize  initials  truncate  pctWidth
 fmtDay  fmtDayFull  isoDate  fmtTime  fmtTime24  fmtClock  fmtDateTime  fmtStamp
 fmtHourLabel               // diurnal axis: 0 → '12a'
-relativeTime  relativeShort  fmtElapsed  fmtDuration  fmtDurationMin
+relativeTime  relativeShort  relativeWords  fmtElapsed  fmtDuration  fmtDurationMin
 fmtDistance  fmtDistanceImperial  fmtKm
 compassPoint  compassWords  fmtBearing  fmtDegrees  fmtWind  fmtWindWords
 distanceBetween(a, b)  bearingBetween(a, b)  fmtLatLon
 ```
 
-`relativeTime(t, now)`, `relativeShort(t, now)` and `fmtElapsed(since, until)` **require**
+**Ages — three formatters, and nobody adds their own "ago".**
+
+| call | reads | use it for |
+|---|---|---|
+| `relativeTime(t, now)` | `"14 min ago"`, `"3 h ago"`, `"just now"` | dense rooms, a sentence or a meta line |
+| `relativeShort(t, now)` | `"14m"`, `"3h"`, `"2d"`, `"now"` | a **bare** age: a column or chip whose label already says what it is. Never append "ago" — `"Claimed ${relativeShort()} ago"` printed "Claimed now ago" |
+| `relativeWords(t, now)` | `"3 hours ago"`, `"a day ago"`, `"just now"`; `"recently"` for a missing time | plain words, no abbreviated unit (the community; any sentence) |
+
+`relativeTime`, `relativeShort`, `relativeWords` and `fmtElapsed(since, until)` **require**
 their `now`: pass `useNowCampaign()`. A time after `now` is never printed as "in 2 d"
 or as a past duration. Every date formatter reads strings as naive campaign time, so a
 date-only `2026-05-31` is local midnight, not the UTC midnight `new Date()` gives.

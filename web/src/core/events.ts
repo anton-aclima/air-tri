@@ -5,9 +5,10 @@
  * post exists on screen only once the demo's now has reached it. These are the
  * shared tests, so "live", "open" and "recent" mean one thing in every room.
  *
- * `status` is the row's FINAL status — only the latest one is stored — so a
- * replayed past can show today's acknowledgement on yesterday's alert. The
- * time tests here do not depend on it; `isOpenCase` does, and says so.
+ * `status` is served as it stood at the moment shown (server/statusat.py): the
+ * stored status walked back past every step taken after it; what cannot be
+ * rebuilt is listed there. The time tests here do not depend on it;
+ * `isOpenCase` does, and says so.
  */
 
 import { campaignMs } from '@/core/clock'
@@ -45,8 +46,11 @@ export function isOngoing(e: Timed, now: CampaignTime): boolean {
 }
 
 /**
- * Still someone's open case: begun, and not resolved or closed. Uses the final
- * status, so it is exact at the end of the data and approximate in replay.
+ * Still someone's open case: begun, and not resolved or closed. Uses `status`,
+ * served as it stood at the moment shown (server/statusat.py), so it is exact
+ * at the end of the data; in replay it is as good as that rebuild, whose gaps
+ * (when an alert resolved or expired) are listed there. A status fetched for
+ * an earlier moment is stale once the moment moves — refetch, do not reuse.
  */
 export function isOpenCase(e: Timed, now: CampaignTime): boolean {
   if (!hasStarted(e, now)) return false

@@ -6,7 +6,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from air.server import cache, config, geo, shapes
+from air.server import cache, config, geo, shapes, statusat
 from air.server.db import one, rows
 
 
@@ -156,7 +156,8 @@ def load_clusters(
     only a prefilter and `cluster_as_of` is the rule)."""
     sql = ["SELECT * FROM concern_cluster WHERE campaign_id = ? AND first_at <= ?"]
     params: list[Any] = [campaign_id, now]
-    if status:
+    replay = not statusat.at_end(now)
+    if status and not replay:
         sql.append("AND status = ?")
         params.append(status)
     sql.append("ORDER BY last_at DESC")
@@ -173,6 +174,10 @@ def load_clusters(
             continue  # had not formed yet
         count, posted = stood
         c = shapes.concern_cluster(r, max((m["created_at"] for m in posted), default=None))
+        # As it stood at `now` (statusat.cluster_status_at); the filter is on it.
+        c["status"] = statusat.cluster_status_at(r, now)
+        if status and replay and c["status"] != status:
+            continue
         if len(posted) < len(mine):
             noticed = sorted(m["occurred_at"] for m in posted)
             c.update(count=count, last_at=noticed[-1])
@@ -215,15 +220,21 @@ def load_concerns(
     - `responses` are the ones filed by then. At Jun 17 09:00 cn-0100-0009
       carried a Jun 18 mitigation reply and a Jul 11 regulator finding.
 
-    `status` is the final one: only it is stored, so it cannot be rebuilt."""
+    - `status` and `corroborations` are as they stood then
+      (statusat.concern_status_at / corroborations_at): a report an operator
+      replied to later reads what it was before the reply; one a regulator
+      closed later is not 'resolved'. The `status` FILTER is on the served
+      status, so in replay it runs after the rebuild, not in SQL."""
+    replay = not statusat.at_end(until)
+    wanted = status.split(",") if status else None
     sql = ["SELECT * FROM concern WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
     if concern_id:
         sql.append("AND id = ?")
         params.append(concern_id)
-    if status:
-        sql.append("AND status IN (%s)" % ",".join("?" * len(status.split(","))))
-        params += status.split(",")
+    if wanted and not replay:
+        sql.append("AND status IN (%s)" % ",".join("?" * len(wanted)))
+        params += wanted
     if kind:
         sql.append("AND kind IN (%s)" % ",".join("?" * len(kind.split(","))))
         params += kind.split(",")
@@ -237,12 +248,21 @@ def load_concerns(
         sql.append("AND cluster_id = ?")
         params.append(cluster_id)
     sql.append("ORDER BY created_at DESC LIMIT ?")
-    params.append(max(1, min(limit, 5000)))
+    cap = max(1, min(limit, 5000))
+    params.append(5000 if wanted and replay else cap)
 
     found = rows(conn, " ".join(sql), params)
     if near is not None:
         lon, lat, radius = near
         found = [c for c in found if geo.haversine_m(lon, lat, c["lon"], c["lat"]) <= radius]
+    steps: dict[str, dict[str, Any]] = {}
+    if replay and found:
+        steps = statusat.concern_steps(conn, found)
+        if wanted:
+            found = [
+                c for c in found
+                if statusat.concern_status_at(c["status"], steps[c["id"]]["reached"], until) in wanted
+            ][:cap]
     if not found:
         return []
 
@@ -274,6 +294,15 @@ def load_concerns(
         shapes.concern(c, authors.get(c["author_id"]), responses.get(c["id"], []), conn=conn)
         for c in found
     ]
+    if steps:
+        for raw, c in zip(found, out):
+            mine = steps[raw["id"]]
+            c["status"] = statusat.concern_status_at(raw["status"], mine["reached"], until)
+            c["corroborations"] = statusat.corroborations_at(raw["corroborations"], mine["corroborated_at"], until)
+            # What the end of the data will show, as alerts carry it
+            # (statusat.at_end_fields): a replay screen reads it to know
+            # whether "go to the end" to mark a report leads anywhere.
+            c["status_at_end"] = raw["status"]
     if until:
         clusters = sorted({c["cluster_id"] for c in out if c["cluster_id"]})
         if clusters:
@@ -378,15 +407,24 @@ def load_alerts(
     """`until` bounds the moment each alert entered the record
     (`shapes.ALERT_BEGUN_SQL`: `started_at`, or `created_at` for a concern
     cluster) before the LIMIT, and is also the moment each alert's `ongoing`
-    is judged at, so the flag and the list agree."""
+    is judged at, so the flag and the list agree.
+
+    `status` is served as it stood at `until` (statusat.alert_status_at): an
+    alert acknowledged after it reads 'active', one resolved after it reads
+    what it was before. The `status` FILTER is on that served status, so in
+    replay it runs after the rebuild, not in SQL. In replay each alert also
+    carries `status_at_end` and `ongoing_at_end` (statusat.at_end_fields):
+    what the end of the data will show."""
+    replay = not statusat.at_end(until)
+    wanted = status.split(",") if status else None
     sql = ["SELECT * FROM alert WHERE campaign_id = ?"]
     params: list[Any] = [campaign_id]
     if alert_id:
         sql.append("AND id = ?")
         params.append(alert_id)
-    if status:
-        sql.append("AND status IN (%s)" % ",".join("?" * len(status.split(","))))
-        params += status.split(",")
+    if wanted and not replay:
+        sql.append("AND status IN (%s)" % ",".join("?" * len(wanted)))
+        params += wanted
     if severity:
         sql.append("AND severity IN (%s)" % ",".join("?" * len(severity.split(","))))
         params += severity.split(",")
@@ -400,8 +438,20 @@ def load_alerts(
         sql.append(f"AND {shapes.ALERT_BEGUN_SQL} <= ?")
         params.append(until)
     sql.append("ORDER BY started_at DESC LIMIT ?")
-    params.append(max(1, min(limit, 3000)))
-    out = [shapes.alert(r, until) for r in rows(conn, " ".join(sql), params)]
+    cap = max(1, min(limit, 3000))
+    params.append(3000 if wanted and replay else cap)
+    found = rows(conn, " ".join(sql), params)
+    ids = [r["id"] for r in found]
+    acks = statusat.first_acks(conn, ids) if replay else {}
+    closed = statusat.first_resolutions(conn, ids) if replay else {}
+    out = []
+    for r in found:
+        a = shapes.alert(r, until)
+        a["status"] = statusat.alert_status_at(r, until, acks.get(r["id"]), closed.get(r["id"]))
+        a.update(statusat.at_end_fields(r, until))
+        out.append(a)
+    if wanted and replay:
+        out = [a for a in out if a["status"] in wanted][:cap]
     if role:
         out = [a for a in out if role in a["audience"]]
     return out

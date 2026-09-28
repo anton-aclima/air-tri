@@ -336,7 +336,7 @@ export function MonitorLayer(props: MonitorLayerProps): LayersList {
   const texts = new Map(labelled.map((m) => [m.id, textFor(m)]));
   const textKey = [...texts.entries()].map(([k, v]) => `${k}=${v}`).join('|');
 
-  const LABEL_SIZE = 10;
+  const LABEL_SIZE = theme.labelPx(10);
   const LABEL_OFFSET: [number, number] = [0, 12];
   const PLATE_PAD: [number, number] = [3, 1];
 

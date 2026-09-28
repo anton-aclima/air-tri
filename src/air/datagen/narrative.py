@@ -730,7 +730,20 @@ class _World:
                 "body": (f"{ep['cluster_count']} separate residents reported within "
                          f"{int(CLUSTER_RADIUS_M)} m of each other inside a day. "
                          f"Wind at the time carried from {_compass((ep['wind']['transport_deg'] + 180) % 360)}."),
-                "recommendation": ("Check operations for this window and reply to the cluster. "
+                # Agency-facing, like the monitor line (phase 6 of PLAN-refocus):
+                # the regulator reads this alert first, so it points at the
+                # evidence; routers/alerts.py `_for_operator` gives the industry
+                # room its site's lever. It read "Check operations for this
+                # window and reply to the cluster. ..."; the checked-in database
+                # was brought in line with
+                #   UPDATE alert SET recommendation = replace(recommendation,
+                #     'Check operations for this window and reply to the cluster.',
+                #     'Read these reports against the wind and the fleet''s street passes for the reported window before tying them to a source.')
+                #   WHERE kind = 'concern_cluster';
+                # rather than a rebuild (no notification or activity row carries
+                # it). Copy only: no RNG draw depends on it.
+                "recommendation": ("Read these reports against the wind and the fleet's street passes "
+                                   "for the reported window before tying them to a source. "
                                    "An operator reply does not close a resident's report."),
                 "audience_json": json.dumps(["regulator", "industry", "admin"]),
                 "created_at": _ts(min(t0 + timedelta(hours=5), self.now)),
@@ -823,7 +836,17 @@ class _World:
                          "Our vehicle wind observations put it far higher, and higher still inside "
                          "shift episodes. The filed study's plume and the one modelled from the "
                          "measured wind do not point the same way."),
-                "recommendation": "Re-run the dispersion study against measured wind before the next permit filing.",
+                # Agency-neutral (phase 6): re-running the study and filing the
+                # permit are the operator's acts, and the regulator reads this
+                # first. The operator's line ("Re-run the dispersion study
+                # against measured wind before the next permit filing.") is
+                # what routers/alerts.py `_for_operator` serves the industry
+                # room. The checked-in database was brought in line with
+                #   UPDATE alert SET recommendation =
+                #     'Compare the filed study''s wind with the measured wind before relying on its plume.'
+                #   WHERE id = 'al-windshift-00';
+                # Copy only: no RNG draw depends on it.
+                "recommendation": "Compare the filed study's wind with the measured wind before relying on its plume.",
                 "audience_json": json.dumps(["regulator", "industry", "admin"]),
                 "created_at": _ts(min(t0 + timedelta(hours=1), self.now)),
             })

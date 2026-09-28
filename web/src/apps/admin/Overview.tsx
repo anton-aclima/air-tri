@@ -254,10 +254,12 @@ export function Overview() {
       </div>
 
       {/* ── the 90-day build, one cell per day ───────────────────────── */}
-      {/* The whole campaign, whatever the clock says: `/stats/campaign` takes no
-          `at`, so at Aug 12 this sheet plotted days through Aug 28 and counted
-          56,673 passes when 44,667 had been driven. So it says it is the whole
-          campaign instead of implying "so far". */}
+      {/* The whole campaign, whatever the clock says: this sheet calls
+          `/stats/campaign` without `at` (its fleet figures are whole-campaign
+          even with one; only the concern and alert counts follow `at`). At
+          Aug 12 it plotted days through Aug 28 and counted 56,673 passes when
+          44,667 had been driven, so it says it is the whole campaign instead
+          of implying "so far". */}
       <Sheet
         code="01-E"
         title="Ninety days of driving"

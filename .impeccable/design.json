@@ -602,7 +602,7 @@
       {
         "name": "dur-sweep",
         "value": "3200ms",
-        "purpose": "The regulator's tower coverage-ring sweep and the landing hub. Nowhere else — the RadarScope deliberately has no sweep."
+        "purpose": "The regulator's tower coverage-ring sweep and the landing hub. Nowhere else."
       },
       {
         "name": "reduced-motion",
@@ -756,7 +756,7 @@
       },
       {
         "name": "The Never Colour Alone Rule",
-        "body": "Severity is carried by at least two channels — colour plus shape, size, position, or a glyph. The RadarScope encodes it three ways at once (colour, mark size, and a severity glyph in the contact's own label) specifically so it survives a colourblind reader at a glance.",
+        "body": "Severity is carried by at least two channels — colour plus shape, size, position, or a glyph. The AlertTimeline encodes it three ways at once (colour, the severity glyph in or beside each bar, and the severity word in its tooltip and table twin), and the map's alert tooltip pairs the same glyph with the word, so both survive a colourblind reader at a glance.",
         "section": "colors"
       },
       {
@@ -823,9 +823,9 @@
       "Don't re-bind `--actor-*` per room or use an actor hue to encode magnitude. A viewer learns that code once.",
       "Don't use a modality hue (`--mod-*`) for magnitude — those identify a series only.",
       "Don't substitute `--actor-aclima` for `--mod-aclima_sense`. An index describing someone's air must not read as a vendor badge.",
-      "Don't carry one room's finish into another: no pill buttons on the scope, no phosphor glow on community paper, no paper drop shadow in a dark room.",
+      "Don't carry one room's finish into another: no pill buttons in the industry room, no phosphor glow on community paper, no paper drop shadow in a dark room.",
       "Don't set a sentence in uppercase. Caps plus `--tracking-caps` means micro-label — except in industry, where uppercase is the room's whole voice.",
-      "Don't add a sweep, a scanline, or an idle animation to the RadarScope. It is a modern compass instrument, not a CRT, and its stillness is what makes real motion mean something.",
+      "Don't add a sweep, a scanline, or an idle animation anywhere but the regulator's coverage rings (`--dur-sweep`, theirs alone). The industry deck is a map, not a CRT, and its stillness is what makes real motion mean something.",
       "Don't render the map data as hexbins or points. The ~200m segment is the atom of this product and the grid is what makes it look like nothing else.",
       "Don't introduce a document-level scroll. The shell owns layout; each pane scrolls itself.",
       "Don't hard-code a shadow, a radius, or a breakpoint — and note that there is no shared breakpoint token yet, so a new responsive rule should follow the existing per-module `max-width` pattern rather than inventing a scale."

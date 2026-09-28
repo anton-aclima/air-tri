@@ -467,7 +467,6 @@ def alert(r: Row, now: str | None = None) -> dict[str, Any]:
     comparison, like the SQL bounds: every stamp is naive
     `YYYY-MM-DDTHH:MM:SS` (timeutil)."""
     now = now or timeutil.now_iso()
-    begun, ended = alert_begun_at(r), r["ended_at"]
     return {
         "id": r["id"],
         "kind": r["kind"],
@@ -491,8 +490,14 @@ def alert(r: Row, now: str | None = None) -> dict[str, Any]:
         "audience": jload(r["audience_json"], ["regulator", "industry", "admin"])
         or ["regulator", "industry", "admin"],
         "created_at": r["created_at"],
-        "ongoing": bool(begun) and begun <= now and (ended is None or ended > now),
+        "ongoing": alert_ongoing(r, now),
     }
+
+
+def alert_ongoing(r: Row, now: str) -> bool:
+    """Begun (`alert_begun_at`) by `now` and not ended by it (`alert`'s doc)."""
+    begun, ended = alert_begun_at(r), r["ended_at"]
+    return bool(begun) and begun <= now and (ended is None or ended > now)
 
 
 # ── fleet ─────────────────────────────────────────────────────────────────────

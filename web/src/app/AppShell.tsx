@@ -28,7 +28,7 @@ import { ToastHost } from '@/app/Toasts'
 import { useShellHotkeys } from '@/app/useRoleSwitch'
 import { useClockBounds, useTimePlayback } from '@/app/useTimePlayback'
 import { ROLES, activeNav, type NavItem, type RoleMeta } from '@/core/roles'
-import { useSession } from '@/core/session'
+import { timeParam, useSession } from '@/core/session'
 import { useLiveAlerts } from '@/core/alerts'
 import { startLive, useLiveStatus } from '@/core/live'
 import { severityVar } from '@/core/measures'
@@ -134,8 +134,19 @@ function IndustrySiteName() {
   return <span className={s.campaignName}>{site?.name ?? ROLES.industry.org}</span>
 }
 
+/**
+ * The admin header and status bar are the moment shown, like every other
+ * number in the shell: they send `at` (absent when paused at the end, so the
+ * end of the data is the stored KPIs). The timeline's `by_day` and the admin
+ * pages that print "the whole campaign" call `useCampaignStats()` without it.
+ */
+function useMomentCampaignStats() {
+  const time = useSession((st) => st.time)
+  return useCampaignStats({ at: timeParam(time) })
+}
+
 function AdminStrip() {
-  const stats = useCampaignStats()
+  const stats = useMomentCampaignStats()
   return (
     <div className={s.strip}>
       <StripItem label="Segments" value={stats.data ? fmtNum(stats.data.segments, 0) : DASH} />
@@ -150,7 +161,7 @@ function AdminStrip() {
 }
 
 function AdminStatusBar() {
-  const stats = useCampaignStats()
+  const stats = useMomentCampaignStats()
   const status = useLiveStatus()
   const d = stats.data
   return (

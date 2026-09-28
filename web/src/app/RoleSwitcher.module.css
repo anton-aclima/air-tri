@@ -6,7 +6,14 @@
   inset: 0;
   z-index: var(--z-modal);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* The doors' row is at least as tall as the doors, and the scrim scrolls
+     when the three rows do not fit. It was `1fr` over a `min-height: 0` grid
+     centred inside it, so on a short window (two columns below 1100 wide,
+     ~835px of content) the doors spilled out of their row both ways, over the
+     heading and the foot: 1054x760 overlapped each by ~15px. */
+  grid-template-rows: auto minmax(min-content, 1fr) auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: var(--s-5);
   padding: clamp(var(--s-5), 4vh, var(--s-8)) clamp(var(--s-4), 4vw, var(--s-8));
   background:
@@ -39,8 +46,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(var(--s-3), 1.4vw, var(--s-5));
-  align-content: center;
-  min-height: 0;
+  align-content: safe center;
 }
 
 @media (max-width: 1100px) {

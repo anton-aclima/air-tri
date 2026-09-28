@@ -342,6 +342,20 @@
   border-top: 1px solid var(--line);
 }
 
+/* In replay, where "This happened to me too" was (FeedCards `MeTooLater`):
+   the note takes its own line, the way back and the count sit under it. */
+.laterNote {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.laterCount {
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+
 .postTags {
   display: flex;
   align-items: center;

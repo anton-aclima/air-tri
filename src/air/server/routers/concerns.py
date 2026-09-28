@@ -80,8 +80,10 @@ def list_clusters(
     and kinds rebuilt from the members posted by then (`loaders.cluster_as_of`,
     the rule every report's `cluster_id` is served by too). That is the rule
     `clusterAsOf` in web/src/apps/community/lib.ts applies to the rows it is
-    given, so a bounded row passes through it unchanged. `status` is the final
-    one; that cannot be rebuilt (only it is stored).
+    given, so a bounded row passes through it unchanged. `status` is as it
+    stood at `at` (statusat.cluster_status_at): only the final one is stored,
+    and the generator decides it by age, so that rule is told at `at`; the
+    `status` filter is on the served status.
 
     `last_posted_at` is when the last counted member was posted — the moment
     this row is whole on every list bounded by `at`, and the one to send the

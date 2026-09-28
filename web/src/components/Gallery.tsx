@@ -48,7 +48,6 @@ import { Distribution } from './charts/Distribution';
 import { AlertTimeline, timelineFromAlerts } from './charts/AlertTimeline';
 import { WindRose } from './charts/WindRose';
 import { CompassBearing } from './charts/CompassBearing';
-import { RadarScope, contactsFromAlerts } from './charts/RadarScope';
 
 import { usePulse, useFleetAnimation } from './lib/anim';
 import { makeColorScale } from './lib/scales';
@@ -74,9 +73,9 @@ function useQuery() {
 }
 
 export type GallerySection =
-  | 'hero' | 'registers' | 'frame' | 'verify' | 'charts' | 'furniture' | 'driveplan';
+  | 'hero' | 'registers' | 'verify' | 'charts' | 'furniture' | 'driveplan';
 
-const ALL_SECTIONS: GallerySection[] = ['hero', 'registers', 'frame', 'verify', 'charts', 'furniture', 'driveplan'];
+const ALL_SECTIONS: GallerySection[] = ['hero', 'registers', 'verify', 'charts', 'furniture', 'driveplan'];
 
 export interface ComponentGalleryProps {
   /** Overrides the `?role=` query parameter. */
@@ -207,7 +206,6 @@ function RolePanel(props: {
   const fleet = useFleetAnimation(fx.FLEET, { durationMs: 5000 });
 
   const domain = useMemo(() => segmentDomain(fx.SEGMENTS), []);
-  const contacts = useMemo(() => contactsFromAlerts(fx.ALERTS), []);
   const timeline = useMemo(() => timelineFromAlerts(fx.ALERTS), []);
 
   const unit = plain ? '' : unitFor(def);
@@ -351,55 +349,6 @@ function RolePanel(props: {
 
       {/* ── THE MODEL REGISTERS ──────────────────────────────────────────── */}
       {showMap && on('registers') && <RegistersSection />}
-
-      {/* ── THE COMBINED FRAME (retired from the deck) ───────────────────── */}
-      {on('frame') && (
-      <Section
-        title="RadarScope — retired from the industry deck"
-        note={
-          'Kept for reference until the backlog removes it (PLAN-refocus D8). The deck now '
-          + 'tells this on the map: the wind our vehicles measured as particles, and the filed '
-          + 'study as a dotted outline the operator can switch on to compare.'
-        }
-      >
-        <div className={g.stage}>
-          <RadarScope
-            contacts={contacts}
-            size={420}
-            site={fx.RIDGELINE.centroid}
-            windField={showMap ? fx.WIND_FIELD : null}
-            windParticles={1500}
-            windSpeedDomain={[0, 8]}
-            modelContours={fx.DISPERSION_MODEL.contours}
-            modelLabel={fx.DISPERSION_MODEL.vendor ?? 'Consultant model'}
-            ownLabel={fx.RIDGELINE.name}
-            title="Ridgeline South Campus — passive radar"
-            selectedId={contacts[0]?.id}
-            onSelect={() => {}}
-          />
-          <div className={g.stack}>
-            <AlertTimeline
-              alerts={timeline}
-              title="How long each contact has been up"
-              subtitle="Open bars with a live edge are still running."
-              rowHeight={26}
-              showTable={false}
-            />
-            <div className={g.row}>
-              {contacts.slice(0, 3).map((c) => (
-                <CompassBearing
-                  key={c.id}
-                  bearing={c.bearing_deg}
-                  distanceM={c.distance_m}
-                  severity={c.severity}
-                  label={c.code}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </Section>
-      )}
 
       {/* ── VERIFY YOUR CONSULTANT ───────────────────────────────────────── */}
       {on('verify') && (
@@ -605,9 +554,6 @@ function RolePanel(props: {
             </div>
           </Card>
 
-          <Card label="RadarScope · standalone, no wind" center>
-            <RadarScope contacts={contacts} size={280} ownLabel="Ridgeline South" />
-          </Card>
         </div>
       </Section>
       )}

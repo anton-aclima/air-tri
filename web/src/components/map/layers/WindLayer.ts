@@ -624,7 +624,7 @@ function outlineLayers(props: DispersionLayerProps): LayersList {
       // The kernel stops at 8,000 m; the plume does not. Printed where the
       // line stops so nobody reads the end of the drawing as the end of the air.
       getText: () => 'truncated',
-      getSize: 10,
+      getSize: theme.labelPx(10),
       sizeUnits: 'pixels',
       getColor: theme.color('ink-2', 0.95),
       // Just past the end, on the side the axis is heading.

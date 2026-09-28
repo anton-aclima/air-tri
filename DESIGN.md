@@ -246,7 +246,7 @@ product is a *claim* on the same 1,307 road segments, and the design's entire jo
 make each claim feel native to whoever is making it while the evidence underneath stays
 identical. A resident opens warm paper and reads a coloured street. An agency analyst opens
 a dark watchfloor and reads the same street as an exact concentration. An operator opens a
-near-black scope and reads it as a bearing. Nobody is shown a different number.
+near-black map of their own site and reads it as a bearing and a distance. Nobody is shown a different number.
 
 That produces the system's central and deliberately uncomfortable property: **one
 measurement language, four rooms that do not want to look like each other.** The
@@ -360,8 +360,9 @@ never sample a subset, and never substitute a generic sequential scale.
 re-bind an actor hue per room, and never use one to encode a magnitude or a severity.
 
 **The Never Colour Alone Rule.** Severity is carried by at least two channels — colour plus
-shape, size, position, or a glyph. The RadarScope encodes it three ways at once (colour,
-mark size, and a severity glyph in the contact's own label) specifically so it survives a
+shape, size, position, or a glyph. The AlertTimeline encodes it three ways at once (colour,
+the severity glyph in or beside each bar, and the severity word in its tooltip and table
+twin), and the map's alert tooltip pairs the same glyph with the word, so both survive a
 colourblind reader at a glance.
 
 ## Typography
@@ -513,7 +514,7 @@ and for modal and sheet edges. Containers use `overflow: clip` rather than `hidd
 child cannot escape a rounded corner.
 
 Round geometry is reserved for meaning, not decoration: severity dots, avatars, monitor
-coverage rings, the radar scope, and the diurnal clock are circular *because the data is
+coverage rings, and the diurnal clock are circular *because the data is
 radial*. A rounded rectangle is chrome; a circle is a reading.
 
 ### Named Rules
@@ -655,9 +656,9 @@ casing keeps a 2px line crisp over any tile. Segments below the minimum pass cou
 
 > **Retired (owner decision D8).** The deck is now map-led: the map carries the site, the
 > measured streets, the fenceline road, the wind particles and today's plume outline, and
-> the dial was a second geometry repeating the map's bearings. `RadarScope.tsx` stays in
-> `components/` only until the gallery stops using it. The description below is kept as
-> the record of what it was; do not rebuild it on the deck.
+> the dial was a second geometry repeating the map's bearings. `RadarScope.tsx` was
+> deleted in phase 6 of the refocus, with its gallery section. The description below is
+> kept as the record of what it was; do not rebuild it.
 
 Industry's plan-position indicator, readable from three metres without interpretation.
 Position encodes bearing and range from the site; shape encodes who is reporting; colour,
@@ -728,12 +729,13 @@ component survives four skins.
 - **Don't** use a modality hue (`--mod-*`) for magnitude — those identify a series only.
 - **Don't** substitute `--actor-aclima` for `--mod-aclima_sense`. An index describing someone's
   air must not read as a vendor badge.
-- **Don't** carry one room's finish into another: no pill buttons on the scope, no phosphor
+- **Don't** carry one room's finish into another: no pill buttons in the industry room, no phosphor
   glow on community paper, no paper drop shadow in a dark room.
 - **Don't** set a sentence in uppercase. Caps plus `--tracking-caps` means micro-label —
   except in industry, where uppercase is the room's whole voice.
-- **Don't** add a sweep, a scanline, or an idle animation to the RadarScope. It is a modern
-  compass instrument, not a CRT, and its stillness is what makes real motion mean something.
+- **Don't** add a sweep, a scanline, or an idle animation anywhere but the regulator's
+  coverage rings (`--dur-sweep`, theirs alone). The industry deck is a map, not a CRT, and
+  its stillness is what makes real motion mean something.
 - **Don't** render the map data as hexbins or points. The ~200m segment is the atom of this
   product and the grid is what makes it look like nothing else.
 - **Don't** introduce a document-level scroll. The shell owns layout; each pane scrolls itself.

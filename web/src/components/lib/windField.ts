@@ -15,7 +15,7 @@
  *     measurement company.
  */
 
-import type { BBox, Position, WindField } from '@/core/types';
+import type { BBox, WindField } from '@/core/types';
 import { M_PER_LAT, mPerLon } from './geo';
 
 export interface FieldSample { u: number; v: number; speed: number; conf: number }
@@ -189,7 +189,7 @@ export interface Projector {
   width: number;
   height: number;
   /**
-   * The clip circle, when `clip === 'circle'`. A radar dial's ring is usually
+   * The clip circle, when `clip === 'circle'`. A circular frame's ring is usually
    * SMALLER than its box, so consumers must clip to this rather than assuming
    * an inscribed circle — otherwise particles fill the corners outside the ring.
    */
@@ -254,58 +254,3 @@ export function mercatorProjector(view: {
   };
 }
 
-/**
- * The radar-scope frame: a site-locked plan-position indicator. Bearing runs
- * clockwise from `headingUp`, range is linear from the centre to `rMax`.
- *
- * Uses a local equirectangular approximation around the site, which is exact
- * enough at a few kilometres and keeps the inverse cheap.
- */
-export function scopeProjector(opts: {
-  site: Position;
-  rangeM: number;
-  rMax: number;
-  cx: number;
-  cy: number;
-  headingUp?: number;
-  width: number;
-  height: number;
-}): Projector {
-  const { site, rangeM, rMax, cx, cy, headingUp = 0, width, height } = opts;
-  const mLon = Math.max(1, mPerLon(site[1]));
-  const rot = -headingUp * D2R;
-  const cosR = Math.cos(rot);
-  const sinR = Math.sin(rot);
-  const pxPerM = rMax / Math.max(1, rangeM);
-
-  return {
-    clip: 'circle',
-    width,
-    height,
-    cx,
-    cy,
-    r: rMax,
-    project(lon, lat, out) {
-      // metres east / north of the site
-      const e = (lon - site[0]) * mLon;
-      const n = (lat - site[1]) * M_PER_LAT;
-      // north is up (−y), east is right (+x), then rotate for headingUp
-      const px = e * pxPerM;
-      const py = -n * pxPerM;
-      out[0] = cx + px * cosR - py * sinR;
-      out[1] = cy + px * sinR + py * cosR;
-      return out;
-    },
-    unproject(x, y, out) {
-      const px = x - cx;
-      const py = y - cy;
-      const dxp = px * cosR + py * sinR;
-      const dyp = -px * sinR + py * cosR;
-      const e = dxp / pxPerM;
-      const n = -dyp / pxPerM;
-      out[0] = site[0] + e / mLon;
-      out[1] = site[1] + n / M_PER_LAT;
-      return out;
-    },
-  };
-}

@@ -33,11 +33,11 @@
 import { useMemo } from 'react'
 
 import s from '@/apps/community/community.module.css'
-import { PLUME_COPY, agoWords, useMyNeighborhood } from '@/apps/community/lib'
+import { PLUME_COPY, useMyNeighborhood } from '@/apps/community/lib'
 import { FootNote } from '@/apps/community/parts'
 import { Segmented } from '@/app/ui'
 import type { CampaignTime } from '@/core/clock'
-import { fmtDateTime } from '@/core/format'
+import { fmtDateTime, relativeWords } from '@/core/format'
 import { useClimatology } from '@/core/queries'
 import type { ConcernCluster, IndustrySite } from '@/core/types'
 
@@ -168,7 +168,7 @@ export function Plume(props: PlumeProps) {
           <p className={s.railRowSub}>
             {mode === 'now'
               ? PLUME_COPY.now.lead
-              : PLUME_COPY.when.lead(agoWords(latestCluster?.last_at ?? now, now))}
+              : PLUME_COPY.when.lead(relativeWords(latestCluster?.last_at ?? now, now))}
           </p>
           {/*
             With the cloud, never before it. Always shown while a cloud is on

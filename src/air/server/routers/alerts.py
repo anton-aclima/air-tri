@@ -24,6 +24,15 @@ the bound is in SQL anyway so it keeps working when they do not (the feed and
 the reports already do not), and so `ongoing` and the list are judged at one
 moment.
 
+`status` is served as it stood at `at` too (statusat.py): only the final
+status is stored, so it is walked back past every step taken after `at` --
+'acknowledged' from the first acknowledgement, 'resolved'/'expired' by the
+generator's own age rule, which is the one thing not stamped. The `status`
+filter is on that served status. Before the end of the data every alert also
+carries `status_at_end` (the stored status) and `ongoing_at_end` (begun and
+not ended at the end), so a replay screen knows whether "go to the end to
+acknowledge" leads anywhere.
+
 `GET /alerts/{id}?at` is the detail as it stood then — samples, acknowledgements,
 reports and mitigations filed by `at`. An alert that had not begun by `at` is
 still served, with `not_started: true` and `ongoing: false`, not a 404: a link
@@ -38,7 +47,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from air.server import domain, envelope, geo, loaders, shapes, timeutil
+from air.server import domain, envelope, geo, loaders, shapes, statusat, timeutil
 from air.server.db import get_db, one, resolve_campaign, rows, scalar, writer
 from air.server.models import AckIn
 
@@ -73,6 +82,48 @@ _GENERIC_NO2 = (
     "Read it against the wind, the fleet's street passes and the fenceline ring before the next hourly average closes.",
     "Check generator and turbine load for this window.",
     "Check what was burning on site in this window.",
+)
+
+
+#: The other agency-neutral stored lines (phase 6 of PLAN-refocus), each with
+#: the line the industry room reads instead: (stored openings, operator line).
+#: The opening is replaced and the rest of the stored text kept, as for
+#: `_GENERIC_NO2`. Each tuple also lists the operator-facing line older builds
+#: stored, so a database built before phase 6 reads the same.
+_AGENCY_LINES: tuple[tuple[tuple[str, ...], str], ...] = (
+    # A concern cluster: narrative.py and domain.CLUSTER_RECOMMENDATION.
+    ((
+        "Read these reports against the wind and the fleet's street passes for the reported window "
+        "before tying them to a source.",
+        "Check operations for this window and reply to the cluster.",
+        "Check generator and cooling-tower logs for the reported window, then post an "
+        "acknowledgement to the community feed.",
+    ), "Check {lever} for the reported window, then reply to the reports."),
+    # The runtime wind-shift scenario: sim.WIND_SHIFT_RECOMMENDATION.
+    ((
+        "The modelled plume is slow and stable, so it does not dilute. Read the receptors now "
+        "downwind against the fleet's street passes for the next hours before tying anything to a source.",
+        "Reduce turbine load pre-emptively; a stable, slow plume does not dilute.",
+    ), "Consider reducing {lever} ahead of the shift; the modelled plume is slow and stable, "
+       "so it does not dilute."),
+    # The generator's study-versus-measured-wind alert (narrative.py).
+    ((
+        "Compare the filed study's wind with the measured wind before relying on its plume.",
+        "Re-run the dispersion study against measured wind before the next permit filing.",
+    ), "Re-run the dispersion study against measured wind before the next permit filing."),
+    # The runtime study-versus-measured-wind scenario: sim.STUDY_DIVERGENCE_OPENING.
+    # The measured evidence after it ("; <district> sits downwind ...") is kept.
+    ((
+        "Compare the filed study's rose with the measured wind before relying on its plume",
+        "Re-run the study with the measured rose before the next permit review",
+    ), "Re-run the study with the measured rose before the next permit review"),
+    # The runtime methane scenario: sim.METHANE_RECOMMENDATION, whose opening
+    # runs to the semicolon.
+    ((
+        "Compare the passes on this street with the nearest monitor and the wind before tying it to a source",
+        "Walk the gas supply train, filter skids and turbine seals along this frontage with a "
+        "handheld before assuming combustion",
+    ), "Walk {lever} along this frontage with a handheld before assuming combustion"),
 )
 
 
@@ -123,6 +174,12 @@ def _for_operator(conn: sqlite3.Connection, alerts: list[dict[str, Any]], site_i
         elif site is not None and (generic := next((g for g in _GENERIC_NO2 if rec.startswith(g)), None)):
             lever, _why = advisor_rules.lever_for(dict(site), a.get("measure") or "no2")
             a["recommendation"] = f"Check {lever} for this window." + rec[len(generic):]
+        elif site is not None and (hit := next(
+            ((g, line) for gs, line in _AGENCY_LINES for g in gs if rec.startswith(g)), None
+        )):
+            generic, line = hit
+            lever, _why = advisor_rules.lever_for(dict(site), a.get("measure") or "no2")
+            a["recommendation"] = line.format(lever=lever) + rec[len(generic):]
         out.append(a)
     return out
 
@@ -182,8 +239,11 @@ def get_alert(
     was opened from: `ongoing` judged then, and only the samples,
     acknowledgements, reports and mitigations that existed by then. Unbounded,
     al-no2-0034-003 at Jul 19 06:00 carried a 09:20 acknowledgement and
-    samples through 08:00. `status` is the final one (only it is stored);
-    `ongoing` is what says whether it was live then.
+    samples through 08:00. `status` is as it stood then, as on the list
+    (statusat.alert_status_at): 'acknowledged' only once an acknowledgement in
+    `acknowledged_by` was filed. `ongoing` is what says whether it was live.
+    Before the end, `status_at_end` and `ongoing_at_end` say what the end of
+    the data will show, as on the list (statusat.at_end_fields).
 
     `not_started` is true when the alert had not entered the record by `at`
     (see the module docstring for why that is a flag, not a 404)."""
@@ -193,6 +253,11 @@ def get_alert(
     cid = row["campaign_id"]
     now = domain.as_of(conn, cid, at)
     a = shapes.alert(row, now)
+    a["status"] = statusat.alert_status_at(
+        row, now, statusat.first_acks(conn, [alert_id]).get(alert_id),
+        statusat.first_resolutions(conn, [alert_id]).get(alert_id),
+    )
+    a.update(statusat.at_end_fields(row, now))
     begun = shapes.alert_begun_at(row)
     a["not_started"] = not begun or begun > now
 

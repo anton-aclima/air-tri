@@ -15,7 +15,7 @@ import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { Button } from '@/app/ui'
-import { compassPoint, fmtDay, fmtDistance, fmtNum, fmtPct, fmtTime24, relativeShort } from '@/core/format'
+import { compassPoint, fmtDay, fmtDistance, fmtNum, fmtPct, fmtTime24, relativeTime } from '@/core/format'
 import { isOngoing } from '@/core/events'
 import { SEVERITY_LABEL, severityVar } from '@/core/measures'
 import type { SegmentFeature } from '@/components'
@@ -49,6 +49,8 @@ export interface SelectedProps {
   /** Reference monitors inside today's modelled plume. */
   downwindIds: readonly string[]
   segments: SegmentFeature[]
+  /** The grid's window in words (`streetsWindowWords`): "whole campaign", or "measured to Aug 24 05:00" in replay. */
+  streetsWindow: string
   /** The hourly wind record around the moment shown, for "the wind when it began". */
   wind: WindPoint[] | undefined
   envelope: Envelope | undefined
@@ -93,7 +95,7 @@ const KIND_TITLE: Record<MapPick['kind'], string> = {
 export function Selected(props: SelectedProps) {
   const {
     pick, onBack, now, site, measure, reports, alerts, alertCtx, monitors, downwindIds,
-    segments, wind, envelope, envelopeBand, geo,
+    segments, streetsWindow, wind, envelope, envelopeBand, geo,
   } = props
 
   const head = (title: string, tag?: ReactNode) => (
@@ -115,7 +117,7 @@ export function Selected(props: SelectedProps) {
         </span>
         {r.concern.body ? <p className={s.reportQuote}>“{r.concern.body}”</p> : null}
         <Where distanceM={r.distanceM} bearing={r.bearing} />
-        <Row label="Filed" value={relativeShort(r.concern.created_at, now)} />
+        <Row label="Filed" value={relativeTime(r.concern.created_at, now)} />
         <Row label="Neighbours agreed" value={fmtNum(r.concern.corroborations, 0)} />
         <Row label="Status" value={r.concern.status.replace(/_/g, ' ')} />
         <span className={s.selNote}>{windThen(wind, r.concern.occurred_at, r.bearing)}</span>
@@ -217,7 +219,7 @@ export function Selected(props: SelectedProps) {
       <>
         {head(f?.properties.name || 'Unnamed street', <Tag>Aclima fleet</Tag>)}
         <span className={s.selSub}>
-          {p.district ?? 'unknown district'} · {measure?.label ?? 'measurement'} · whole campaign
+          {p.district ?? 'unknown district'} · {measure?.label ?? 'measurement'} · {streetsWindow}
         </span>
         {/* This is the novel data — nobody else has a number for this street. */}
         <Row label="Median" value={`${fmtNum(p.median, dec)} ${unit}`} />

@@ -22,7 +22,7 @@ group.
 |---|---|---|
 | `/community` | Residents | A social feed. Report a concern, see your neighbours', hear from the agency and the operator. No units, no acronyms. |
 | `/regulator` | Agency staff | Tower defense. Their reference monitors are towers with coverage rings, our fleet extends their reach, suspected emitters are contacts. Exact concentrations, editable action levels. |
-| `/industry` | Datacenter operator | A radar warning receiver. Bearing, distance, severity, duration — and one recommended action. Glanceable, no analysis required. |
+| `/industry` | Datacenter operator | Their own site on a map: the measured streets, the fenceline road, the wind and today's plume outline, and each alert's bearing, distance, severity and duration — with one recommended action. Glanceable, no analysis required. |
 | `/admin` | Aclima | The drafting table. Draw the campaign, generate the drive plan, watch every role at once, fire scripted demo scenarios. |
 
 ## Setup

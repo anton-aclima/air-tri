@@ -16,7 +16,7 @@ import { useMemo, useState } from 'react'
 
 import { Button, Field, Input, Select, Textarea, Tooltip } from '@/app/ui'
 import { hasStarted, happenedBy, isOpenCase } from '@/core/events'
-import { fmtDateTime, relativeShort } from '@/core/format'
+import { fmtDateTime, relativeShort, relativeTime } from '@/core/format'
 import { useConcerns, useCreateMitigation, useCreatePost, usePosts } from '@/core/queries'
 import { useNowCampaign, useSession } from '@/core/session'
 import type { SitePost } from '@/core/types'
@@ -92,7 +92,7 @@ export function Outreach() {
                 <span className={s.brandName}>{site.name}</span>
                 <span className={s.bannerSub}>
                   {site.claimed_by_user_id && site.claimed_at && hasStarted({ created_at: site.claimed_at }, now)
-                    ? `Claimed ${relativeShort(site.claimed_at, now)} ago`
+                    ? `Claimed ${relativeTime(site.claimed_at, now)}`
                     : 'Unclaimed'}
                   {' · '}{site.kind} · {site.status}
                 </span>
@@ -189,7 +189,7 @@ export function Outreach() {
                   </div>
                   <span className={s.triState}>
                     <span className={s.triBadge} style={{ color: 'var(--ink-2)' }}>
-                      {c.status.replace('_', ' ')}
+                      {c.status.replace(/_/g, ' ')}
                     </span>
                   </span>
                 </div>

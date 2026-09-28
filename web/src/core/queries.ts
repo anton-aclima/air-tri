@@ -273,7 +273,7 @@ export const qk = {
   stats: {
     all: ['stats'] as const,
     community: (params: api.CommunityStatsParams) => ['stats', 'community', params] as const,
-    campaign: ['stats', 'campaign'] as const,
+    campaign: (params: api.CampaignStatsParams) => ['stats', 'campaign', params] as const,
   },
 
   activity: {
@@ -696,8 +696,9 @@ export function useAdvisories(
  * Alerts that had begun by the moment on screen. Defaults `role` to the active
  * persona's role and `at` to the clock. Pass `site_id` to get `bearing_deg` +
  * `distance_m`. "Live" is `isOngoing(alert, now)` (core/events), not
- * `status === 'active'`: the status is the final one and cannot say when an
- * alert ended.
+ * `status === 'active'`: the status is as it stood at the moment shown
+ * (server/statusat.py; what cannot be rebuilt is listed there), and a workflow
+ * status cannot say when an alert ended — acknowledging is not ending.
  */
 export function useAlerts(
   params: api.AlertsParams = {},
@@ -1200,16 +1201,27 @@ export function useCommunityStats(
   )
 }
 
-/** Admin KPIs. */
+/**
+ * Admin KPIs. A string is the campaign id, as before. `at` is sent only when
+ * given — it is NOT defaulted to the clock, because the timeline's `by_day`
+ * (app/TimeCursor) and the admin pages that say "the whole campaign" need
+ * every day. The admin header and status bar pass `timeParam(time)`: the
+ * moment shown, `undefined` (the end of the data) when paused at the end.
+ */
 export function useCampaignStats(
-  campaignId?: string,
+  params: string | api.CampaignStatsParams = {},
   opts?: QueryOpts<CampaignStats>,
 ): UseQueryResult<CampaignStats, Error> {
+  const given: api.CampaignStatsParams = typeof params === 'string' ? { campaign_id: params } : params
+  const merged: api.CampaignStatsParams = {
+    ...(given.campaign_id ? { campaign_id: given.campaign_id } : {}),
+    ...(given.at ? { at: given.at } : {}),
+  }
   return useApiQuery(
-    qk.stats.campaign,
-    (signal) => api.getCampaignStats(campaignId, signal),
+    qk.stats.campaign(merged),
+    (signal) => api.getCampaignStats(merged, signal),
     STALE.stats,
-    opts,
+    merged.at ? { ...TIMED, ...opts } : opts,
   )
 }
 

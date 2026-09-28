@@ -21,6 +21,15 @@
  * the old age column printed for a one-hour exceedance. The count in the title
  * is `useLiveAlerts('regulator')`, the same number as the nav badge.
  *
+ * Acknowledgement follows the moment as well. The server serves each alert's
+ * `status` as it stood at `at` (server/statusat.py): 'acknowledged' only from
+ * its first acknowledgement's stamp, 'resolved' never before it ended. So at
+ * Aug 25 06:00 the NO2 hour acknowledged later that day counts in "not
+ * acknowledged". An acknowledgement made here is stamped at the end of the
+ * data, so in replay it could not change the moment shown: the sheet sends
+ * the reader to the end to make one instead of filing one the page would go
+ * on calling unacknowledged.
+ *
  * The source column is doing quiet work: reading down it shows which rows a
  * reference monitor raised and which only the mobile fleet or residents could,
  * on channels and streets the reference network does not carry. The detail
@@ -40,7 +49,7 @@ import { fmtDay, fmtDuration, fmtNum, fmtTime24, relativeTime } from '@/core/for
 import { SEVERITY_LABEL, severityRank, severityVar } from '@/core/measures'
 import { useAcknowledgeAlert, useActionLevels, useAlert, useAlerts, useMonitorReadings } from '@/core/queries'
 import { useNowCampaign, useSession } from '@/core/session'
-import type { ActionLevel, Alert, MeasureCode, MeasureDef, Severity } from '@/core/types'
+import type { ActionLevel, Alert, AlertStatus, MeasureCode, MeasureDef, Severity } from '@/core/types'
 
 import {
   SOURCE_LABEL, endedBy, knownValue, levelName, sourceOf, subjectFor, unitText, whereOf,
@@ -323,6 +332,63 @@ function unacked(g: Group): number {
   return g.episodes.filter((e) => e.awaiting.length > 0).length
 }
 
+/**
+ * The alert's status at the end of the data, which the server sends beside a
+ * replayed `status` (`status_at_end`, routers/alerts.py). Absent only when
+ * paused at the end, where this is never asked; taken then as still waiting,
+ * which is what the sheet said before the field existed.
+ */
+function statusAtEnd(al: Alert): AlertStatus {
+  return al.status_at_end ?? 'active'
+}
+
+/**
+ * What became of an episode waiting at the moment shown, by the end of the
+ * data. Replay walks a stored 'resolved' back to 'active', so an episode not
+ * acknowledged at Aug 25 06:00 may be closed at the end, where the sheet
+ * offers no Acknowledge: sending the reader there to make one promised a
+ * button that is not there. Only a 'waiting' episode is sent.
+ */
+function laterOf(e: Episode): 'waiting' | 'acknowledged' | 'closed' {
+  const ends = e.awaiting.map(statusAtEnd)
+  if (ends.includes('active')) return 'waiting'
+  return ends.includes('acknowledged') ? 'acknowledged' : 'closed'
+}
+
+/** The replay note under "Act on it": what can still be done, and where. */
+function replayActText(g: Group, now: CampaignTime, dataEnd: CampaignTime | null): { text: string; toEnd: boolean } {
+  const waiting = g.episodes.filter((e) => e.awaiting.length > 0)
+  const fate = waiting.map(laterOf)
+  const still = fate.filter((f) => f === 'waiting').length
+  const acked = fate.filter((f) => f === 'acknowledged').length
+  const closed = fate.length - still - acked
+  const one = g.episodes.length === 1
+  const at = `${fmtDay(now)} ${fmtTime24(now)}`
+  const end = dataEnd ? ` (${fmtDay(dataEnd)} ${fmtTime24(dataEnd)})` : ''
+  // "fully" when some alert in a waiting episode is acknowledged: the rows
+  // above read "partly acknowledged", and a bare "not acknowledged" beside
+  // them read as a contradiction.
+  const partly = waiting.some((e) => e.awaiting.length < e.alerts.length)
+  const verb = partly ? 'not fully acknowledged' : 'not acknowledged'
+  const head = `${one ? verb[0].toUpperCase() + verb.slice(1) : `${waiting.length} of ${g.episodes.length} episodes ${verb}`} as of ${at}.`
+  const stamp = `An acknowledgement is stamped at the end of the data${end}, so it is made from there.`
+  if (still === waiting.length) return { text: `${head} ${stamp}`, toEnd: true }
+  if (one || waiting.length === 1) {
+    const later = acked
+      ? 'It was acknowledged later.'
+      : 'It closed later, so at the end of the data there is nothing left to acknowledge.'
+    return { text: `${head} ${later}`, toEnd: false }
+  }
+  const parts = [
+    acked ? `${acked} ${acked === 1 ? 'was' : 'were'} acknowledged later` : '',
+    closed ? `${closed} closed later` : '',
+  ].filter(Boolean)
+  const rest = still
+    ? ` ${still} ${still === 1 ? 'is' : 'are'} still not acknowledged at the end of the data${end}; an acknowledgement is stamped there, so it is made from there.`
+    : ' At the end of the data there is nothing left to acknowledge.'
+  return { text: `${head} Of those, ${parts.join(' and ')}.${rest}`, toEnd: still > 0 }
+}
+
 function stateText(g: Group, now: CampaignTime): { head: string; sub: string } {
   const n = unacked(g)
   const sub = !g.open
@@ -449,7 +515,7 @@ export function AlertsQueue() {
         <Panel title="Duration" aside={<span className={a.hint}>one bar per episode, open ones</span>}>
           <AlertTimeline
             alerts={timeline}
-            rowHeight={13}
+            rowHeight={14}
             maxRows={12}
             labels
             selectedId={active?.episodes.some((e) => e.id === sheet?.episode) ? sheet?.episode ?? null : null}
@@ -506,8 +572,8 @@ export function AlertsQueue() {
           ) : null}
           {replaying ? (
             <p className={a.foot}>
-              Acknowledged and closed are shown as they stand at the end of the data; replay cannot
-              rebuild when each changed.
+              Acknowledged and closed are shown as they stood at this moment. An acknowledgement
+              made now is stamped at the end of the data.
             </p>
           ) : null}
         </div>
@@ -603,6 +669,9 @@ function GroupDetail({
 
   const ack = useAcknowledgeAlert()
   const userId = useSession((x) => x.user?.id)
+  const replaying = useSession((x) => x.time.cursor != null)
+  const dataEnd = useSession((x) => x.time.bounds?.end ?? null)
+  const setTimeCursor = useSession((x) => x.setTimeCursor)
   const [acking, setAcking] = useState(false)
   const acknowledgeAll = async () => {
     setAcking(true)
@@ -616,6 +685,7 @@ function GroupDetail({
   const level = levelName(g.winner, levels)
   const thr = g.winner.threshold
   const first = g.episodes[g.episodes.length - 1]
+  const replayAct = replayActText(g, now, dataEnd)
 
   return (
     <div className={a.detail}>
@@ -685,7 +755,18 @@ function GroupDetail({
 
       <section className={a.block}>
         <h3 className={a.blockHead}>Act on it</h3>
-        {g.open ? (
+        {g.open && replaying && g.awaiting.length ? (
+          <>
+            <p className={a.actNote}>{replayAct.text}</p>
+            {replayAct.toEnd ? (
+              <div className={a.actRow}>
+                <Button size="sm" variant="secondary" onClick={() => setTimeCursor(null)}>
+                  Go to the end of the data
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : g.open ? (
           <div className={a.actRow}>
             <Button
               size="sm"

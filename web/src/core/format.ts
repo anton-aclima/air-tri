@@ -195,11 +195,15 @@ const MIN = 60_000
 const HOUR = 60 * MIN
 const DAY = 24 * HOUR
 
-/**
- * `"14 min ago"`, `"just now"`, `"3 d ago"`, `"in 2 h"`.
- * `now` defaults to wall-clock now — pass the session time cursor when the UI
- * is scrubbed into the past so relative labels stay honest.
- */
+// ─────────────────────────────────────────────────── ages (three words, one clock)
+//
+// Every age on screen is one of these three, and a caller never adds its own
+// "ago": `relativeShort` is a BARE age ("3h", "now") for a column or a chip
+// whose header already says what it is, so "Claimed ${relativeShort()} ago"
+// printed "Claimed now ago". Want "ago"? Use `relativeTime` (dense, "3 h ago")
+// or `relativeWords` (plain words, "3 hours ago"). All three measure from the
+// demo's now, which the caller passes (`useNowCampaign()`).
+
 /**
  * `"3 min ago"`, measured from the DEMO's now — which is required, so nothing
  * can silently measure from the wall clock again (a month past the data, every
@@ -226,10 +230,9 @@ export function relativeTime(
   return `${text} ago`
 }
 
-/** Short form for dense lists: `"14m"`, `"3h"`, `"2d"`. */
 /**
- * Short form for dense lists: `"14m"`, `"3h"`, `"2d"`. Same rules as
- * `relativeTime`. It used `Math.abs`, which turned a start in the future into
+ * A bare age for dense lists: `"14m"`, `"3h"`, `"2d"`, `"now"` — no "ago", and
+ * none may be appended (see above). Same rules as `relativeTime`. It used `Math.abs`, which turned a start in the future into
  * a past duration — "UP FOR 16d" on an alert that had not begun.
  */
 export function relativeShort(
@@ -246,7 +249,34 @@ export function relativeShort(
   return `${Math.round(a / DAY)}d`
 }
 
-/** `"01:24:09"` elapsed — how long an RWR contact has been up. */
+/**
+ * `"3 hours ago"`, `"a day ago"`, `"just now"` — an age in plain words, no
+ * abbreviated unit: the community's plain-language rule keeps "1 d ago" off a
+ * resident's screen, and any sentence reads better with it. Minutes under 2 are
+ * "just now"; then minutes, hours (under 24), days (under 14), weeks. A missing
+ * time is `"recently"`; a time after `now` is "just now", as in `relativeTime`.
+ * (Moved from the community's `agoWords`, same outputs.)
+ */
+export function relativeWords(
+  input: string | Date | null | undefined,
+  now: string | Date,
+): string {
+  const d = toDate(input)
+  const n = toDate(now)
+  if (!d || !n) return 'recently'
+  const mins = Math.max(0, Math.round((n.getTime() - d.getTime()) / MIN))
+  const say = (k: number, one: string, many: string) =>
+    (k === 1 ? `${one === 'hour' ? 'an' : 'a'} ${one} ago` : `${k} ${many} ago`)
+  if (mins < 2) return 'just now'
+  if (mins < 60) return `${mins} minutes ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return say(hours, 'hour', 'hours')
+  const days = Math.round(hours / 24)
+  if (days < 14) return say(days, 'day', 'days')
+  return say(Math.round(days / 7), 'week', 'weeks')
+}
+
+/** `"01:24:09"` elapsed — how long an alert has been up. */
 export function fmtElapsed(
   since: string | Date | null | undefined,
   until: string | Date,

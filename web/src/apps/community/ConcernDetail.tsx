@@ -20,13 +20,13 @@ import {
   usePlaces,
   VOICE,
 } from '@/apps/community/lib'
-import { ResponseLine, corroborationWord } from '@/apps/community/FeedCards'
+import { MeTooLater, ResponseLine, corroborationWord } from '@/apps/community/FeedCards'
 import { Byline, FootNote, SectionLabel, SimNote } from '@/apps/community/parts'
 import { Badge, Button, Chip, Empty, Spinner } from '@/app/ui'
 import { happenedBy, hasStarted } from '@/core/events'
 import { fmtDateTime, relativeTime } from '@/core/format'
 import { useConcern, useConcerns, useCorroborate } from '@/core/queries'
-import { useNowCampaign } from '@/core/session'
+import { useNowCampaign, useSession } from '@/core/session'
 
 export function ConcernDetail({ concernId }: { concernId: string }) {
   const now = useNowCampaign()
@@ -34,7 +34,21 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
   const places = usePlaces()
   const { data: concern, isLoading, isError } = useConcern(concernId)
   const corroborate = useCorroborate()
-  const all = happenedBy(useConcerns({ limit: 200 }).data, now)
+  // 400, the map's key: the campaign holds 204 reports, so 200 missed four.
+  const listed = useConcerns({ limit: 400 }).data
+  const all = happenedBy(listed, now)
+  /*
+    Where the report stands, as it stood at the moment shown. The thread
+    (GET /concerns/{id}) takes no `at`: its `status` and `corroborations` are
+    the stored ones, the end of the data, so in replay a report the agency
+    closed a week later already read "Closed by the agency". The list is served
+    as of the clock (server statusat.py: rebuilt from the stamped replies,
+    mitigations, activity rows and corroborations, never ahead of the stored
+    status), so in replay both come from this report's row there. Until that
+    row is in hand the screen claims no status at all.
+  */
+  const replaying = useSession((st) => st.time.cursor != null)
+  const asOf = listed?.find((c) => c.id === concernId)
   // "Part of a group" only once the group had formed by now — `cluster_id` is
   // the final grouping, set on a report hours before its group's third arrived.
   const grouped = useGroupFormed(concern?.cluster_id)
@@ -79,7 +93,8 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
     )
   }
 
-  const status = statusPlain(concern.status)
+  const standing = replaying ? (asOf ?? null) : concern
+  const status = standing ? statusPlain(standing.status) : null
   const who = concern.is_anonymous ? 'A neighbour' : (concern.author?.name ?? 'A neighbour')
   const nearby = all
     .filter((c) => c.id !== concern.id)
@@ -126,7 +141,7 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
                 {kindLabel(concern.kind)}
               </Chip>
               <Chip small>{severityWord(concern.severity)}</Chip>
-              <Badge tone={status.open ? 'accent' : 'ok'}>{status.label}</Badge>
+              {status ? <Badge tone={status.open ? 'accent' : 'ok'}>{status.label}</Badge> : null}
             </div>
 
             {concern.photo_emoji ? (
@@ -141,26 +156,40 @@ export function ConcernDetail({ concernId }: { concernId: string }) {
             {concern.body ? <p className={s.postBody}>{concern.body}</p> : null}
 
             <div className={s.postFoot}>
-              <Button
-                size="sm"
-                variant="primary"
-                icon="check"
-                loading={corroborate.isPending}
-                onClick={() => corroborate.mutate({ id: concern.id, userId: me?.id })}
-              >
-                This happened to me too
-              </Button>
+              {/* In replay a "me too" would be stamped at the end of the
+                  demonstration and never show here (FeedCards `MeTooLater`). */}
+              {replaying ? (
+                <MeTooLater now={now} />
+              ) : (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon="check"
+                  loading={corroborate.isPending}
+                  onClick={() => corroborate.mutate({ id: concern.id, userId: me?.id })}
+                >
+                  This happened to me too
+                </Button>
+              )}
               <span style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-2)' }}>
-                {corroborationWord(concern.corroborations)}
+                {standing ? corroborationWord(standing.corroborations) : null}
               </span>
             </div>
           </article>
 
           {/* ── the standing status explanation ───────────────────────── */}
           <div className={s.explainer}>
-            <h2 className={s.explainerTitle}>Where this report stands</h2>
+            <h2 className={s.explainerTitle}>
+              {replaying ? `Where this report stood at ${fmtDateTime(now)}` : 'Where this report stands'}
+            </h2>
             <p className={s.explainerBody}>
-              <strong>{status.label}.</strong> {status.hint}.
+              {status ? (
+                <>
+                  <strong>{status.label}.</strong> {status.hint}.
+                </>
+              ) : (
+                'Where it stood at this moment is still loading.'
+              )}
             </p>
             {industryReplies.length ? (
               <p className={s.explainerBody}>

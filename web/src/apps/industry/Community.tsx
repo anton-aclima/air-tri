@@ -29,7 +29,7 @@ import { Sparkline } from '@/components'
 import { Button } from '@/app/ui'
 import { campaignMs } from '@/core/clock'
 import { happenedBy } from '@/core/events'
-import { compassPoint, fmtDistance, fmtNum, relativeShort } from '@/core/format'
+import { compassPoint, fmtDistance, fmtNum, relativeShort, relativeTime } from '@/core/format'
 import { useConcernClusters, useConcerns, useDispersion, useTouchdown } from '@/core/queries'
 import { useNowCampaign } from '@/core/session'
 import type { Concern } from '@/core/types'
@@ -175,10 +175,13 @@ export function Community() {
                   <span className={s.reportBody}>
                     <span className={s.reportTitle}>{cl.label ?? 'Cluster'}</span>
                     {/* A compass point, not "NNW 338°": the degrees were
-                        instrument talk, and they pushed "last 1d" onto two
-                        lines in the 324 px column at 1080. */}
+                        instrument talk, and they pushed the age onto two
+                        lines in the 324 px column at 1080. The age is
+                        `relativeTime` ("latest 1 d ago"), not "last" glued to
+                        a bare `relativeShort`, and it does not wrap. */}
                     <span className={s.reportSub}>
-                      {fmtDistance(distanceM, 1)} {compassPoint(bearing)} · last{'\u00a0'}{relativeShort(cl.last_at, now)}
+                      {fmtDistance(distanceM, 1)} {compassPoint(bearing)} ·{' '}
+                      <span style={{ whiteSpace: 'nowrap' }}>latest {relativeTime(cl.last_at, now)}</span>
                     </span>
                   </span>
                   {clusterLinked(cl, concerns, site.id, tdState) ? <LinkedTag /> : null}

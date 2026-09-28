@@ -895,8 +895,24 @@ export function getCommunityStats(
   return request<CommunityStats>('/stats/community', { signal, params: { ...params } })
 }
 
-export function getCampaignStats(campaignId?: string, signal?: AbortSignal): Promise<CampaignStats> {
-  return request<CampaignStats>('/stats/campaign', { signal, params: { campaign_id: campaignId } })
+export interface CampaignStatsParams {
+  campaign_id?: string
+  /**
+   * Upper bound, naive campaign time: the KPIs as of that moment (the admin
+   * header and status bar send the moment shown). Omitted means the whole
+   * campaign, which is what the timeline's `by_day` and the admin pages that
+   * say "the whole campaign" read.
+   */
+  at?: string
+}
+
+export function getCampaignStats(
+  params: CampaignStatsParams = {},
+  signal?: AbortSignal,
+): Promise<CampaignStats> {
+  return request<CampaignStats>('/stats/campaign', {
+    signal, params: { campaign_id: params.campaign_id, at: params.at },
+  })
 }
 
 export function getActivity(

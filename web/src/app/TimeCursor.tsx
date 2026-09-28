@@ -54,7 +54,7 @@ const MERGE_PILL_PX = 22
 const DRAG_WRITE_MS = 250
 /** A seek this close to the right edge means the end of the data, not "13:00 on the last day". */
 const END_SNAP_MIN = 30
-/** Prev/next skip a tick the cursor is already sitting on. */
+/** Prev/next skip an event the cursor is already sitting on. */
 const SAME_MS = 60_000
 
 interface Mark {
@@ -251,8 +251,15 @@ export function TimeCursor({ collapsed, keyboard, aside, className }: TimeCursor
     () => (width > 0 ? toTicks(marks, (ms) => frac(ms) * width) : []),
     [marks, width, frac],
   )
-  const prev = useMemo(() => [...ticks].reverse().find((t) => t.ms < nowMs - SAME_MS), [ticks, nowMs])
-  const next = useMemo(() => ticks.find((t) => t.ms > nowMs + SAME_MS), [ticks, nowMs])
+  // Previous/Next step one EVENT, not one drawn tick: a merged pill is only a
+  // drawing (its events sit within a few pixels at this width), and stepping
+  // by pill jumped from the end of the data to Aug 24 05:00 over 13 events.
+  // `marks` is oldest first; events sharing a time are one step.
+  const prev = useMemo(() => {
+    for (let i = marks.length - 1; i >= 0; i--) if (marks[i].ms < nowMs - SAME_MS) return marks[i]
+    return undefined
+  }, [marks, nowMs])
+  const next = useMemo(() => marks.find((m) => m.ms > nowMs + SAME_MS), [marks, nowMs])
 
   // ── actions ────────────────────────────────────────────────────────────
   const goStart = useCallback(() => {

@@ -167,15 +167,16 @@ def create_mitigation(payload: MitigationIn, conn: sqlite3.Connection = Depends(
                 org_id=site["org_id"], author_id=author_id, campaign_id=cid,
             )
 
-        # Attach the mitigation to the alert it answers, so the regulator sees it there.
+        # The mitigation reaches the alert it answers through `mitigation.alert_id`:
+        # /alerts/{id} lists it under `mitigations`, bounded by `at` like every
+        # other thing filed on the alert. It is NOT appended to the alert's
+        # `recommendation` any more (phase 6): that column is served at every
+        # `at`, so a mitigation filed at runtime showed inside replay, and the
+        # agency-neutral line the regulator reads gained an operator's note.
         if payload.alert_id:
             al = one(w, "SELECT * FROM alert WHERE id=?", (payload.alert_id,))
             if al is not None:
                 note = f"Operator mitigation: {payload.title}."
-                w.execute(
-                    "UPDATE alert SET recommendation=COALESCE(recommendation,'') || ? WHERE id=?",
-                    ("\n" + note, payload.alert_id),
-                )
                 domain.log(
                     w, "alert.mitigation_attached", campaign_id=cid, actor_role="industry",
                     actor_id=author_id, object_type="alert", object_id=payload.alert_id,
