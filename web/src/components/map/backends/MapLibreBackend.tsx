@@ -12,11 +12,25 @@ import { Map, useControl } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { MapboxOverlayProps } from '@deck.gl/mapbox';
+import { setWorkerUrl } from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { BackendProps } from './types';
 import { BASE_STYLE_URL, applyMapLibreSkin } from '../styles/mapStyles';
 import type { StyleTarget } from '../styles/mapStyles';
+
+/*
+ * MapLibre 6 finds its tile-parsing worker at `new URL('./maplibre-gl-worker.mjs',
+ * import.meta.url)` — next to its own module. In a production build that is
+ * `/assets/maplibre-gl-worker.mjs`, which Vite never emits: on the deployed
+ * demo it 404'd, the worker never started, and the basemap drew nothing while
+ * deck.gl kept drawing on its own canvas (the symptom vite.config.ts describes
+ * for the dev-server variant). `?worker&url` makes Vite bundle the worker —
+ * with the shared chunk it imports — into a real file and hands back its URL.
+ * Set once, before any map is created.
+ */
+setWorkerUrl(maplibreWorkerUrl);
 
 function DeckOverlay(props: MapboxOverlayProps) {
   const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));

@@ -68,6 +68,13 @@ export default defineConfig({
     proxy: apiProxy,
   },
 
+  // MapLibre starts its worker as `new Worker(url, { type: 'module' })`, and
+  // the worker imports a shared chunk: bundle it as an ES module
+  // (backends/MapLibreBackend.tsx sets the URL).
+  worker: {
+    format: 'es',
+  },
+
   build: {
     outDir: 'dist',
     sourcemap: false,
