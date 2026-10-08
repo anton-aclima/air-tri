@@ -37,8 +37,12 @@ concentrations shown, EPA, WHO limits marked as waterlines on it."
   inside the range is a line across the bar; a limit outside it is listed
   above (↑ "above every street shown") or below (↓ "every street shown is
   above it") — never dropped, because stretching a clean area is exactly when
-  the reader most needs to see the guideline is far away. A `compact` variant
-  for maps narrower than 560 px (phones).
+  the reader most needs to see the guideline is far away. **Slim** (owner:
+  "the text in the concentration key makes it much wider than it should be"):
+  on the map only the switch, the bar, its ends and short line labels
+  ("EPA 9.0", "↓ WHO 5.0") — ~150 px; everything explanatory (what stretched
+  colours mean, how many streets are in view, each limit's full name and
+  source) is behind an ⓘ popover portalled to `<body>`.
 - Community map: `metric: 'median'`, the contrast ramp, the key in place of
   the score legend, the switch "Stretch colours to what's in view". The street
   card shows the street's typical reading in its unit and where it sits

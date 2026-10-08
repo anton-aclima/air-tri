@@ -100,7 +100,7 @@ const PIN_KEY = [
 /** Streets with fewer passes than this are drawn grey and left out of every range. */
 const MIN_PASSES = 8
 
-/** Below this map width (px) the key is the slim, phone version. */
+/** Below this map width (px) the key's bar is shorter and the picker sits above the map. */
 const COMPACT_KEY_BELOW = 560
 
 /** The stretched range is never narrower than this share of the whole area's. */
@@ -226,15 +226,23 @@ export function MapScreen() {
     limits on it, so "dark" is never left to mean "unhealthy" on its own.
   */
   const [stretched, setStretched] = useState(true)
-  const frameRef = useRef<HTMLDivElement>(null)
+  // A callback ref, not a mount-time effect: the frame is not in the DOM on
+  // the first render (the screen renders its loading state first), and an
+  // observer attached at mount never saw it — the key then fell back to the
+  // whole area while saying "stretched".
+  const [frameEl, setFrameEl] = useState<HTMLDivElement | null>(null)
   const [frame, setFrame] = useState({ w: 0, h: 0 })
   useLayoutEffect(() => {
-    const el = frameRef.current
-    if (!el) return
+    if (!frameEl) return
+    // Measured once now, synchronously: a ResizeObserver reports only in a
+    // rendering step, which a background tab never runs, so the first size
+    // could otherwise wait until the tab is looked at.
+    const r = frameEl.getBoundingClientRect()
+    setFrame({ w: r.width, h: r.height })
     const ro = new ResizeObserver(([e]) => setFrame({ w: e.contentRect.width, h: e.contentRect.height }))
-    ro.observe(el)
+    ro.observe(frameEl)
     return () => ro.disconnect()
-  }, [])
+  }, [frameEl])
   const wholeDomain = useMemo<[number, number]>(
     () => robustDomain((segments?.features ?? []).filter((f) => f.properties.n_passes >= MIN_PASSES).map((f) => f.properties.value), { floorAtZero: false }),
     [segments],
@@ -338,7 +346,7 @@ export function MapScreen() {
 
       <div className={s.mapLayout}>
         {narrow ? <div className={s.mapPickerAbove}>{picker}</div> : null}
-        <div className={s.mapFrame} ref={frameRef}>
+        <div className={s.mapFrame} ref={setFrameEl}>
           <BaseMap
             label="Neighbourhood air map"
             initialView={{ longitude: places.home[0], latitude: places.home[1], zoom: 12.4 }}
@@ -435,7 +443,7 @@ export function MapScreen() {
               }),
             ]}
           >
-            <MapOverlay place="top-right">
+            <MapOverlay place="top-right" style={{ justifyItems: 'end' }}>
               <RampKey
                 title={measure ? plainName(measure, 'community') : 'the air'}
                 window={grid.title.replace(/^How your street scores · /, 'Typical reading · ')}
@@ -447,7 +455,6 @@ export function MapScreen() {
                 onStretchedChange={setStretched}
                 empty={grid.empty}
                 decimals={measure?.decimals ?? 1}
-                compact={narrow}
                 height={narrow ? 180 : 240}
               />
               {/* "Usually" draws this and nothing else: the whole campaign's
