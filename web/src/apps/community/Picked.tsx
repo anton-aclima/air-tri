@@ -21,15 +21,14 @@
 import { Link } from '@tanstack/react-router'
 
 import { Button } from '@/app/ui'
-import type { SegmentFeature } from '@/components'
+import type { PublishedLimit, SegmentFeature } from '@/components'
 import type { CampaignTime } from '@/core/clock'
-import { relativeTime } from '@/core/format'
+import { fmtNum, relativeTime } from '@/core/format'
 import { bearingBetween, compassWords, distanceBetween, fmtDistanceImperial } from '@/core/format'
 import { useClimatology, useTouchdown } from '@/core/queries'
 import type { Concern, ConcernCluster, IndustrySite } from '@/core/types'
 
 import s from './community.module.css'
-import { RiskPill } from './parts'
 import {
   KIND_WORD, PLUME_COPY, REPORT_MEASURE, distanceFromHome, kindEmoji, kindLabel, nearWords, severityWord,
   statusPlain, useMyNeighborhood,
@@ -58,6 +57,21 @@ export interface PickedProps {
   sites: IndustrySite[]
   /** Plain name of the measure the map is currently painting. */
   measureName: string
+  /** The measure's unit as people write it ('ppb', 'µg/m³'); '' for an index. */
+  unit: string
+  /** Published annual limits for the measure (components/lib/limits), lowest first. */
+  limits: readonly PublishedLimit[]
+  decimals: number
+}
+
+/** Where a value sits among the limits, by name: "above the WHO guideline and below the EPA standard". */
+function limitWords(v: number, limits: readonly PublishedLimit[]): string {
+  const name = (l: PublishedLimit) => `the ${l.label}`
+  const over = limits.filter((l) => v > l.value)
+  const under = limits.filter((l) => v <= l.value)
+  if (!over.length) return `below ${under.length > 1 ? 'both' : name(under[0])}`
+  if (!under.length) return `above ${over.length > 1 ? 'both' : name(over[0])}`
+  return `above ${over.map(name).join(' and ')} and below ${under.map(name).join(' and ')}`
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -85,7 +99,7 @@ function oftenWords(persistence: number | null | undefined): string {
 }
 
 export function Picked(props: PickedProps) {
-  const { pick, onClear, now, home, concerns, clusters, segments, sites, measureName } = props
+  const { pick, onClear, now, home, concerns, clusters, segments, sites, measureName, unit, limits, decimals } = props
   // The same whole-campaign query the Plume card holds, so a tapped place
   // costs no request. Called before the early return: hooks cannot follow it.
   const climate = useClimatology().data
@@ -301,10 +315,28 @@ export function Picked(props: PickedProps) {
           </span>
         </div>
 
+        {/* The map paints real concentrations (owner, 2026-10-08), so the
+            card prints the same number in its unit. The limits are a
+            COMPARISON, not a verdict: a median over weeks of daytime passes
+            is not the annual mean those limits are written for. */}
         <div className={s.pickScore}>
-          <RiskPill risk={p.value} />
-          <span className={s.pickScoreCaption}>out of 100, for {measureName}</span>
+          <span className={s.pickValue}>
+            {p.value == null ? '—' : fmtNum(p.value, decimals)}{unit ? ` ${unit}` : ''}
+          </span>
+          <span className={s.pickScoreCaption}>typical reading for {measureName}</span>
         </div>
+        {limits.length && p.value != null ? (
+          <p className={s.pickNote}>
+            For comparison, the annual limits:{' '}
+            {limits.map((l, i) => (
+              <span key={l.label} title={l.source}>
+                {i ? ' and ' : ''}{l.label} {fmtNum(l.value, decimals)}{unit ? ` ${unit}` : ''}
+              </span>
+            ))}
+            . This street&rsquo;s typical reading is{' '}
+            {limitWords(p.value, limits)}.
+          </p>
+        ) : null}
 
         <Row label="Bad air here" value={oftenWords(p.persistence)} />
         {/* The first question a resident has about a street is whether it is

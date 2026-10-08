@@ -133,6 +133,21 @@
   --ramp-intensity-light-6: #E2543F;
   --ramp-intensity-light-7: #A8211F;
 
+  /* --ramp-contrast-* — RELATIVE magnitude: "higher than the rest of what is
+     in view", for a grid stretched to the viewport (components/lib/viewRange).
+     Teal → blue → violet → plum, light to dark, so it reads "more" on a cream
+     basemap without the traffic-light words: no green ("clean"), no red
+     ("danger"). Stretched colour must not borrow a health meaning it does not
+     have — the waterlines on the key (RampKey) carry that. */
+  --ramp-contrast-0: #8FD3CC;
+  --ramp-contrast-1: #5DBDBA;
+  --ramp-contrast-2: #3FA2BE;
+  --ramp-contrast-3: #4384C3;
+  --ramp-contrast-4: #5A66BE;
+  --ramp-contrast-5: #7450B2;
+  --ramp-contrast-6: #8C3E9F;
+  --ramp-contrast-7: #6E2A7E;
+
   /* Persistence (how OFTEN, not how much) — a single-hue opacity ladder that
      can be multiplied over the intensity ramp without fighting it. */
   --persist-0: 0.18; --persist-1: 0.34; --persist-2: 0.52;

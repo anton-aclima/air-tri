@@ -62,8 +62,9 @@ export function districtCenters(segments: SegmentCollection | undefined): Map<st
 }
 
 /**
- * The road grid, always painted by risk — community never sees a raw
- * magnitude — and measured up to the moment shown: `window=todate&at=<the
+ * The road grid, measured up to the moment shown. The map reads `median`
+ * (real concentrations, owner 2026-10-08: docs/PLAN-community.md); the
+ * report form's small location map still reads the 0–100 `risk` score: `window=todate&at=<the
  * clock>`, so a replayed map colours a street only from the passes driven by
  * then (phase 6, P5). Paused at the end of the data no `at` is sent and
  * `todate` is the stored 'all' window exactly (tests/test_passwindow.py). The
@@ -74,11 +75,15 @@ export function districtCenters(segments: SegmentCollection | undefined): Map<st
  * A step of the clock keeps the previous grid on screen until the next one
  * lands (same pollutant, same window); a pollutant switch reads as loading.
  */
-export function useCommunitySegments() {
+export function useCommunitySegments(metric: 'risk' | 'median' = 'risk') {
   const measure = useMeasureCode()
   return useSegments(
-    { metric: 'risk', window: 'todate', limit: 2000 },
-    { placeholderData: keepSegmentsWhile((p) => p.measure === measure && p.window === 'todate') },
+    { metric, window: 'todate', limit: 2000 },
+    {
+      placeholderData: keepSegmentsWhile(
+        (p) => p.measure === measure && p.window === 'todate' && p.metric === metric,
+      ),
+    },
   )
 }
 

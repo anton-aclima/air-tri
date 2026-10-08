@@ -110,7 +110,11 @@ Live demo, runbook and the two things that broke on the way: `docs/DEPLOY.md`.
 
 ## Current work
 
-`docs/PLAN-refocus.md` is the resume point for the owner's zoom-out review:
+`docs/PLAN-community.md` is the resume point for the community room: the
+agreed critique (to do, in order), the owner's decisions C1–C4, and the
+stretch-to-view map with its EPA/WHO waterline key (built).
+
+`docs/PLAN-refocus.md` is the record of the owner's zoom-out review:
 four surfaces redesigned (time control, community, regulator, industry), the
 owner's 13 decisions (§6a), and the order of work (§5).
 

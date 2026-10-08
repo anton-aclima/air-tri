@@ -144,6 +144,11 @@ export interface Theme {
   aqi: string[];
   /** `--ramp-intensity-0..7` — analytical magnitude, role-independent. */
   intensity: string[];
+  /**
+   * `--ramp-contrast-0..7` — RELATIVE magnitude for a grid stretched to the
+   * viewport: no health words in it (no green, no red). Falls back to `ramp`.
+   */
+  contrast: string[];
   /** `--persist-0..5` opacity ladder for the persistence channel. */
   persist: number[];
   /** Fixed categorical hue order for multi-series identity. Never cycled. */
@@ -153,9 +158,9 @@ export interface Theme {
   /** Token → deck.gl `[r,g,b,a]`; `alpha` (0–1) overrides the token's own alpha. */
   color(name: TokenName | string, alpha?: number): RGBA;
   /** Ramp position 0–1 → CSS string (continuous, interpolated). */
-  rampAt(t: number, which?: 'map' | 'aqi' | 'intensity'): string;
+  rampAt(t: number, which?: RampWhich): string;
   /** Ramp position 0–1 → `[r,g,b,a]`. */
-  rampColor(t: number, alpha?: number, which?: 'map' | 'aqi' | 'intensity'): RGBA;
+  rampColor(t: number, alpha?: number, which?: RampWhich): RGBA;
   /** Severity token for a `Severity` value. */
   sev(s: string): string;
   /**
@@ -168,6 +173,9 @@ export interface Theme {
    */
   labelPx(px: number): number;
 }
+
+/** Which of the theme's ramps. */
+export type RampWhich = 'map' | 'aqi' | 'intensity' | 'contrast';
 
 function stripQuotes(s: string) { return s.replace(/^['"]|['"]$/g, ''); }
 
@@ -188,6 +196,7 @@ function readVars(el: Element | null): Record<string, string> {
     // ramp whose low end is invisible on a dark ground.
     out[`ramp-map-${i}`] = get(`ramp-map-${i}`) || get(`ramp-intensity-dark-${i}`) || get(`ramp-intensity-${i}`);
     out[`ramp-intensity-${i}`] = get(`ramp-intensity-${i}`);
+    out[`ramp-contrast-${i}`] = get(`ramp-contrast-${i}`) || out[`ramp-map-${i}`];
   }
   for (let i = 0; i < 7; i++) out[`ramp-aqi-${i}`] = get(`ramp-aqi-${i}`);
   for (let i = 0; i < 6; i++) out[`persist-${i}`] = get(`persist-${i}`);
@@ -201,15 +210,16 @@ function makeTheme(v: Record<string, string>, role: Role | 'none'): Theme {
   const ramp = Array.from({ length: 8 }, (_, i) => v[`ramp-map-${i}`] || '');
   const aqi = Array.from({ length: 7 }, (_, i) => v[`ramp-aqi-${i}`] || '');
   const intensity = Array.from({ length: 8 }, (_, i) => v[`ramp-intensity-${i}`] || '');
+  const contrast = Array.from({ length: 8 }, (_, i) => v[`ramp-contrast-${i}`] || v[`ramp-map-${i}`] || '');
   const persist = Array.from({ length: 6 }, (_, i) => Number(v[`persist-${i}`]) || (i + 1) / 6);
   const skin = (['light', 'dark', 'night', 'blueprint'] as MapSkin[])
     .includes(v['map-style'] as MapSkin) ? (v['map-style'] as MapSkin) : 'dark';
   const dark = skin !== 'light';
 
-  const pick = (which: 'map' | 'aqi' | 'intensity') =>
-    which === 'aqi' ? aqi : which === 'intensity' ? intensity : ramp;
+  const pick = (which: RampWhich) =>
+    which === 'aqi' ? aqi : which === 'intensity' ? intensity : which === 'contrast' ? contrast : ramp;
 
-  const rampColorAt = (t: number, which: 'map' | 'aqi' | 'intensity'): RGBA => {
+  const rampColorAt = (t: number, which: RampWhich): RGBA => {
     const stops = pick(which).filter(Boolean);
     if (!stops.length) return [0, 0, 0, 0];
     const x = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0)) * (stops.length - 1);
@@ -219,7 +229,7 @@ function makeTheme(v: Record<string, string>, role: Role | 'none'): Theme {
   };
 
   return {
-    role, skin, dark, v, ramp, aqi, intensity, persist,
+    role, skin, dark, v, ramp, aqi, intensity, contrast, persist,
     categorical: [
       v['mod-no2'], v['mod-pm25'], v['mod-bc'], v['mod-o3'],
       v['mod-co'], v['mod-ch4'], v['mod-co2'], v['actor-industry'],

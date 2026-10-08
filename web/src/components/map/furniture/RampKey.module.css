@@ -1,0 +1,98 @@
+/* RampKey — the tall vertical colour key with limit waterlines. Map furniture:
+   a card that sits over the map (MapOverlay), sized for reading while you pan. */
+
+.key {
+  inline-size: 252px;
+  max-inline-size: 100%;
+  padding: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-pop);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.head { display: flex; flex-direction: column; gap: 4px; margin-block-end: var(--s-3); }
+.title { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-medium); line-height: 1.3; }
+.window { margin: 0; font-size: var(--text-xs); color: var(--ink-3); }
+
+.toggle {
+  display: flex; align-items: center; gap: 6px; margin-block-start: 4px;
+  font-size: var(--text-xs); color: var(--ink-2); cursor: pointer;
+}
+.toggle input { margin: 0; accent-color: var(--accent); }
+
+/* The bar on the left, labels in the column to its right. The end labels and
+   the waterlines are absolutely placed by their value (bottom: N%). */
+.scale {
+  position: relative;
+  margin-block: var(--s-2);
+  margin-inline-end: 0;
+  padding-inline-start: 0;
+}
+.bar {
+  position: absolute; inset-block: 0; inset-inline-start: 0;
+  inline-size: 18px;
+  border-radius: var(--r-xs);
+  outline: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.end {
+  position: absolute; inset-inline-start: 28px;
+  transform: translateY(50%);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.water {
+  position: absolute; inset-inline: 0;
+  display: flex; align-items: center;
+  transform: translateY(50%);
+  pointer-events: auto;
+}
+/* The line runs across the bar and on into the label column. */
+.waterLine {
+  flex: none;
+  inline-size: 30px;
+  block-size: 0;
+  border-block-start: 2px solid var(--ink);
+  margin-inline-start: -4px;
+}
+.waterLabel {
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  background: var(--surface);
+  border-radius: var(--r-xs);
+  font-size: var(--text-xs); line-height: 1.3; color: var(--ink);
+  white-space: nowrap;
+}
+.waterLabel b { font-weight: var(--weight-medium); }
+
+.offScale {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: var(--text-xs); line-height: 1.35; color: var(--ink-2);
+}
+.offScale li { display: flex; gap: 6px; }
+.offScale b { font-weight: var(--weight-medium); color: var(--ink); }
+.arrow { flex: none; inline-size: 18px; text-align: center; color: var(--ink); }
+.offNote { color: var(--ink-3); }
+
+.foot { margin: var(--s-2) 0 0; font-size: var(--text-xs); line-height: 1.4; color: var(--ink-3); }
+.empty { margin: 0; font-size: var(--text-sm); color: var(--ink-2); }
+
+/* A narrow map (a phone): the bar, its ends, the lines and the switch. */
+.compact { inline-size: 132px; padding: var(--s-2); }
+.compact .head { margin-block-end: var(--s-2); }
+.compact .toggle { font-size: var(--text-2xs); }
+.compact .end, .compact .waterLabel, .compact .offScale, .compact .foot { font-size: var(--text-2xs); }
+.compact .bar { inline-size: 14px; }
+.compact .end { inset-inline-start: 22px; }
+.compact .waterLine { inline-size: 24px; }
+.compact .waterLabel { margin-inline-start: 2px; padding: 0 3px; }
+.compact .arrow { inline-size: 14px; }
+
+.srOnly {
+  position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}

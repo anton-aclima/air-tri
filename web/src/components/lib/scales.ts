@@ -14,7 +14,7 @@ import { quantile } from 'd3-array';
 import type { RGBA, Theme } from './theme';
 import { parseColor, rgbaCss, withAlpha } from './theme';
 
-export type RampName = 'map' | 'aqi' | 'intensity';
+export type RampName = 'map' | 'aqi' | 'intensity' | 'contrast';
 export type ScaleMode = 'continuous' | 'quantized';
 
 export interface ColorScale {
@@ -49,7 +49,7 @@ export function makeColorScale(
   },
 ): ColorScale {
   const { domain, mode = 'continuous', ramp = 'map', gamma = 1 } = opts;
-  const stops = (ramp === 'aqi' ? theme.aqi : ramp === 'intensity' ? theme.intensity : theme.ramp)
+  const stops = (ramp === 'aqi' ? theme.aqi : ramp === 'intensity' ? theme.intensity : ramp === 'contrast' ? theme.contrast : theme.ramp)
     .filter(Boolean);
   const [d0, d1] = domain;
   const span = d1 - d0 || 1;

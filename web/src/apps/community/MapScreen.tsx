@@ -11,7 +11,7 @@
  */
 
 import { Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import s from '@/apps/community/community.module.css'
 import {
@@ -39,16 +39,21 @@ import {
   BaseMap,
   ConcernLayer,
   FleetLayer,
-  MapLegend,
   MapOverlay,
   MapScale,
   MeasurePicker,
   MiniRose,
+  RampKey,
   SegmentLayer,
   SiteLayer,
   REPORT_WINDOW_DAYS,
   SoftPlumeLayer,
+  annualLimits,
+  displayUnit,
   makeColorScale,
+  robustDomain,
+  viewBounds,
+  viewRange,
   pickedSite,
   usePulse,
   windowReports,
@@ -92,6 +97,15 @@ const PIN_KEY = [
   ['sev-ok', 'Closed by the agency'],
 ] as const
 
+/** Streets with fewer passes than this are drawn grey and left out of every range. */
+const MIN_PASSES = 8
+
+/** Below this map width (px) the key is the slim, phone version. */
+const COMPACT_KEY_BELOW = 560
+
+/** The stretched range is never narrower than this share of the whole area's. */
+const MIN_SPAN_SHARE = 0.25
+
 export function MapScreen() {
   // Climatology is the default: one wind rose in the map's corner and one
   // sentence per place in the card. See `Plume` for why the cloud is a tap
@@ -101,7 +115,9 @@ export function MapScreen() {
   const places = usePlaces()
   const pulse = usePulse(2400)
 
-  const segments = useCommunitySegments().data
+  // Real concentrations (owner, 2026-10-08): the median of every pass on
+  // each ~200 m of street, in the measure's own unit.
+  const segments = useCommunitySegments('median').data
   // The grid's own window names the legend (P5): "these three months" when
   // paused at the end, "measured to <moment>" in replay.
   const replaying = useSession((st) => st.time.cursor != null)
@@ -200,6 +216,53 @@ export function MapScreen() {
   const flyTo = useSession((st) => st.flyTo)
   const mapView = useSession((st) => st.mapView)
 
+  /*
+    STRETCH TO VIEW (owner, 2026-10-08; docs/PLAN-community.md). Aclima's
+    street differences are small; on a fixed scale a neighbourhood is one pale
+    band. On by default, the colour domain is the streets IN VIEW (2nd–98th
+    percentile, components/lib/viewRange) and follows every pan and zoom; off,
+    it is the same robust range over every street in the area. Either way the
+    RampKey prints the range in real units and draws the published annual
+    limits on it, so "dark" is never left to mean "unhealthy" on its own.
+  */
+  const [stretched, setStretched] = useState(true)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const [frame, setFrame] = useState({ w: 0, h: 0 })
+  useLayoutEffect(() => {
+    const el = frameRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setFrame({ w: e.contentRect.width, h: e.contentRect.height }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const wholeDomain = useMemo<[number, number]>(
+    () => robustDomain((segments?.features ?? []).filter((f) => f.properties.n_passes >= MIN_PASSES).map((f) => f.properties.value), { floorAtZero: false }),
+    [segments],
+  )
+  // Never stretch over less than a quarter of the whole area's range (see
+  // `viewRange`'s minSpan): contrast inside the noise is not information.
+  const inView = useMemo(
+    () => viewRange(segments, viewBounds(mapView, frame.w, frame.h), {
+      minPasses: MIN_PASSES, minSpan: (wholeDomain[1] - wholeDomain[0]) * MIN_SPAN_SHARE,
+    }),
+    [segments, mapView, frame.w, frame.h, wholeDomain],
+  )
+  const domain: [number, number] = stretched && inView ? [inView.lo, inView.hi] : wholeDomain
+  const narrow = frame.w > 0 && frame.w < COMPACT_KEY_BELOW
+  const picker = (
+    <MeasurePicker
+      measures={measures}
+      value={(measure?.code ?? 'no2') as MeasureCode}
+      onChange={(c) => setMeasure(c)}
+      variant="select"
+      plainLanguage
+      showUnit={false}
+      label="What to show"
+    />
+  )
+  const unit = displayUnit(measure?.unit)
+  const limits = annualLimits(measure?.code)
+
   /**
    * The session camera is shared with the other three interfaces, so frame it
    * for a resident once on arrival: home neighbourhood plus every report.
@@ -274,7 +337,8 @@ export function MapScreen() {
       </header>
 
       <div className={s.mapLayout}>
-        <div className={s.mapFrame}>
+        {narrow ? <div className={s.mapPickerAbove}>{picker}</div> : null}
+        <div className={s.mapFrame} ref={frameRef}>
           <BaseMap
             label="Neighbourhood air map"
             initialView={{ longitude: places.home[0], latitude: places.home[1], zoom: 12.4 }}
@@ -327,11 +391,14 @@ export function MapScreen() {
               ...SegmentLayer({
                 data: segments,
                 theme: t,
-                metric: 'risk',
+                metric: 'median',
                 measure: measure?.code,
-                scale: makeColorScale(t, { domain: [0, 100], ramp: 'aqi' }),
+                // The relative ramp: no green "clean", no red "danger" — a
+                // stretched colour is "high for this view", and the key's
+                // waterlines say where the health limits are.
+                scale: makeColorScale(t, { domain, ramp: 'contrast' }),
                 dualEncode: 'width',
-                minPasses: 8,
+                minPasses: MIN_PASSES,
                 widthMinPixels: 1.4,
                 // Was false, which is why tapping a road did nothing. The road
                 // grid is the hero of this screen; it has to answer.
@@ -369,14 +436,19 @@ export function MapScreen() {
             ]}
           >
             <MapOverlay place="top-right">
-              <MapLegend
-                measure={measure ?? null}
-                metric="risk"
-                dualEncode="width"
-                plainLanguage
-                compact
-                title={grid.title}
+              <RampKey
+                title={measure ? plainName(measure, 'community') : 'the air'}
+                window={grid.title.replace(/^How your street scores · /, 'Typical reading · ')}
+                unit={unit}
+                domain={domain}
+                extremes={stretched ? inView : null}
+                limits={limits}
+                stretched={stretched}
+                onStretchedChange={setStretched}
                 empty={grid.empty}
+                decimals={measure?.decimals ?? 1}
+                compact={narrow}
+                height={narrow ? 180 : 240}
               />
               {/* "Usually" draws this and nothing else: the whole campaign's
                   wind, under the street key and at no site, so it points from
@@ -387,24 +459,18 @@ export function MapScreen() {
                   the rose has loaded. */}
               {plumeMode === 'usually' ? (
                 <div style={{ marginTop: 'var(--s-2)' }}>
-                  <MiniRose rose={climate?.rose} caption={PLUME_COPY.usually.mapKey} />
+                  <MiniRose rose={climate?.rose} caption={narrow ? undefined : PLUME_COPY.usually.mapKey} />
                 </div>
               ) : null}
             </MapOverlay>
             <MapOverlay place="bottom-left">
               <MapScale units="imperial" />
             </MapOverlay>
-            <MapOverlay place="top-left">
-              <MeasurePicker
-                measures={measures}
-                value={(measure?.code ?? 'no2') as MeasureCode}
-                onChange={(c) => setMeasure(c)}
-                variant="select"
-                plainLanguage
-                showUnit={false}
-                label="What to show"
-              />
-            </MapOverlay>
+            {/* The overlay corners share one grid whose side columns size to
+                their widest item: on a phone the picker squeezed the key's
+                column and the key ran off the map. There the picker sits above
+                the map instead (below). */}
+            {narrow ? null : <MapOverlay place="top-left">{picker}</MapOverlay>}
           </BaseMap>
         </div>
 
@@ -417,6 +483,9 @@ export function MapScreen() {
             concerns={concerns}
             clusters={clusters}
             segments={segments?.features ?? []}
+            unit={unit}
+            limits={limits}
+            decimals={measure?.decimals ?? 1}
             sites={sites}
             measureName={measure ? plainName(measure, 'community') : 'the air'}
           />

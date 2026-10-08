@@ -796,6 +796,9 @@ button.railRow:hover .railRowName { color: var(--accent); }
   .mapLayout { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* A phone: the pollutant picker sits above the map, not in its corner. */
+.mapPickerAbove { margin-block-end: var(--s-2); }
+
 .mapFrame {
   height: min(72vh, 720px);
   border-radius: var(--radius-card);
@@ -1075,6 +1078,13 @@ button.railRow:hover .railRowName { color: var(--accent); }
   margin-block-end: var(--s-3);
 }
 .pickScoreCaption { font-size: var(--text-xs); color: var(--ink-2); }
+.pickValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  color: var(--ink);
+}
 
 .pickList {
   display: flex;
